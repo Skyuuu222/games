@@ -2828,7 +2828,7 @@ do
             sub.Parent = card
 
             -- Chip fitur.
-            local chips = { "Auto Egg", "Hatch", "Skip Growth", "ESP", "Sell" }
+            local chips = { "Auto Egg", "Shop", "Auto Sell", "ESP", "Ranch" }
             local row = Instance.new("Frame")
             row.AnchorPoint = Vector2.new(0.5, 0)
             row.Position = UDim2.new(0.5, 0, 0, 154)
@@ -3236,7 +3236,7 @@ SecUtil:Toggle({
 end -- [End TabPlayer]
 
 -- ==============================================================================================
--- RIDE A PET: ENGINE PROMPT / TELEPORT / REMOTE / ESP (dibangun dari trigger scan in-game)
+-- RIDE A PET: ENGINE (AUTO PICKUP / RANCH / PLACED EGG / SHOP / SELL / ESP)
 -- ==============================================================================================
 do
 local RAP_DELAY = 0.5
@@ -3247,10 +3247,18 @@ local rapEggFilter = "Semua Jenis"
 local rapRarityFilter = "Semua Rarity"
 local rapPickedCount = 0
 local rapPickupMode = "Biasa"
-local rapBasePos = nil
+local rapReturnRanch = true
+local rapEggCapacity = 5
 local rapEggsCarried = 0
-local rapAutoPlace = true
-local rapPlaceCapacity = 5
+
+-- SELL / BUY state
+local rapSellRarity = "Semua Rarity"
+local rapSellMaxWeight = 0      -- 0 = abaikan filter berat
+local rapUseWeightFilter = false
+local rapSellCount = 0
+local rapBuyFood = false
+local rapBuyGear = false
+local rapBuyCount = 0
 
 local rapEggNames = {
     "White Egg", "Brown Egg", "Galaxy Egg", "Tidal Egg", "Soul Egg", "Aurora Egg",
@@ -3282,10 +3290,7 @@ local RARITY_LIST = { "Semua Rarity", "Common", "Rare", "Epic", "Legendary", "My
 local rapTypeList = { "Semua Jenis" }
 for _, n in ipairs(rapEggNames) do table.insert(rapTypeList, n) end
 
-local rapActors = {
-    "Snail", "Cheetah", "Giraffe", "Unicorn",
-    "Tim", "Richie", "Eggo", "Rick",
-}
+local rapActors = { "Snail", "Cheetah", "Giraffe", "Unicorn", "Tim", "Richie", "Eggo", "Rick" }
 
 local rapGoals = { "Player Spawn" }
 for _, n in ipairs(rapEggNames) do table.insert(rapGoals, n) end
@@ -3349,13 +3354,10 @@ end
 local function rapFire(names, arg)
     local r = rapPath(ReplicatedStorage, names)
     if not r then return false end
-    local ok
     if arg ~= nil then
-        ok = pcall(function() r:FireServer(arg) end)
-    else
-        ok = pcall(function() r:FireServer() end)
+        return pcall(function() r:FireServer(arg) end)
     end
-    return ok
+    return pcall(function() r:FireServer() end)
 end
 
 local function rapEntityPos(d)
@@ -3368,51 +3370,82 @@ local function rapEntityPos(d)
     return nil
 end
 
-local function rapTeleport(name)
+local function rapGetRoot()
     local char = LocalPlayer.Character
-    local root = char and char:FindFirstChild("HumanoidRootPart")
-    if not root then
-        Window:Notify({ Title = "Teleport", Description = "Karakter belum siap.", Lifetime = 3 })
-        return
-    end
-    local target = nil
-    if name == "Player Spawn" then
-        target = workspace:FindFirstChildWhichIsA("SpawnLocation", true)
-    end
-    if not target then
-        for _, d in ipairs(workspace:GetDescendants()) do
-            if (d:IsA("Model") or d:IsA("BasePart")) and d.Name == name then target = d; break end
-        end
-    end
-    if not target then
-        Window:Notify({ Title = "Teleport", Description = tostring(name) .. " tidak ditemukan.", Lifetime = 3 })
-        return
-    end
-    local pos = rapEntityPos(target)
-    if not pos then
-        Window:Notify({ Title = "Teleport", Description = "Posisi " .. tostring(name) .. " tidak valid.", Lifetime = 3 })
-        return
-    end
-    root.CFrame = CFrame.new(pos + Vector3.new(0, 6, 0))
-    Window:Notify({ Title = "Teleport", Description = "Pindah ke " .. tostring(name) .. ".", Lifetime = 3 })
+    return char and char:FindFirstChild("HumanoidRootPart") or nil
 end
 
--- ============================== BASE / TARUH TELUR ==============================
-local function rapPlaceAtBase()
-    if not rapBasePos then return false end
-    local char = LocalPlayer.Character
-    local root = char and char:FindFirstChild("HumanoidRootPart")
-    if not root then return false end
-    root.CFrame = CFrame.new(rapBasePos + Vector3.new(0, 4, 0))
-    task.wait(0.3)
+local function rapTeleportTo(pos, label)
+    local root = rapGetRoot()
+    if not root or not pos then return false end
+    root.CFrame = CFrame.new(pos + Vector3.new(0, 4, 0))
+    return true
+end
+
+-- ============================== RANCH (AUTO DETECT) ==============================
+local rapRanchPos = nil
+local RANCH_PATTERNS = { "ranch", "pen", "nest", "home", "base" }
+
+local function rapRefreshRanch()
+    local found = nil
+    for _, pat in ipairs(RANCH_PATTERNS) do
+        for _, d in ipairs(workspace:GetDescendants()) do
+            if (d:IsA("Model") or d:IsA("BasePart")) and tostring(d.Name):lower():find(pat, 1, true) then
+                local p = rapEntityPos(d)
+                if p then found = p; break end
+            end
+        end
+        if found then break end
+    end
+    if not found then
+        local sp = workspace:FindFirstChildWhichIsA("SpawnLocation", true)
+        if sp then found = sp.Position end
+    end
+    if found then rapRanchPos = found end
+    return rapRanchPos
+end
+
+local function rapGoRanch(notify)
+    local pos = rapRanchPos or rapRefreshRanch()
+    if not pos then
+        if notify then
+            Window:Notify({ Title = "Ranch", Description = "Ranch tidak terdeteksi otomatis.", Lifetime = 3 })
+        end
+        return false
+    end
+    rapTeleportTo(pos, "Ranch")
+    if notify then
+        Window:Notify({ Title = "Ranch", Description = "Kembali ke ranch.", Lifetime = 2 })
+    end
+    return true
+end
+
+-- Simpan posisi awal sebagai cadangan ranch (setelah karakter siap).
+task.spawn(function()
+    task.wait(3)
+    if not rapRanchPos then
+        rapRefreshRanch()
+    end
+end)
+
+-- ============================== AUTO PLACED EGG (FITUR TERPISAH) ==============================
+local function rapPlaceEggs()
+    local root = rapGetRoot()
+    if not root then return 0 end
+    rapGoRanch(false)
+    task.wait(0.4)
+    root = rapGetRoot()
+    if not root then return 0 end
     local n = 0
     pcall(function()
         for _, d in ipairs(workspace:GetDescendants()) do
             if d:IsA("ProximityPrompt") then
                 local act = tostring(d.ActionText or ""):lower()
-                if act:find("place") or act:find("taruh") or act:find("deposit") or act:find("store") or act:find("simpan") then
+                if act:find("place", 1, true) or act:find("taruh", 1, true)
+                    or act:find("deposit", 1, true) or act:find("store", 1, true)
+                    or act:find("simpan", 1, true) then
                     local p1 = rapEntityPos(d.Parent) or rapEntityPos(d)
-                    if p1 and (p1 - root.Position).Magnitude <= 35 then
+                    if p1 and (p1 - root.Position).Magnitude <= 40 then
                         pcall(function()
                             d.HoldDuration = 0
                             d.RequiresLineOfSight = false
@@ -3429,18 +3462,7 @@ local function rapPlaceAtBase()
         rapFire({ "Remotes", "Game", "PetMove" })
     end
     rapEggsCarried = 0
-    return true
-end
-
-local function rapSetBase()
-    local char = LocalPlayer.Character
-    local root = char and char:FindFirstChild("HumanoidRootPart")
-    if not root then
-        Window:Notify({ Title = "Base", Description = "Karakter belum siap.", Lifetime = 3 })
-        return
-    end
-    rapBasePos = root.Position
-    Window:Notify({ Title = "Base Disimpan", Description = "Base diset di posisi kamu sekarang.", Lifetime = 3 })
+    return n
 end
 
 -- ============================== AUTO PICKUP TELUR ==============================
@@ -3480,7 +3502,6 @@ local function rapMoveTo(pos, maxWait)
 end
 
 local function rapPickupTick()
-    -- 1. Kumpulkan kandidat telur yang cocok filter
     local candidates = {}
     local seen = {}
     pcall(function()
@@ -3489,42 +3510,38 @@ local function rapPickupTick()
                 local nm = rapFindEggName(d)
                 if nm and rapMatchFilter(nm) and not seen[tostring(d)] then
                     seen[tostring(d)] = true
-                    local eggPart = d.Parent
-                    local pos = rapEntityPos(eggPart) or rapEntityPos(d)
+                    local pos = rapEntityPos(d.Parent) or rapEntityPos(d)
                     if pos then
-                        table.insert(candidates, { name = nm, part = eggPart, pos = pos })
+                        table.insert(candidates, { name = nm, part = d.Parent, pos = pos })
                     end
                 end
             end
         end
     end)
 
+    -- Tidak ada telur lagi: kalau masih bawa telur, balik ke ranch
     if #candidates == 0 then
-        if rapAutoPlace and rapEggsCarried > 0 and rapBasePos then
-            rapPlaceAtBase()
+        if rapEggsCarried > 0 then
+            rapGoRanch(false)
+            rapEggsCarried = 0
         end
         return 0
     end
 
-    local char = LocalPlayer.Character
-    local root = char and char:FindFirstChild("HumanoidRootPart")
+    local root = rapGetRoot()
     local myPos = root and root.Position
 
-    -- 2. Pilih kandidat terdekat lalu gerakkan karakter ke sana
     local best, bestDist
     for _, c in ipairs(candidates) do
         local dist = myPos and (c.pos - myPos).Magnitude or 0
         if not bestDist or dist < bestDist then best, bestDist = c, dist end
     end
+    if not best then return 0 end
 
     local arrived = false
-    if not best then return 0 end
     if rapPickupMode == "Instant" then
-        -- Mode instant: teleport langsung ke telur
-        if root then
-            root.CFrame = CFrame.new(best.pos + Vector3.new(0, 4, 0))
-            task.wait(0.15)
-        end
+        rapTeleportTo(best.pos, "Egg")
+        task.wait(0.15)
         arrived = true
     elseif bestDist > 14 then
         arrived = rapMoveTo(best.pos, 5)
@@ -3533,7 +3550,9 @@ local function rapPickupTick()
     end
     if not arrived then return 0 end
 
-    -- 3. Saat dekat, ambil SEMUA telur yang cocok dalam radius
+    root = rapGetRoot()
+    if not root then return 0 end
+
     local n = 0
     pcall(function()
         local rootPos = root.Position
@@ -3542,7 +3561,7 @@ local function rapPickupTick()
                 local nm, egg = rapFindEggName(d)
                 if nm and rapMatchFilter(nm) then
                     local p1 = rapEntityPos(d.Parent) or rapEntityPos(d)
-                    if p1 and (p1 - rootPos).Magnitude <= 25 then
+                    if p1 and (p1 - rootPos).Magnitude <= 30 then
                         pcall(function()
                             d.HoldDuration = 0
                             d.RequiresLineOfSight = false
@@ -3558,61 +3577,250 @@ local function rapPickupTick()
                                 Lifetime = 3,
                             })
                         end
-                        if egg then
-                            pcall(function() egg:Destroy() end)
-                        end
+                        if egg then pcall(function() egg:Destroy() end) end
                     end
                 end
             end
         end
     end)
 
-    -- 4. Cadangan: remote EggPickup (tanpa argumen)
     if n == 0 then
         rapFire({ "Remotes", "Game", "EggPickup" })
-    end
-
-    if n > 0 then
+    else
         rapEggsCarried = rapEggsCarried + n
     end
 
-    if n > 0 and rapPickedCount % 10 == 0 then
+    -- Setelah ambil telur: balik ke RANCH (bukan placed egg)
+    if rapReturnRanch and rapEggsCarried > 0 and rapEggsCarried >= rapEggCapacity then
+        rapGoRanch(false)
+        rapEggsCarried = 0
         Window:Notify({
-            Title = "Auto Pickup",
-            Description = ("Total telur: %d (filter: %s / %s)"):format(rapPickedCount, rapEggFilter, rapRarityFilter),
+            Title = "Ranch",
+            Description = ("Balik ke ranch (%d telur, total %d)."):format(n, rapPickedCount),
             Lifetime = 3,
         })
-    end
-
-    -- 5. Auto balik ke base untuk menaruh telur
-    if rapAutoPlace and rapEggsCarried > 0 and rapEggsCarried >= rapPlaceCapacity then
-        if rapBasePos then
-            local before = rapEggsCarried
-            rapPlaceAtBase()
-            Window:Notify({
-                Title = "Taruh Telur",
-                Description = ("%d telur ditaruh di base (total: %d)."):format(before, rapPickedCount),
-                Lifetime = 3,
-            })
-        end
     end
     return n
 end
 
+-- ============================== AUTO SELL (RARITY + WEIGHT) ==============================
+local function rapGetItemWeight(obj)
+    if not obj then return nil end
+    for _, key in ipairs({ "Weight", "weight", "Berat", "berat" }) do
+        local ok, v = pcall(function() return obj:GetAttribute(key) end)
+        if ok and type(v) == "number" then return v end
+    end
+    local found = nil
+    pcall(function()
+        for _, d in ipairs(obj:GetDescendants()) do
+            if (d:IsA("NumberValue") or d:IsA("IntValue")) and tostring(d.Name):lower():find("weight", 1, true) then
+                found = d.Value
+                break
+            end
+        end
+    end)
+    return found
+end
+
+local function rapGetItemRarity(obj)
+    if not obj then return nil end
+    local name = tostring(obj.Name)
+    for _, n in ipairs(rapEggNames) do
+        if name:find(n, 1, true) then return rapRarityOf(n) end
+    end
+    for _, key in ipairs({ "Rarity", "rarity" }) do
+        local ok, v = pcall(function() return obj:GetAttribute(key) end)
+        if ok and type(v) == "string" then return v end
+    end
+    pcall(function()
+        for _, d in ipairs(obj:GetDescendants()) do
+            if d:IsA("StringValue") and tostring(d.Name):lower():find("rarity", 1, true) then
+                return d.Value
+            end
+        end
+    end)
+    return nil
+end
+
+local function rapShouldSell(obj)
+    local rar = rapGetItemRarity(obj)
+    if rapSellRarity ~= "Semua Rarity" then
+        if not rar or rar ~= rapSellRarity then return false end
+    end
+    if rapUseWeightFilter and rapSellMaxWeight > 0 then
+        local w = rapGetItemWeight(obj)
+        if w and w > rapSellMaxWeight then return false end
+    end
+    return true
+end
+
+local function rapSellTick(forceAll)
+    local n = 0
+    local target = nil
+    pcall(function()
+        for _, d in ipairs(workspace:GetDescendants()) do
+            if d:IsA("ProximityPrompt") and tostring(d.ActionText) == "Sell" then
+                local obj = d.Parent and d.Parent.Parent or d.Parent
+                if forceAll or rapShouldSell(obj) then
+                    local pos = rapEntityPos(d.Parent) or rapEntityPos(d)
+                    if pos then target = pos; break end
+                end
+            end
+        end
+    end)
+    -- Dekati NPC dulu supaya prompt benar-benar bisa dipicu
+    if target then
+        local root = rapGetRoot()
+        if root and (root.Position - target).Magnitude > 12 then
+            rapTeleportTo(target, "Sell")
+            task.wait(0.35)
+        end
+    end
+    pcall(function()
+        for _, d in ipairs(workspace:GetDescendants()) do
+            if d:IsA("ProximityPrompt") and tostring(d.ActionText) == "Sell" then
+                local obj = d.Parent and d.Parent.Parent or d.Parent
+                if forceAll or rapShouldSell(obj) then
+                    pcall(function()
+                        d.HoldDuration = 0
+                        d.MaxActivationDistance = 500
+                        d.RequiresLineOfSight = false
+                    end)
+                    rapTriggerPrompt(d)
+                    n = n + 1
+                    rapSellCount = rapSellCount + 1
+                    if n >= 60 then break end
+                end
+            end
+        end
+    end)
+    if n == 0 then
+        -- Cadangan: klik tombol UI "Sell All" / "Sell"
+        pcall(function()
+            local gui = LocalPlayer:FindFirstChild("PlayerGui")
+            local scope = gui or (gethui and gethui()) or game:GetService("CoreGui")
+            for _, d in ipairs(scope:GetDescendants()) do
+                if d:IsA("GuiButton") then
+                    local txt = tostring(d.Text or ""):lower()
+                    if txt:find("sell all", 1, true) or txt == "sell" or txt:find("jual", 1, true) then
+                        pcall(function() d:Activate() end)
+                        pcall(function() d.MouseButton1Click:Fire() end)
+                        n = n + 1
+                        rapSellCount = rapSellCount + 1
+                    end
+                end
+            end
+        end)
+    end
+    return n
+end
+
+-- ============================== AUTO BUY (FOOD & GEARS) ==============================
+local function rapZoneOf(obj)
+    local cur = obj
+    for _ = 1, 4 do
+        if not cur then break end
+        local nm = tostring(cur.Name):lower()
+        if nm:find("food", 1, true) or nm:find("makanan", 1, true) then return "food" end
+        if nm:find("gear", 1, true) or nm:find("alat", 1, true) then return "gear" end
+        cur = cur.Parent
+    end
+    return nil
+end
+
+local function rapBuyTick()
+    local n = 0
+    -- Dekati prompt Buy terdekat dulu (kalau ada)
+    local target = nil
+    pcall(function()
+        for _, d in ipairs(workspace:GetDescendants()) do
+            if d:IsA("ProximityPrompt") then
+                local act = tostring(d.ActionText or ""):lower()
+                if act:find("buy", 1, true) or act:find("beli", 1, true) then
+                    local zone = rapZoneOf(d.Parent)
+                    if (zone == "food" and rapBuyFood) or (zone == "gear" and rapBuyGear) then
+                        local pos = rapEntityPos(d.Parent) or rapEntityPos(d)
+                        if pos then target = pos; break end
+                    end
+                end
+            end
+        end
+    end)
+    if target then
+        local root = rapGetRoot()
+        if root and (root.Position - target).Magnitude > 12 then
+            rapTeleportTo(target, "Buy")
+            task.wait(0.35)
+        end
+    end
+    -- 1. ProximityPrompt beli di dunia
+    pcall(function()
+        for _, d in ipairs(workspace:GetDescendants()) do
+            if d:IsA("ProximityPrompt") then
+                local act = tostring(d.ActionText or ""):lower()
+                if act:find("buy", 1, true) or act:find("beli", 1, true) then
+                    local zone = rapZoneOf(d.Parent)
+                    if (zone == "food" and rapBuyFood) or (zone == "gear" and rapBuyGear) then
+                        pcall(function()
+                            d.HoldDuration = 0
+                            d.MaxActivationDistance = 500
+                            d.RequiresLineOfSight = false
+                        end)
+                        rapTriggerPrompt(d)
+                        n = n + 1
+                        rapBuyCount = rapBuyCount + 1
+                    end
+                end
+            end
+        end
+    end)
+    -- 2. Tombol UI shop (Food / Gears)
+    pcall(function()
+        local gui = LocalPlayer:FindFirstChild("PlayerGui")
+        local scope = gui or (gethui and gethui()) or game:GetService("CoreGui")
+        for _, d in ipairs(scope:GetDescendants()) do
+            if d:IsA("GuiButton") and d.Visible then
+                local txt = tostring(d.Text or ""):lower()
+                if txt:find("buy", 1, true) or txt:find("beli", 1, true) then
+                    local zone = rapZoneOf(d)
+                    if (zone == "food" and rapBuyFood) or (zone == "gear" and rapBuyGear) then
+                        pcall(function() d:Activate() end)
+                        pcall(function() d.MouseButton1Click:Fire() end)
+                        n = n + 1
+                        rapBuyCount = rapBuyCount + 1
+                    end
+                end
+            end
+        end
+    end)
+    return n
+end
+
+-- ============================== LOOP ==============================
 local function rapStep()
     if rapFlag.pickup then rapPickupTick() end
     if rapFlag.hatch then rapPassBatch(function(a) return a == "Hatch" end, 3) end
     if rapFlag.grow then rapPassBatch(function(a) return a:find("Skip", 1, true) ~= nil end, 3) end
     if rapFlag.feed then rapPassBatch(function(a) return a == "Feed" end, 3) end
-    if rapFlag.sell then rapPassBatch(function(a) return a == "Sell" end, 1) end
+    if rapFlag.ride then rapPassBatch(function(a) return a == "Ride" end, 1) end
     if rapFlag.join then rapPassBatch(function(a) return a:find("Join", 1, true) ~= nil end, 1) end
     if rapFlag.claim then rapPassBatch(function(a) return a == "Claim" or a:find("Unlock", 1, true) ~= nil end, 2) end
-    if rapFlag.ride then rapPassBatch(function(a) return a == "Ride" end, 1) end
     if rapFlag.remoteClaim then
         rapFire({ "Remotes", "Game", "ClaimEventReward" })
         rapFire({ "Remotes", "Reusable", "ClaimGroupReward" })
     end
-    if rapFlag.autoTp then rapTeleport(rapGoal) end
+    if rapFlag.placedEgg then rapPlaceEggs() end
+    if rapFlag.autoSell then rapSellTick(false) end
+    if rapBuyFood or rapBuyGear then rapBuyTick() end
+    if rapFlag.autoTp then
+        for _, d in ipairs(workspace:GetDescendants()) do
+            if (d:IsA("Model") or d:IsA("BasePart")) and d.Name == rapGoal then
+                local p = rapEntityPos(d)
+                if p then rapTeleportTo(p, rapGoal) end
+                break
+            end
+        end
+    end
 end
 
 local function rapLoopStart()
@@ -3624,6 +3832,7 @@ local function rapLoopStart()
             for _, v in pairs(rapFlag) do
                 if v then any = true; break end
             end
+            if rapBuyFood or rapBuyGear then any = true end
             if not any then break end
             pcall(rapStep)
             task.wait(RAP_DELAY)
@@ -3638,10 +3847,10 @@ local function rapSet(key, on, title, onMsg, offMsg)
     Window:Notify({ Title = title, Description = on and onMsg or offMsg, Lifetime = 3 })
 end
 
--- ============================== ESP ENGINE (REFRESH CEPAT) ==============================
+-- ============================== ESP ENGINE ==============================
 local ESP_NAME = "RAP_ESP_FOLDER"
 local espHost = nil
-local espMode = { egg = false, zone = false, player = false, npc = false }
+local espMode = { egg = false, zone = false, player = false, npc = false, ranch = false }
 local espRunning = false
 local rapEggCount, rapZoneCount, rapNpcCount, rapPlayerCount = 0, 0, 0, 0
 
@@ -3757,11 +3966,7 @@ end
 
 local function rapPlayers(mark)
     local c = 0
-    local myRoot = nil
-    pcall(function()
-        local ch = LocalPlayer.Character
-        myRoot = ch and ch:FindFirstChild("HumanoidRootPart")
-    end)
+    local myRoot = rapGetRoot()
     for _, p in ipairs(Players:GetPlayers()) do
         if p ~= LocalPlayer and p.Character then
             local ok, root = pcall(function() return p.Character:FindFirstChild("HumanoidRootPart") end)
@@ -3778,19 +3983,38 @@ local function rapPlayers(mark)
     return c
 end
 
+local function rapRanchMark(mark)
+    if not mark then return 0 end
+    local found = nil
+    for _, pat in ipairs(RANCH_PATTERNS) do
+        for _, d in ipairs(workspace:GetDescendants()) do
+            if (d:IsA("Model") or d:IsA("BasePart")) and tostring(d.Name):lower():find(pat, 1, true) then
+                found = d; break
+            end
+        end
+        if found then break end
+    end
+    if found then
+        espMark(found, "RANCH", Color3.fromRGB(255, 255, 255))
+        return 1
+    end
+    return 0
+end
+
 local function espRefresh()
     espWipe()
     rapEggCount    = rapCountEggs(espMode.egg)
     rapZoneCount   = rapZones(espMode.zone)
     rapNpcCount    = rapNpcs(espMode.npc)
     rapPlayerCount = rapPlayers(espMode.player)
+    if espMode.ranch then rapRanchMark(true) end
 end
 
 local function espLoopStart()
     if espRunning then return end
     espRunning = true
     task.spawn(function()
-        while espMode.egg or espMode.zone or espMode.player or espMode.npc do
+        while espMode.egg or espMode.zone or espMode.player or espMode.npc or espMode.ranch do
             pcall(espRefresh)
             task.wait(0.45)
         end
@@ -3806,7 +4030,7 @@ local function espSet(key, on, title, onMsg, offMsg)
 end
 
 -- ==============================================================================================
--- MENU: MAIN (AUTO TELUR, EVENT & TELEPORT)
+-- MENU: MAIN
 -- ==============================================================================================
 local TabMainRAP = tabGroup:Tab({ Name = "Main", Image = "lucide/zap" })
 
@@ -3827,25 +4051,53 @@ SecAutoEgg:Dropdown({
     Callback = function(v) rapEggFilter = v or "Semua Jenis" end,
 })
 
+SecAutoEgg:Dropdown({
+    Name = "Mode Auto Pickup",
+    Items = { "Biasa", "Instant" },
+    Default = "Biasa",
+    Callback = function(v) rapPickupMode = v or "Biasa" end,
+})
+
+SecAutoEgg:Label({ Name = "Biasa: jalan ke telur. Instant: teleport langsung ke telur." })
+
+SecAutoEgg:Toggle({
+    Name = "Balik ke Ranch Setelah Ambil Telur",
+    Default = true,
+    Callback = function(enabled)
+        rapReturnRanch = enabled and true or false
+        Window:Notify({
+            Title = "Ranch",
+            Description = enabled and "Setelah ambil telur, otomatis balik ke ranch." or "Auto balik ke ranch dimatikan.",
+            Lifetime = 3,
+        })
+    end,
+})
+
+SecAutoEgg:Slider({
+    Name = "Kapasitas Telur Sebelum Balik",
+    Default = 5,
+    Minimum = 1,
+    Maximum = 30,
+    DisplayMethod = "Round",
+    Precision = 0,
+    Callback = function(value) rapEggCapacity = value end,
+})
+
 SecAutoEgg:Toggle({
     Name = "Auto Pickup Telur",
     Default = false,
     Callback = function(enabled)
         rapSet("pickup", enabled, "Auto Pickup",
-            ("Mengambil telur (rarity: %s, jenis: %s)."):format(rapRarityFilter, rapEggFilter),
+            ("Mengambil telur (rarity: %s, jenis: %s, mode: %s)."):format(rapRarityFilter, rapEggFilter, rapPickupMode),
             "Auto pickup dimatikan.")
     end,
 })
-
-SecAutoEgg:Label({ Name = "Mode Biasa: karakter berjalan ke telur. Mode Instant: teleport langsung (atur di section Mode Auto Pickup & Base)." })
 
 SecAutoEgg:Toggle({
     Name = "Auto Hatch Telur",
     Default = false,
     Callback = function(enabled)
-        rapSet("hatch", enabled, "Auto Hatch",
-            "Menetaskan telur (Hatch) otomatis.",
-            "Auto hatch dimatikan.")
+        rapSet("hatch", enabled, "Auto Hatch", "Menetaskan telur (Hatch) otomatis.", "Auto hatch dimatikan.")
     end,
 })
 
@@ -3853,9 +4105,7 @@ SecAutoEgg:Toggle({
     Name = "Auto Skip Growth (Semua Pet)",
     Default = false,
     Callback = function(enabled)
-        rapSet("grow", enabled, "Skip Growth",
-            "Melewati pertumbuhan pet otomatis.",
-            "Skip growth dimatikan.")
+        rapSet("grow", enabled, "Skip Growth", "Melewati pertumbuhan pet otomatis.", "Skip growth dimatikan.")
     end,
 })
 
@@ -3863,9 +4113,7 @@ SecAutoEgg:Toggle({
     Name = "Auto Feed Pet",
     Default = false,
     Callback = function(enabled)
-        rapSet("feed", enabled, "Auto Feed",
-            "Memberi makan pet otomatis.",
-            "Auto feed dimatikan.")
+        rapSet("feed", enabled, "Auto Feed", "Memberi makan pet otomatis.", "Auto feed dimatikan.")
     end,
 })
 
@@ -3876,137 +4124,51 @@ SecAutoEgg:Slider({
     Maximum = 30,
     DisplayMethod = "Round",
     Precision = 0,
-    Callback = function(value)
-        RAP_DELAY = value / 10
-    end,
+    Callback = function(value) RAP_DELAY = value / 10 end,
 })
 
-local SecPickupMode = TabMainRAP:Section({ Name = "Mode Auto Pickup & Base", Side = 2 })
-SecPickupMode:Header({ Name = ZypheraxLib:Gradient("Mode Pickup & Penaruhan", Color3.fromRGB(255, 170, 90), Color3.fromRGB(255, 110, 140)) })
+local SecRanch = TabMainRAP:Section({ Name = "Ranch & Auto Placed Egg", Side = 2 })
+SecRanch:Header({ Name = ZypheraxLib:Gradient("Ranch & Penaruhan", Color3.fromRGB(255, 170, 90), Color3.fromRGB(255, 110, 140)) })
 
-SecPickupMode:Dropdown({
-    Name = "Mode Auto Pickup",
-    Items = { "Biasa", "Instant" },
-    Default = "Biasa",
-    Callback = function(v) rapPickupMode = v or "Biasa" end,
+SecRanch:Label({ Name = "Ranch dideteksi otomatis (nama objek mengandung 'ranch/pen/nest/home/base'), cadangan dari SpawnLocation." })
+
+SecRanch:Button({
+    Name = "Balik ke Ranch Sekarang",
+    Callback = function() rapGoRanch(true) end,
 })
 
-SecPickupMode:Label({ Name = "Biasa: karakter berjalan ke telur. Instant: teleport langsung ke telur." })
-
-SecPickupMode:Toggle({
-    Name = "Auto Balik ke Base untuk Taruh Telur",
-    Default = true,
-    Callback = function(enabled)
-        rapAutoPlace = enabled and true or false
+SecRanch:Button({
+    Name = "Deteksi Ulang Ranch",
+    Callback = function()
+        rapRanchPos = nil
+        local p = rapRefreshRanch()
         Window:Notify({
-            Title = "Base",
-            Description = enabled and "Setelah ambil telur, auto balik ke base." or "Auto balik ke base dimatikan.",
-            Lifetime = 3,
+            Title = "Ranch",
+            Description = p and ("Ranch ditemukan: " .. tostring(math.floor(p.X)) .. ", " .. tostring(math.floor(p.Z))) or "Ranch tidak ditemukan.",
+            Lifetime = 4,
         })
     end,
 })
 
-SecPickupMode:Slider({
-    Name = "Kapasitas Telur Sebelum Taruh",
-    Default = 5,
-    Minimum = 1,
-    Maximum = 20,
-    DisplayMethod = "Round",
-    Precision = 0,
-    Callback = function(value)
-        rapPlaceCapacity = value
-    end,
-})
-
-SecPickupMode:Button({
-    Name = "Set Base di Posisi Sekarang",
-    Callback = function() rapSetBase() end,
-})
-
-SecPickupMode:Button({
-    Name = "Balik ke Base & Taruh Sekarang",
-    Callback = function()
-        if not rapBasePos then
-            Window:Notify({ Title = "Base", Description = "Base belum diset. Klik 'Set Base di Posisi Sekarang'.", Lifetime = 4 })
-            return
-        end
-        rapPlaceAtBase()
-        Window:Notify({ Title = "Base", Description = "Kembali ke base & menaruh telur.", Lifetime = 3 })
-    end,
-})
-
-SecPickupMode:Button({
-    Name = "Teleport ke Base",
-    Callback = function()
-        if not rapBasePos then
-            Window:Notify({ Title = "Base", Description = "Base belum diset.", Lifetime = 3 })
-            return
-        end
-        local char = LocalPlayer.Character
-        local root = char and char:FindFirstChild("HumanoidRootPart")
-        if root then
-            root.CFrame = CFrame.new(rapBasePos + Vector3.new(0, 4, 0))
-            Window:Notify({ Title = "Base", Description = "Teleport ke base.", Lifetime = 3 })
-        end
-    end,
-})
-
-local SecEvent = TabMainRAP:Section({ Name = "Event, Klaim & Jual", Side = 2 })
-SecEvent:Header({ Name = ZypheraxLib:Gradient("Event & Reward", Color3.fromRGB(99, 130, 255), Color3.fromRGB(168, 120, 255)) })
-
-SecEvent:Toggle({
-    Name = "Auto Claim Event & Group (Remote)",
+SecRanch:Toggle({
+    Name = "Auto Placed Egg (Taruh Telur di Ranch)",
     Default = false,
     Callback = function(enabled)
-        rapSet("remoteClaim", enabled, "Auto Claim",
-            "Klaim reward event & group berjalan otomatis.",
-            "Auto claim dimatikan.")
+        rapSet("placedEgg", enabled, "Placed Egg",
+            "Telur otomatis ditaruh di ranch.",
+            "Auto placed egg dimatikan.")
     end,
 })
 
-SecEvent:Toggle({
-    Name = "Auto Klaim Prompt (Claim / Unlock)",
-    Default = false,
-    Callback = function(enabled)
-        rapSet("claim", enabled, "Auto Klaim",
-            "Menekan prompt Claim / Unlock Nest otomatis.",
-            "Auto klaim dimatikan.")
-    end,
-})
-
-SecEvent:Toggle({
-    Name = "Auto Join Event",
-    Default = false,
-    Callback = function(enabled)
-        rapSet("join", enabled, "Auto Join",
-            "Masuk event otomatis jika tersedia.",
-            "Auto join dimatikan.")
-    end,
-})
-
-SecEvent:Toggle({
-    Name = "Auto Jual (NPC Richie)",
-    Default = false,
-    Callback = function(enabled)
-        rapSet("sell", enabled, "Auto Jual",
-            "Menjual item otomatis ke Richie.",
-            "Auto jual dimatikan.")
-    end,
-})
-
-SecEvent:Button({
-    Name = "Buka Shop (NPC Rick)",
+SecRanch:Button({
+    Name = "Taruh Telur Sekarang",
     Callback = function()
-        local n = rapPassBatch(function(a) return a == "Shop" end, 1)
-        Window:Notify({ Title = "Shop", Description = n > 0 and "Prompt Shop ditekan." or "Prompt Shop tidak ditemukan.", Lifetime = 3 })
-    end,
-})
-
-SecEvent:Button({
-    Name = "Buka Stock Shop (Remote)",
-    Callback = function()
-        local ok = rapFire({ "Remotes", "Game", "OpenStockShop" })
-        Window:Notify({ Title = "Stock Shop", Description = ok and "Remote Stock Shop dikirim." or "Remote tidak ditemukan / gagal.", Lifetime = 3 })
+        local n = rapPlaceEggs()
+        Window:Notify({
+            Title = "Placed Egg",
+            Description = (n > 0) and ("Menaruh telur (%d prompt)."):format(n) or "Tidak ada prompt taruh telur ditemukan di ranch.",
+            Lifetime = 4,
+        })
     end,
 })
 
@@ -4022,12 +4184,30 @@ SecTele:Dropdown({
 
 SecTele:Button({
     Name = "Teleport ke Tujuan Terpilih",
-    Callback = function() rapTeleport(rapGoal) end,
+    Callback = function()
+        for _, d in ipairs(workspace:GetDescendants()) do
+            if (d:IsA("Model") or d:IsA("BasePart")) and d.Name == rapGoal then
+                local p = rapEntityPos(d)
+                if p then
+                    rapTeleportTo(p, rapGoal)
+                    Window:Notify({ Title = "Teleport", Description = "Pindah ke " .. tostring(rapGoal) .. ".", Lifetime = 3 })
+                end
+                return
+            end
+        end
+        Window:Notify({ Title = "Teleport", Description = tostring(rapGoal) .. " tidak ditemukan.", Lifetime = 3 })
+    end,
 })
 
 SecTele:Button({
     Name = "Teleport ke Spawn",
-    Callback = function() rapTeleport("Player Spawn") end,
+    Callback = function()
+        local sp = workspace:FindFirstChildWhichIsA("SpawnLocation", true)
+        if sp then
+            rapTeleportTo(sp.Position, "Spawn")
+            Window:Notify({ Title = "Teleport", Description = "Pindah ke spawn.", Lifetime = 3 })
+        end
+    end,
 })
 
 SecTele:Toggle({
@@ -4040,37 +4220,185 @@ SecTele:Toggle({
     end,
 })
 
-local SecRide = TabMainRAP:Section({ Name = "Ride & Utility", Side = 2 })
-SecRide:Header({ Name = ZypheraxLib:Gradient("Ride & Utility", Color3.fromRGB(140, 152, 190), Color3.fromRGB(120, 170, 200)) })
+local SecEvent = TabMainRAP:Section({ Name = "Event & Klaim", Side = 2 })
+SecEvent:Header({ Name = ZypheraxLib:Gradient("Event & Reward", Color3.fromRGB(99, 130, 255), Color3.fromRGB(168, 120, 255)) })
 
-SecRide:Toggle({
+SecEvent:Toggle({
+    Name = "Auto Claim Event & Group (Remote)",
+    Default = false,
+    Callback = function(enabled)
+        rapSet("remoteClaim", enabled, "Auto Claim", "Klaim reward event & group otomatis.", "Auto claim dimatikan.")
+    end,
+})
+
+SecEvent:Toggle({
+    Name = "Auto Klaim Prompt (Claim / Unlock)",
+    Default = false,
+    Callback = function(enabled)
+        rapSet("claim", enabled, "Auto Klaim", "Menekan prompt Claim / Unlock Nest otomatis.", "Auto klaim dimatikan.")
+    end,
+})
+
+SecEvent:Toggle({
+    Name = "Auto Join Event",
+    Default = false,
+    Callback = function(enabled)
+        rapSet("join", enabled, "Auto Join", "Masuk event otomatis jika tersedia.", "Auto join dimatikan.")
+    end,
+})
+
+SecEvent:Toggle({
     Name = "Auto Ride Hewan (Snail, Cheetah, dll)",
     Default = false,
     Callback = function(enabled)
-        rapSet("ride", enabled, "Auto Ride",
-            "Menaiki hewan (Ride) otomatis.",
-            "Auto ride dimatikan.")
-    end,
-})
-
-SecRide:Button({
-    Name = "Hatch Sekarang",
-    Callback = function()
-        local n = rapPassBatch(function(a) return a == "Hatch" end, 5)
-        Window:Notify({ Title = "Hatch", Description = tostring(n) .. " prompt Hatch ditekan.", Lifetime = 3 })
-    end,
-})
-
-SecRide:Button({
-    Name = "Feed Sekarang",
-    Callback = function()
-        local n = rapPassBatch(function(a) return a == "Feed" end, 5)
-        Window:Notify({ Title = "Feed", Description = tostring(n) .. " prompt Feed ditekan.", Lifetime = 3 })
+        rapSet("ride", enabled, "Auto Ride", "Menaiki hewan (Ride) otomatis.", "Auto ride dimatikan.")
     end,
 })
 
 -- ==============================================================================================
--- MENU: ESP (TELUR BER-RARITY, ZONE, PEMAIN & NPC)
+-- MENU: SHOP (AUTO BUY FOOD/GEARS + AUTO SELL / SELL ALL)
+-- ==============================================================================================
+local TabShop = tabGroup:Tab({ Name = "Shop", Image = "lucide/shopping-cart" })
+
+local SecBuyFood = TabShop:Section({ Name = "Auto Buy - Food", Side = 1 })
+SecBuyFood:Header({ Name = ZypheraxLib:Gradient("Auto Buy Food", Color3.fromRGB(120, 230, 140), Color3.fromRGB(72, 214, 200)) })
+
+SecBuyFood:Toggle({
+    Name = "Auto Buy Food",
+    Default = false,
+    Callback = function(enabled)
+        rapBuyFood = enabled and true or false
+        if enabled then rapLoopStart() end
+        Window:Notify({
+            Title = "Auto Buy Food",
+            Description = enabled and "Membeli food otomatis di shop." or "Auto buy food dimatikan.",
+            Lifetime = 3,
+        })
+    end,
+})
+
+SecBuyFood:Button({
+    Name = "Beli Food Sekarang",
+    Callback = function()
+        rapBuyFood = true
+        local n = rapBuyTick()
+        rapBuyFood = false
+        Window:Notify({ Title = "Shop", Description = (n > 0) and ("Membeli %d food."):format(n) or "Tidak ada tombol Buy Food ditemukan (buka shop dulu).", Lifetime = 4 })
+    end,
+})
+
+SecBuyFood:Label({ Name = "Buka shop in-game dulu agar tombol Food muncul, lalu nyalakan Auto Buy." })
+
+local SecBuyGear = TabShop:Section({ Name = "Auto Buy - Gears", Side = 2 })
+SecBuyGear:Header({ Name = ZypheraxLib:Gradient("Auto Buy Gears", Color3.fromRGB(255, 190, 90), Color3.fromRGB(255, 130, 120)) })
+
+SecBuyGear:Toggle({
+    Name = "Auto Buy Gears",
+    Default = false,
+    Callback = function(enabled)
+        rapBuyGear = enabled and true or false
+        if enabled then rapLoopStart() end
+        Window:Notify({
+            Title = "Auto Buy Gears",
+            Description = enabled and "Membeli gears otomatis di shop." or "Auto buy gears dimatikan.",
+            Lifetime = 3,
+        })
+    end,
+})
+
+SecBuyGear:Button({
+    Name = "Beli Gears Sekarang",
+    Callback = function()
+        rapBuyGear = true
+        local n = rapBuyTick()
+        rapBuyGear = false
+        Window:Notify({ Title = "Shop", Description = (n > 0) and ("Membeli %d gear."):format(n) or "Tidak ada tombol Buy Gears ditemukan (buka shop dulu).", Lifetime = 4 })
+    end,
+})
+
+SecBuyGear:Label({ Name = "Gears dipisah dari Food, toggle-nya berdiri sendiri." })
+
+local SecSell = TabShop:Section({ Name = "Auto Sell & Sell All", Side = 1 })
+SecSell:Header({ Name = ZypheraxLib:Gradient("Auto Sell (Rarity + Weight)", Color3.fromRGB(255, 107, 138), Color3.fromRGB(199, 155, 255)) })
+
+SecSell:Dropdown({
+    Name = "Filter Rarity untuk Dijual",
+    Items = RARITY_LIST,
+    Default = "Semua Rarity",
+    Callback = function(v) rapSellRarity = v or "Semua Rarity" end,
+})
+
+SecSell:Toggle({
+    Name = "Pakai Filter Weight",
+    Default = false,
+    Callback = function(enabled) rapUseWeightFilter = enabled and true or false end,
+})
+
+SecSell:Slider({
+    Name = "Berat Maksimum yang Dijual",
+    Default = 0,
+    Minimum = 0,
+    Maximum = 500,
+    DisplayMethod = "Round",
+    Precision = 0,
+    Callback = function(value) rapSellMaxWeight = value end,
+})
+
+SecSell:Label({ Name = "Berat dibaca dari atribut/NumberValue bernama 'Weight' pada pet. 0 = abaikan berat." })
+
+SecSell:Toggle({
+    Name = "Auto Sell (Sesuai Filter)",
+    Default = false,
+    Callback = function(enabled)
+        rapSet("autoSell", enabled, "Auto Sell",
+            ("Menjual otomatis (rarity: %s)."):format(rapSellRarity),
+            "Auto sell dimatikan.")
+    end,
+})
+
+SecSell:Button({
+    Name = "Sell All (Sesuai Filter)",
+    Callback = function()
+        local n = rapSellTick(false)
+        Window:Notify({
+            Title = "Sell All",
+            Description = (n > 0) and ("Menjual %d item sesuai filter."):format(n) or "Tidak ada prompt Sell ditemukan.",
+            Lifetime = 4,
+        })
+    end,
+})
+
+SecSell:Button({
+    Name = "Sell All (Tanpa Filter / Semua)",
+    Callback = function()
+        local n = rapSellTick(true)
+        Window:Notify({
+            Title = "Sell All",
+            Description = (n > 0) and ("Menjual %d item (tanpa filter)."):format(n) or "Tidak ada prompt Sell ditemukan.",
+            Lifetime = 4,
+        })
+    end,
+})
+
+local SecShopInfo = TabShop:Section({ Name = "Info & Statistik", Side = 2 })
+SecShopInfo:Header({ Name = ZypheraxLib:Gradient("Statistik Shop", Color3.fromRGB(140, 152, 190), Color3.fromRGB(120, 170, 200)) })
+
+SecShopInfo:Button({
+    Name = "Lihat Statistik",
+    Callback = function()
+        Window:Notify({
+            Title = "Statistik",
+            Description = ("Telur: %d | Dijual: %d | Dibeli: %d"):format(rapPickedCount, rapSellCount, rapBuyCount),
+            Lifetime = 4,
+        })
+    end,
+})
+
+SecShopInfo:Label({ Name = "Auto Sell & Sell All hanya menjual item yang lolos filter rarity/weight yang kamu set." })
+SecShopInfo:Label({ Name = "Jika tombol Buy/Sell berupa tombol UI, buka shop-nya dulu supaya tombol terdeteksi." })
+
+-- ==============================================================================================
+-- MENU: ESP
 -- ==============================================================================================
 local TabESPRAP = tabGroup:Tab({ Name = "ESP", Image = "lucide/eye" })
 
@@ -4091,9 +4419,15 @@ SecEggESP:Toggle({
     Name = "ESP Zone Spawn (Common / Rare / Epic)",
     Default = false,
     Callback = function(enabled)
-        espSet("zone", enabled, "ESP Zone",
-            "Zone spawn telur di-mark kuning.",
-            "ESP zone dimatikan.")
+        espSet("zone", enabled, "ESP Zone", "Zone spawn telur di-mark kuning.", "ESP zone dimatikan.")
+    end,
+})
+
+SecEggESP:Toggle({
+    Name = "ESP Ranch (Lokasi Base)",
+    Default = false,
+    Callback = function(enabled)
+        espSet("ranch", enabled, "ESP Ranch", "Lokasi ranch di-mark putih.", "ESP ranch dimatikan.")
     end,
 })
 
@@ -4117,9 +4451,7 @@ SecWorldESP:Toggle({
     Name = "ESP Pemain (Nama + Jarak)",
     Default = false,
     Callback = function(enabled)
-        espSet("player", enabled, "ESP Pemain",
-            "Pemain lain di-mark hijau + jarak.",
-            "ESP pemain dimatikan.")
+        espSet("player", enabled, "ESP Pemain", "Pemain lain di-mark hijau + jarak.", "ESP pemain dimatikan.")
     end,
 })
 
@@ -4127,9 +4459,7 @@ SecWorldESP:Toggle({
     Name = "ESP NPC & Hewan",
     Default = false,
     Callback = function(enabled)
-        espSet("npc", enabled, "ESP NPC",
-            "NPC & hewan di-mark oranye.",
-            "ESP NPC dimatikan.")
+        espSet("npc", enabled, "ESP NPC", "NPC & hewan di-mark oranye.", "ESP NPC dimatikan.")
     end,
 })
 
@@ -4369,7 +4699,7 @@ Window:Notify({
 })
 
 -- Hanya muncul kalau ZYPHERAX_DEBUG = true
-log("Zypherax Hub (Ride A Pet - 4 Tabs) berhasil dijalankan")
+log("Zypherax Hub (Ride A Pet - 5 Tabs) berhasil dijalankan")
 end -- [End TabConfig]
 -- Ekspor ke environment executor supaya bisa diakses dari konsol.
 -- Contoh: ZYPHERAX_DEBUG = true   -> nyalakan log detail
