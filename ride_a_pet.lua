@@ -3246,6 +3246,11 @@ local rapGoal = "Player Spawn"
 local rapEggFilter = "Semua Jenis"
 local rapRarityFilter = "Semua Rarity"
 local rapPickedCount = 0
+local rapPickupMode = "Biasa"
+local rapBasePos = nil
+local rapEggsCarried = 0
+local rapAutoPlace = true
+local rapPlaceCapacity = 5
 
 local rapEggNames = {
     "White Egg", "Brown Egg", "Galaxy Egg", "Tidal Egg", "Soul Egg", "Aurora Egg",
@@ -3392,6 +3397,52 @@ local function rapTeleport(name)
     Window:Notify({ Title = "Teleport", Description = "Pindah ke " .. tostring(name) .. ".", Lifetime = 3 })
 end
 
+-- ============================== BASE / TARUH TELUR ==============================
+local function rapPlaceAtBase()
+    if not rapBasePos then return false end
+    local char = LocalPlayer.Character
+    local root = char and char:FindFirstChild("HumanoidRootPart")
+    if not root then return false end
+    root.CFrame = CFrame.new(rapBasePos + Vector3.new(0, 4, 0))
+    task.wait(0.3)
+    local n = 0
+    pcall(function()
+        for _, d in ipairs(workspace:GetDescendants()) do
+            if d:IsA("ProximityPrompt") then
+                local act = tostring(d.ActionText or ""):lower()
+                if act:find("place") or act:find("taruh") or act:find("deposit") or act:find("store") or act:find("simpan") then
+                    local p1 = rapEntityPos(d.Parent) or rapEntityPos(d)
+                    if p1 and (p1 - root.Position).Magnitude <= 35 then
+                        pcall(function()
+                            d.HoldDuration = 0
+                            d.RequiresLineOfSight = false
+                        end)
+                        rapTriggerPrompt(d)
+                        n = n + 1
+                    end
+                end
+            end
+        end
+    end)
+    if n == 0 then
+        rapFire({ "Remotes", "Game", "PlacePet" })
+        rapFire({ "Remotes", "Game", "PetMove" })
+    end
+    rapEggsCarried = 0
+    return true
+end
+
+local function rapSetBase()
+    local char = LocalPlayer.Character
+    local root = char and char:FindFirstChild("HumanoidRootPart")
+    if not root then
+        Window:Notify({ Title = "Base", Description = "Karakter belum siap.", Lifetime = 3 })
+        return
+    end
+    rapBasePos = root.Position
+    Window:Notify({ Title = "Base Disimpan", Description = "Base diset di posisi kamu sekarang.", Lifetime = 3 })
+end
+
 -- ============================== AUTO PICKUP TELUR ==============================
 local function rapFindEggName(inst)
     local cur = inst
@@ -3448,7 +3499,12 @@ local function rapPickupTick()
         end
     end)
 
-    if #candidates == 0 then return 0 end
+    if #candidates == 0 then
+        if rapAutoPlace and rapEggsCarried > 0 and rapBasePos then
+            rapPlaceAtBase()
+        end
+        return 0
+    end
 
     local char = LocalPlayer.Character
     local root = char and char:FindFirstChild("HumanoidRootPart")
@@ -3462,9 +3518,17 @@ local function rapPickupTick()
     end
 
     local arrived = false
-    if best and myPos and bestDist > 14 then
+    if not best then return 0 end
+    if rapPickupMode == "Instant" then
+        -- Mode instant: teleport langsung ke telur
+        if root then
+            root.CFrame = CFrame.new(best.pos + Vector3.new(0, 4, 0))
+            task.wait(0.15)
+        end
+        arrived = true
+    elseif bestDist > 14 then
         arrived = rapMoveTo(best.pos, 5)
-    elseif best then
+    else
         arrived = true
     end
     if not arrived then return 0 end
@@ -3478,7 +3542,7 @@ local function rapPickupTick()
                 local nm, egg = rapFindEggName(d)
                 if nm and rapMatchFilter(nm) then
                     local p1 = rapEntityPos(d.Parent) or rapEntityPos(d)
-                    if p1 and (p1 - rootPos).Magnitude <= 18 then
+                    if p1 and (p1 - rootPos).Magnitude <= 25 then
                         pcall(function()
                             d.HoldDuration = 0
                             d.RequiresLineOfSight = false
@@ -3508,12 +3572,29 @@ local function rapPickupTick()
         rapFire({ "Remotes", "Game", "EggPickup" })
     end
 
+    if n > 0 then
+        rapEggsCarried = rapEggsCarried + n
+    end
+
     if n > 0 and rapPickedCount % 10 == 0 then
         Window:Notify({
             Title = "Auto Pickup",
             Description = ("Total telur: %d (filter: %s / %s)"):format(rapPickedCount, rapEggFilter, rapRarityFilter),
             Lifetime = 3,
         })
+    end
+
+    -- 5. Auto balik ke base untuk menaruh telur
+    if rapAutoPlace and rapEggsCarried > 0 and rapEggsCarried >= rapPlaceCapacity then
+        if rapBasePos then
+            local before = rapEggsCarried
+            rapPlaceAtBase()
+            Window:Notify({
+                Title = "Taruh Telur",
+                Description = ("%d telur ditaruh di base (total: %d)."):format(before, rapPickedCount),
+                Lifetime = 3,
+            })
+        end
     end
     return n
 end
@@ -3756,7 +3837,7 @@ SecAutoEgg:Toggle({
     end,
 })
 
-SecAutoEgg:Label({ Name = "Karakter berjalan ke telur terdekat lalu mengambilnya (jarak aman untuk server)." })
+SecAutoEgg:Label({ Name = "Mode Biasa: karakter berjalan ke telur. Mode Instant: teleport langsung (atur di section Mode Auto Pickup & Base)." })
 
 SecAutoEgg:Toggle({
     Name = "Auto Hatch Telur",
@@ -3797,6 +3878,76 @@ SecAutoEgg:Slider({
     Precision = 0,
     Callback = function(value)
         RAP_DELAY = value / 10
+    end,
+})
+
+local SecPickupMode = TabMainRAP:Section({ Name = "Mode Auto Pickup & Base", Side = 2 })
+SecPickupMode:Header({ Name = ZypheraxLib:Gradient("Mode Pickup & Penaruhan", Color3.fromRGB(255, 170, 90), Color3.fromRGB(255, 110, 140)) })
+
+SecPickupMode:Dropdown({
+    Name = "Mode Auto Pickup",
+    Items = { "Biasa", "Instant" },
+    Default = "Biasa",
+    Callback = function(v) rapPickupMode = v or "Biasa" end,
+})
+
+SecPickupMode:Label({ Name = "Biasa: karakter berjalan ke telur. Instant: teleport langsung ke telur." })
+
+SecPickupMode:Toggle({
+    Name = "Auto Balik ke Base untuk Taruh Telur",
+    Default = true,
+    Callback = function(enabled)
+        rapAutoPlace = enabled and true or false
+        Window:Notify({
+            Title = "Base",
+            Description = enabled and "Setelah ambil telur, auto balik ke base." or "Auto balik ke base dimatikan.",
+            Lifetime = 3,
+        })
+    end,
+})
+
+SecPickupMode:Slider({
+    Name = "Kapasitas Telur Sebelum Taruh",
+    Default = 5,
+    Minimum = 1,
+    Maximum = 20,
+    DisplayMethod = "Round",
+    Precision = 0,
+    Callback = function(value)
+        rapPlaceCapacity = value
+    end,
+})
+
+SecPickupMode:Button({
+    Name = "Set Base di Posisi Sekarang",
+    Callback = function() rapSetBase() end,
+})
+
+SecPickupMode:Button({
+    Name = "Balik ke Base & Taruh Sekarang",
+    Callback = function()
+        if not rapBasePos then
+            Window:Notify({ Title = "Base", Description = "Base belum diset. Klik 'Set Base di Posisi Sekarang'.", Lifetime = 4 })
+            return
+        end
+        rapPlaceAtBase()
+        Window:Notify({ Title = "Base", Description = "Kembali ke base & menaruh telur.", Lifetime = 3 })
+    end,
+})
+
+SecPickupMode:Button({
+    Name = "Teleport ke Base",
+    Callback = function()
+        if not rapBasePos then
+            Window:Notify({ Title = "Base", Description = "Base belum diset.", Lifetime = 3 })
+            return
+        end
+        local char = LocalPlayer.Character
+        local root = char and char:FindFirstChild("HumanoidRootPart")
+        if root then
+            root.CFrame = CFrame.new(rapBasePos + Vector3.new(0, 4, 0))
+            Window:Notify({ Title = "Base", Description = "Teleport ke base.", Lifetime = 3 })
+        end
     end,
 })
 
