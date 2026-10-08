@@ -3284,21 +3284,40 @@ local rapLastSpell = 0
 local rapLastSkill = ""
 local rapFoodDD, rapGearDD = nil, nil
 
+-- ============================== EGG & RARITY DATA ==============================
 local rapEggNames = {
-    "White Egg", "Brown Egg", "Galaxy Egg", "Tidal Egg", "Soul Egg", "Aurora Egg",
-    "Asteroid Egg", "Sinister Egg", "Blackhole Egg", "Golden Egg", "Flower Egg",
-    "Leaf Egg", "Stone Egg", "Easter Egg", "Cracked Egg", "Bloom Egg", "Glass Egg",
-    "Ice Egg", "Slime Egg", "Skull Egg", "Flaming Egg", "Dog egg",
+    -- Common
+    "White Egg", "Brown Egg",
+    -- Rare
+    "Cracked Egg", "Easter Egg", "Stone Egg", "Leaf Egg",
+    -- Epic
+    "Mushroom Egg", "Flower Egg", "Slime Egg", "Ice Egg",
+    -- Legendary
+    "Glass Egg", "Golden Egg",
+    -- Mythic
+    "Crystal Egg", "Skull Egg", "Dominus Egg", "Flaming Egg", "Sinister Egg", "Soul Egg",
+    -- Divine
+    "Aurora Egg", "Galaxy Egg",
+    -- Ethereal
+    "Black Hole Egg", "Solaris Egg", "Cherub Egg", "Volcanic Egg",
 }
 
 local RAP_RARITY = {
-    ["White Egg"] = "Common", ["Brown Egg"] = "Common", ["Leaf Egg"] = "Common",
-    ["Stone Egg"] = "Common", ["Cracked Egg"] = "Common", ["Dog egg"] = "Common",
-    ["Easter Egg"] = "Rare", ["Slime Egg"] = "Rare", ["Ice Egg"] = "Rare", ["Glass Egg"] = "Rare",
-    ["Tidal Egg"] = "Epic", ["Galaxy Egg"] = "Epic", ["Soul Egg"] = "Epic",
-    ["Asteroid Egg"] = "Epic", ["Flower Egg"] = "Epic", ["Bloom Egg"] = "Epic", ["Skull Egg"] = "Epic",
-    ["Aurora Egg"] = "Legendary", ["Golden Egg"] = "Legendary", ["Flaming Egg"] = "Legendary",
-    ["Sinister Egg"] = "Mythic", ["Blackhole Egg"] = "Mythic",
+    -- Common
+    ["White Egg"] = "Common", ["Brown Egg"] = "Common",
+    -- Rare
+    ["Cracked Egg"] = "Rare", ["Easter Egg"] = "Rare", ["Stone Egg"] = "Rare", ["Leaf Egg"] = "Rare",
+    -- Epic
+    ["Mushroom Egg"] = "Epic", ["Flower Egg"] = "Epic", ["Slime Egg"] = "Epic", ["Ice Egg"] = "Epic",
+    -- Legendary
+    ["Glass Egg"] = "Legendary", ["Golden Egg"] = "Legendary",
+    -- Mythic
+    ["Crystal Egg"] = "Mythic", ["Skull Egg"] = "Mythic", ["Dominus Egg"] = "Mythic",
+    ["Flaming Egg"] = "Mythic", ["Sinister Egg"] = "Mythic", ["Soul Egg"] = "Mythic",
+    -- Divine
+    ["Aurora Egg"] = "Divine", ["Galaxy Egg"] = "Divine",
+    -- Ethereal
+    ["Black Hole Egg"] = "Ethereal", ["Solaris Egg"] = "Ethereal", ["Cherub Egg"] = "Ethereal", ["Volcanic Egg"] = "Ethereal",
 }
 
 local RARITY_COLOR = {
@@ -3307,9 +3326,71 @@ local RARITY_COLOR = {
     Epic      = Color3.fromRGB(199, 155, 255),
     Legendary = Color3.fromRGB(255, 211, 92),
     Mythic    = Color3.fromRGB(255, 107, 138),
+    Divine    = Color3.fromRGB(255, 180, 255),
+    Ethereal  = Color3.fromRGB(255, 255, 180),
 }
 
-local RARITY_LIST = { "Common", "Rare", "Epic", "Legendary", "Mythic" }
+local RARITY_LIST = { "Common", "Rare", "Epic", "Legendary", "Mythic", "Divine", "Ethereal" }
+
+-- Mutation system
+local RAP_MUTATIONS = { "normal", "gold", "Shocked", "Volted", "Rage", "Diamond", "Void", "Magma", "Eternal", "Rainbow" }
+local RAP_MUTATION_COLOR = {
+    normal   = Color3.fromRGB(200, 200, 200),
+    gold     = Color3.fromRGB(255, 215, 0),
+    Shocked  = Color3.fromRGB(0, 255, 255),
+    Volted   = Color3.fromRGB(180, 0, 255),
+    Rage     = Color3.fromRGB(255, 50, 50),
+    Diamond  = Color3.fromRGB(100, 255, 255),
+    Void     = Color3.fromRGB(80, 0, 120),
+    Magma    = Color3.fromRGB(255, 120, 0),
+    Eternal  = Color3.fromRGB(200, 180, 255),
+    Rainbow  = Color3.fromRGB(255, 100, 200),
+}
+
+-- Mutation system
+local RAP_MUTATIONS = { "normal", "gold", "Shocked", "Volted", "Rage", "Diamond", "Void", "Magma", "Eternal", "Rainbow" }
+local RAP_MUTATION_COLOR = {
+    normal   = Color3.fromRGB(200, 200, 200),
+    gold     = Color3.fromRGB(255, 215, 0),
+    Shocked  = Color3.fromRGB(0, 255, 255),
+    Volted   = Color3.fromRGB(180, 0, 255),
+    Rage     = Color3.fromRGB(255, 50, 50),
+    Diamond  = Color3.fromRGB(100, 255, 255),
+    Void     = Color3.fromRGB(80, 0, 120),
+    Magma    = Color3.fromRGB(255, 120, 0),
+    Eternal  = Color3.fromRGB(200, 180, 255),
+    Rainbow  = Color3.fromRGB(255, 100, 200),
+}
+
+-- Mutation system
+local RAP_MUTATIONS = { "normal", "gold", "Shocked", "Volted", "Rage", "Diamond", "Void", "Magma", "Eternal", "Rainbow" }
+local RAP_MUTATION_COLOR = {
+    normal   = Color3.fromRGB(200, 200, 200),
+    gold     = Color3.fromRGB(255, 215, 0),
+    Shocked  = Color3.fromRGB(0, 255, 255),
+    Volted   = Color3.fromRGB(180, 0, 255),
+    Rage     = Color3.fromRGB(255, 50, 50),
+    Diamond  = Color3.fromRGB(100, 255, 255),
+    Void     = Color3.fromRGB(80, 0, 120),
+    Magma    = Color3.fromRGB(255, 120, 0),
+    Eternal  = Color3.fromRGB(200, 180, 255),
+    Rainbow  = Color3.fromRGB(255, 100, 200),
+}
+
+-- Mutation system
+local RAP_MUTATIONS = { "normal", "gold", "Shocked", "Volted", "Rage", "Diamond", "Void", "Magma", "Eternal", "Rainbow" }
+local RAP_MUTATION_COLOR = {
+    normal   = Color3.fromRGB(200, 200, 200),
+    gold     = Color3.fromRGB(255, 215, 0),
+    Shocked  = Color3.fromRGB(0, 255, 255),
+    Volted   = Color3.fromRGB(180, 0, 255),
+    Rage     = Color3.fromRGB(255, 50, 50),
+    Diamond  = Color3.fromRGB(100, 255, 255),
+    Void     = Color3.fromRGB(80, 0, 120),
+    Magma    = Color3.fromRGB(255, 120, 0),
+    Eternal  = Color3.fromRGB(200, 180, 255),
+    Rainbow  = Color3.fromRGB(255, 100, 200),
+}
 
 local rapTypeList = {}
 for _, n in ipairs(rapEggNames) do table.insert(rapTypeList, n) end
