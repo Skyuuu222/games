@@ -19,18 +19,7 @@ if not LocalPlayer then
 end
 
 -- [FORWARD DECLARATIONS FOR SCOPING]
--- Modul Avatar & Outfit Studio (dipakai tab Modifikasi)
-local apply_avatar_swap, reset_avatar_swap
-local apply_outfit
-local add_accessory, remove_accessory, remove_all_accessories, update_accessory_transform
-local apply_korblox, remove_korblox, apply_headless, remove_headless
-
--- Modul Fullbright & Custom FOV (dipakai tab View)
-local fullbrightEnabled = false
-local fullbright_start, fullbright_stop
-local customFovEnabled = false
-local customFovValue = 70
-local fov_start, fov_stop, fov_apply
+-- (Forward declaration modul lama dihapus; Ride A Pet memakai engine sendiri)
 local start_esp_gen, stop_esp_gen, start_esp_generator, stop_esp_generator
 
 -- ==============================================================================
@@ -154,1228 +143,6 @@ do
             _lockedSpeed = speed or 16
         end
     end)
-end
-
--- ==============================================================================
-do
--- MODUL 1: AVATAR CLONER & SWAP (Client Mirroring)
--- ==============================================================================
-shared.AvatarSwapState = shared.AvatarSwapState or { targets = {} }
-local SwapState = shared.AvatarSwapState
-
-local function reset_swap_state(st)
-    for _, c in ipairs(st.conns or {}) do pcall(function() c:Disconnect() end) end
-    st.conns = {}
-    if st.model then pcall(function() st.model:Destroy() end) end
-    st.model = nil
-    for inst, val in pairs(st.original or {}) do
-        if inst.Parent then pcall(function() inst.Transparency = val end) end
-    end
-    st.original = {}
-end
-
-local function sanitize_accessory(acc)
-    if not acc then return end
-    for _, s in ipairs(acc:GetDescendants()) do
-        if s:IsA("BaseScript") then pcall(function() s:Destroy() end) end
-    end
-    for _, d in ipairs(acc:GetDescendants()) do
-        if d:IsA("BasePart") then
-            d.Anchored = false
-            d.CanCollide = false
-            d.CanTouch = false
-            d.CanQuery = false
-            d.Massless = true
-        end
-    end
-end
-
-local function cleanup_swap(player)
-    local st = SwapState.targets[player]
-    if not st then return end
-    reset_swap_state(st)
-    if st.respawnConn then pcall(function() st.respawnConn:Disconnect() end) end
-    SwapState.targets[player] = nil
-
-    local char = player.Character
-    if char then
-        -- Jika headless masih aktif saat swap dibersihkan, sembunyikan kepala karakter asli kembali
-        if shared.HeadlessActive and shared.HeadlessActive[player] then
-            local h = char:FindFirstChild("Head")
-            if h then
-                h.Transparency = 1
-                for _, d in ipairs(h:GetChildren()) do
-                    if d:IsA("Decal") or d:IsA("Texture") then d.Transparency = 1 end
-                end
-            end
-        end
-        -- Jika korblox masih aktif saat swap dibersihkan, sembunyikan kaki kanan asli kembali
-        if shared.KorbloxActive and shared.KorbloxActive[player] then
-            local rleg = char:FindFirstChild("Original_Right_Leg") or char:FindFirstChild("Right Leg")
-            if rleg and not rleg:GetAttribute("IsKorblox") then rleg.Transparency = 1 end
-            for _, c in ipairs(char:GetChildren()) do
-                if c:GetAttribute("IsKorblox") or c.Name == "Right Leg Korblox" then c.Transparency = 0 end
-            end
-        end
-    end
-end
-
-local function get_user_description(username)
-    local userId = LocalPlayer.UserId
-    if username and username ~= "" then
-        local ok, id = pcall(Players.GetUserIdFromNameAsync, Players, username)
-        if not ok or not id then return nil, "Username '" .. tostring(username) .. "' tidak ditemukan!" end
-        userId = id
-    end
-    local ok2, desc = pcall(Players.GetHumanoidDescriptionFromUserId, Players, userId)
-    if not ok2 or not desc then return nil, "Gagal mengambil data avatar dari UserId: " .. tostring(userId) end
-    return desc, nil
-end
-
-local function dress_mirror(player, char, desc, st, modelPrefix)
-    reset_swap_state(st)
-
-    local hum = char:WaitForChild("Humanoid", 10)
-    local hrp = char:WaitForChild("HumanoidRootPart", 10)
-    if not hum or not hrp then return false, "Karakter tidak lengkap" end
-    task.wait(0.3)
-
-    local ok, model = pcall(function()
-        return Players:CreateHumanoidModelFromDescription(desc, hum.RigType)
-    end)
-    if not ok or not model then return false, "Gagal membuat model: " .. tostring(model) end
-    model.Name = (modelPrefix or "Cloned_") .. player.Name
-
-    local mhum = model:FindFirstChildOfClass("Humanoid")
-    local mhrp = model:FindFirstChild("HumanoidRootPart")
-    if not mhum or not mhrp then
-        model:Destroy()
-        return false, "Model kloning tidak lengkap"
-    end
-
-    local heightDiff = (mhum.HipHeight + mhrp.Size.Y / 2) - (hum.HipHeight + hrp.Size.Y / 2)
-    mhum.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.None
-    mhum.EvaluateStateMachine = false
-    pcall(function() mhum:ChangeState(Enum.HumanoidStateType.Physics) end)
-
-    for _, d in ipairs(model:GetDescendants()) do
-        if d:IsA("BaseScript") then d:Destroy() end
-        if d:IsA("Motor6D") then d.Enabled = false end
-    end
-
-    local mapped = {}
-    for _, part in ipairs(char:GetChildren()) do
-        if part:IsA("BasePart") and part.Name ~= "HumanoidRootPart" and not part:GetAttribute("IsKorblox") and part.Name ~= "Right Leg Korblox" and part.Name ~= "Original_Right_Leg" then
-            local cp = model:FindFirstChild(part.Name)
-            if cp and cp:IsA("BasePart") then
-                cp.Anchored = true
-                table.insert(mapped, { part, cp })
-            end
-        end
-    end
-
-    local copyParts = {}
-    for _, d in ipairs(model:GetDescendants()) do
-        if d:IsA("BasePart") then
-            d.CanCollide = false
-            d.CanTouch = false
-            d.CanQuery = false
-            d.Massless = true
-            table.insert(copyParts, d)
-        end
-    end
-
-    model.Parent = workspace
-
-    -- Jika target sedang pakai Headless, sembunyikan kepala swap model
-    if shared.HeadlessActive and shared.HeadlessActive[player] then
-        local swapHead = model:FindFirstChild("Head")
-        if swapHead then
-            swapHead.Transparency = 1
-            for _, d in ipairs(swapHead:GetChildren()) do
-                if d:IsA("Decal") or d:IsA("Texture") then d.Transparency = 1 end
-            end
-        end
-    end
-
-    -- Jika target sedang pakai Korblox, sembunyikan Right Leg swap model
-    if shared.KorbloxActive and shared.KorbloxActive[player] then
-        local swapRLeg = model:FindFirstChild("Right Leg")
-        if swapRLeg then
-            swapRLeg.Transparency = 1
-            for _, d in ipairs(swapRLeg:GetChildren()) do
-                if d:IsA("Decal") or d:IsA("Texture") then d.Transparency = 1 end
-            end
-        end
-    end
-
-    table.insert(st.conns, RunService.Stepped:Connect(function()
-        for _, part in ipairs(copyParts) do
-            part.CanCollide = false
-            part.CanTouch = false
-            part.CanQuery = false
-        end
-    end))
-
-    st.accFollowers = {}
-
-    table.insert(st.conns, RunService.RenderStepped:Connect(function()
-        if not hrp.Parent then return end
-        local root = hrp.CFrame
-        local inv = root:Inverse()
-        local lift = CFrame.new(0, heightDiff, 0)
-        for _, p in ipairs(mapped) do
-            p[2].CFrame = root * lift * (inv * p[1].CFrame)
-        end
-        local swapHead = model:FindFirstChild("Head")
-        if swapHead then
-            for _, item in ipairs(st.accFollowers or {}) do
-                if item.part and item.part.Parent then
-                    item.part.CFrame = swapHead.CFrame * item.offset
-                end
-            end
-        end
-    end))
-
-    local function hide(d)
-        if (d:IsA("BasePart") and d.Name ~= "HumanoidRootPart")
-            or d:IsA("Decal") or d:IsA("Texture") then
-            if d:GetAttribute("IsKorblox") or (d.Parent and d.Parent:GetAttribute("IsKorblox")) then return end
-            if d.Name == "Right Leg Korblox" or (d.Parent and d.Parent.Name == "Right Leg Korblox") then return end
-            if d.Parent and (d.Parent:IsA("Accessory") and d.Parent:GetAttribute("IsCustomAccessory")) then return end
-            if st.original[d] == nil then st.original[d] = d.Transparency end
-            d.Transparency = 1
-        end
-    end
-    for _, d in ipairs(char:GetDescendants()) do hide(d) end
-    table.insert(st.conns, char.DescendantAdded:Connect(hide))
-
-    -- Pasang Custom Accessories yang aktif sebagai visual puppet (Anchored + CFrame Follower = 100% Anti-Nyangkut)
-    if shared.CustomAccessories and shared.CustomAccessories[player] then
-        local swapHead = model:FindFirstChild("Head")
-        for _, cId in ipairs(shared.CustomAccessories[player]) do
-            task.spawn(function()
-                pcall(function()
-                    local okLoad, objects = pcall(function() return game:GetObjects("rbxassetid://" .. cId) end)
-                    if okLoad and objects and #objects > 0 then
-                        local modelAcc = objects[1]
-                        local acc = modelAcc:IsA("Accessory") and modelAcc or modelAcc:FindFirstChildOfClass("Accessory")
-                        local handle = acc and acc:FindFirstChild("Handle")
-                        if handle and model.Parent and swapHead then
-                            local dummy = handle:Clone()
-                            for _, desc in ipairs(dummy:GetDescendants()) do
-                                if desc:IsA("BaseScript") or desc:IsA("JointInstance") then desc:Destroy() end
-                            end
-                            dummy.Name = "CustomAccPart_" .. cId
-                            dummy:SetAttribute("CustomAssetId", cId)
-                            dummy:SetAttribute("IsCustomAccessory", true)
-                            dummy.Anchored = true
-                            dummy.CanCollide = false
-                            dummy.CanTouch = false
-                            dummy.CanQuery = false
-                            dummy.Massless = true
-                            dummy.Transparency = 0
-                            dummy.Parent = model
-
-                            local sAttachment = dummy:FindFirstChildOfClass("Attachment")
-                            local sHeadAttachment = swapHead:FindFirstChild(sAttachment and sAttachment.Name or "") or swapHead:FindFirstChild("HatAttachment")
-                            local offset = (sHeadAttachment and sHeadAttachment.CFrame or CFrame.new(0, 0.5, 0)) * (sAttachment and sAttachment.CFrame:Inverse() or CFrame.new())
-                            dummy.CFrame = swapHead.CFrame * offset
-                            table.insert(st.accFollowers, { part = dummy, offset = offset, id = cId })
-                        end
-                    end
-                end)
-            end)
-        end
-    end
-
-    st.model = model
-    return true, "Avatar berhasil dipasang pada " .. player.Name
-end
-
-function apply_avatar_swap(targetName, avatarUsername)
-    local target = find_player(targetName)
-    if not target then return false, "Pemain '" .. tostring(targetName) .. "' tidak ditemukan di server!" end
-
-    local desc, err = get_user_description(avatarUsername)
-    if not desc then return false, err end
-
-    cleanup_swap(target)
-    local st = { conns = {}, original = {} }
-    SwapState.targets[target] = st
-
-    if target.Character then
-        task.spawn(dress_mirror, target, target.Character, desc, st, "Swap_")
-    end
-    st.respawnConn = target.CharacterAdded:Connect(function(newChar)
-        task.wait(1)
-        dress_mirror(target, newChar, desc, st, "Swap_")
-    end)
-    return true, "Avatar '" .. avatarUsername .. "' dipasang ke " .. target.Name
-end
-
-function reset_avatar_swap(targetName)
-    if not targetName or targetName == "" then
-        for p in pairs(SwapState.targets) do cleanup_swap(p) end
-        return true, "Semua avatar pemain dikembalikan normal."
-    else
-        local target = find_player(targetName)
-        if target then
-            cleanup_swap(target)
-            return true, "Avatar " .. target.Name .. " dikembalikan normal."
-        end
-        return false, "Target tidak ditemukan."
-    end
-end
-
--- ==============================================================================
--- MODUL 2: OUTFIT CLONER
--- ==============================================================================
-local ACC_TYPES = {
-    [8] = Enum.AccessoryType.Hat, [41] = Enum.AccessoryType.Hair,
-    [42] = Enum.AccessoryType.Face, [43] = Enum.AccessoryType.Neck,
-    [44] = Enum.AccessoryType.Shoulder, [45] = Enum.AccessoryType.Front,
-    [46] = Enum.AccessoryType.Back, [47] = Enum.AccessoryType.Waist,
-    [64] = Enum.AccessoryType.TShirt, [65] = Enum.AccessoryType.Shirt,
-    [66] = Enum.AccessoryType.Pants, [67] = Enum.AccessoryType.Jacket,
-    [68] = Enum.AccessoryType.Sweater, [69] = Enum.AccessoryType.Shorts,
-    [70] = Enum.AccessoryType.LeftShoe, [71] = Enum.AccessoryType.RightShoe,
-    [72] = Enum.AccessoryType.DressSkirt,
-    [76] = Enum.AccessoryType.Eyebrow, [77] = Enum.AccessoryType.Eyelash,
-}
-local LAYERED = {
-    [64]=true,[65]=true,[66]=true,[67]=true,[68]=true,[69]=true,
-    [70]=true,[71]=true,[72]=true,
-}
-local BODY_IDS = {
-    [17] = "Head", [79] = "Head", [27] = "Torso", [28] = "RightArm",
-    [29] = "LeftArm", [30] = "LeftLeg", [31] = "RightLeg",
-    [18] = "Face", [11] = "Shirt", [12] = "Pants", [2] = "GraphicTShirt",
-}
-
-local function fetch_outfits(userId)
-    local all, seen = {}, {}
-    for _, extra in ipairs({ "", "&isEditable=true" }) do
-        for page = 1, 30 do
-            local url = ("https://avatar.roblox.com/v1/users/%d/outfits?itemsPerPage=50&page=%d%s"):format(userId, page, extra)
-            local data = http_json(url)
-            if not data or not data.data or #data.data == 0 then break end
-            for _, o in ipairs(data.data) do
-                if not seen[o.id] then
-                    seen[o.id] = true
-                    table.insert(all, o)
-                end
-            end
-            if #data.data < 50 then break end
-        end
-    end
-    return all
-end
-
-local function merge_details(desc, det)
-    if det.scale then
-        pcall(function()
-            desc.HeightScale = det.scale.height or desc.HeightScale
-            desc.WidthScale = det.scale.width or desc.WidthScale
-            desc.HeadScale = det.scale.head or desc.HeadScale
-            desc.DepthScale = det.scale.depth or desc.DepthScale
-            desc.ProportionScale = det.scale.proportion or desc.ProportionScale
-            desc.BodyTypeScale = det.scale.bodyType or desc.BodyTypeScale
-        end)
-    end
-
-    local bc = det.bodyColor3s
-    if bc then
-        pcall(function()
-            desc.HeadColor = hex_to_color(bc.headColor3) or desc.HeadColor
-            desc.TorsoColor = hex_to_color(bc.torsoColor3) or desc.TorsoColor
-            desc.LeftArmColor = hex_to_color(bc.leftArmColor3) or desc.LeftArmColor
-            desc.RightArmColor = hex_to_color(bc.rightArmColor3) or desc.RightArmColor
-            desc.LeftLegColor = hex_to_color(bc.leftLegColor3) or desc.LeftLegColor
-            desc.RightLegColor = hex_to_color(bc.rightLegColor3) or desc.RightLegColor
-        end)
-    end
-
-    local list, have = {}, {}
-    local okG, cur = pcall(function() return desc:GetAccessories(true) end)
-    if okG and cur then
-        for _, a in ipairs(cur) do
-            have[a.AssetId] = true
-            table.insert(list, a)
-        end
-    end
-
-    for _, a in ipairs(det.assets or {}) do
-        local tid = a.assetType and a.assetType.id
-        local aid = a.id
-        if BODY_IDS[tid] then
-            local key = BODY_IDS[tid]
-            pcall(function() if desc[key] == 0 then desc[key] = aid end end)
-        elseif ACC_TYPES[tid] and not have[aid] then
-            have[aid] = true
-            table.insert(list, {
-                AssetId = aid,
-                AccessoryType = ACC_TYPES[tid],
-                IsLayered = LAYERED[tid] or false,
-                Order = (a.meta and a.meta.order) or (#list + 1),
-                Puffiness = (a.meta and a.meta.puffiness) or 1,
-            })
-        end
-    end
-    pcall(function() desc:SetAccessories(list, true) end)
-end
-
-local function get_outfit_desc(username, outfitNameOrId)
-    local outfitId = tonumber(outfitNameOrId)
-    local outfitName = tostring(outfitNameOrId)
-
-    if not outfitId then
-        local userId = retry(3, 1, function() return Players:GetUserIdFromNameAsync(username) end)
-        if not userId then return nil, "User '" .. username .. "' tidak ditemukan" end
-
-        local outfits = fetch_outfits(userId)
-        if #outfits == 0 then return nil, "Tidak ada outfit terbaca (profil privat)" end
-
-        local n = normalize(outfitName)
-        for _, o in ipairs(outfits) do
-            if normalize(o.name) == n or normalize(o.name):find(n, 1, true) then
-                outfitId = o.id
-                outfitName = o.name
-                break
-            end
-        end
-        if not outfitId then return nil, "Outfit '" .. outfitName .. "' tidak ditemukan" end
-    end
-
-    local desc = retry(3, 1, function() return Players:GetHumanoidDescriptionFromOutfitId(outfitId) end)
-    if not desc then desc = Instance.new("HumanoidDescription") end
-
-    local det = http_json("https://avatar.roblox.com/v1/outfits/" .. outfitId .. "/details")
-    if det then merge_details(desc, det) end
-    return desc, outfitName
-end
-
-function apply_outfit(username, outfitQuery, targetName)
-    local target = find_player(targetName)
-    if not target then return false, "Target tidak ditemukan di server" end
-
-    local desc, outName = get_outfit_desc(username, outfitQuery)
-    if not desc then return false, outName end
-
-    cleanup_swap(target)
-    local st = { conns = {}, original = {} }
-    SwapState.targets[target] = st
-
-    if target.Character then
-        task.spawn(dress_mirror, target, target.Character, desc, st, "Outfit_")
-    end
-    st.respawnConn = target.CharacterAdded:Connect(function(newChar)
-        task.wait(1)
-        dress_mirror(target, newChar, desc, st, "Outfit_")
-    end)
-    return true, "Outfit '" .. tostring(outName) .. "' dipasang pada " .. target.Name
-end
-
--- ==============================================================================
--- MODUL 3: ACCESSORY LOADER
--- ==============================================================================
--- ==============================================================================
--- MODUL 3: ACCESSORY LOADER & REMOVER
--- ==============================================================================
-shared.CustomAccessories = shared.CustomAccessories or {}
-
-local function apply_acc_scale(part, scale)
-    if not part or not scale or scale == 1 then return end
-    local mesh = part:FindFirstChildOfClass("SpecialMesh")
-    if mesh then
-        if not mesh:GetAttribute("OrigScale") then
-            mesh:SetAttribute("OrigScale", mesh.Scale)
-        end
-        mesh.Scale = mesh:GetAttribute("OrigScale") * scale
-    elseif part:IsA("MeshPart") or part:IsA("BasePart") then
-        if not part:GetAttribute("OrigSize") then
-            part:SetAttribute("OrigSize", part.Size)
-        end
-        part.Size = part:GetAttribute("OrigSize") * scale
-    end
-end
-
-function add_accessory(targetName, assetId, offX, offY, offZ, scaleVal)
-    local target = find_player(targetName)
-    if not target then return false, "Pemain tidak ditemukan" end
-
-    local char = target.Character
-    if not char then return false, "Karakter tidak ada" end
-
-    local hum = char:FindFirstChildOfClass("Humanoid")
-    local head = char:FindFirstChild("Head")
-    if not hum or not head then return false, "Humanoid/Head tidak ada" end
-
-    local cleanId = tostring(assetId):match("%d+")
-    if not cleanId then return false, "Asset ID tidak valid" end
-
-    offX = tonumber(offX) or 0
-    offY = tonumber(offY) or 0
-    offZ = tonumber(offZ) or 0
-    scaleVal = tonumber(scaleVal) or 1
-    if scaleVal <= 0 then scaleVal = 1 end
-
-    local userOffset = CFrame.new(offX, offY, -offZ)
-
-    local okLoad, objects = pcall(function()
-        return game:GetObjects("rbxassetid://" .. cleanId)
-    end)
-    if not okLoad or not objects or #objects == 0 then
-        return false, "Gagal memuat aset aksesoris"
-    end
-
-    local model = objects[1]
-    local accessory = model:IsA("Accessory") and model or model:FindFirstChildOfClass("Accessory")
-    if not accessory then return false, "Bukan objek Accessory" end
-
-    -- Bersihkan skrip & sifat fisik agar tidak nyangkut saat jalan
-    sanitize_accessory(accessory)
-
-    accessory:SetAttribute("CustomAssetId", cleanId)
-    accessory:SetAttribute("IsCustomAccessory", true)
-
-    local handle = accessory:FindFirstChild("Handle")
-    local accAttachment = handle and handle:FindFirstChildOfClass("Attachment")
-    if not handle or not accAttachment then return false, "Struktur Handle/Attachment rusak" end
-
-    -- Terapkan scale ukuran
-    apply_acc_scale(handle, scaleVal)
-
-    -- Pasang ke karakter asli
-    local headAttachment = head:FindFirstChild(accAttachment.Name) or head:FindFirstChild("HatAttachment")
-    -- Cek apakah target sedang memakai copy avatar (avatar swap)
-    local swapSt = SwapState.targets[target]
-    if swapSt and swapSt.model then
-        -- SWAP MODEL: Gunakan CFrame follower dummy (Anchored, 0 Weld, 100% Anti-Nyangkut)
-        local swapHead = swapSt.model:FindFirstChild("Head")
-        if swapHead then
-            swapSt.accFollowers = swapSt.accFollowers or {}
-            local dummy = handle:Clone()
-            for _, desc in ipairs(dummy:GetDescendants()) do
-                if desc:IsA("BaseScript") or desc:IsA("JointInstance") then desc:Destroy() end
-            end
-            dummy.Name = "CustomAccPart_" .. cleanId
-            dummy:SetAttribute("CustomAssetId", cleanId)
-            dummy:SetAttribute("IsCustomAccessory", true)
-            dummy.Anchored = true
-            dummy.CanCollide = false
-            dummy.CanTouch = false
-            dummy.CanQuery = false
-            dummy.Massless = true
-            dummy.Transparency = 0
-            dummy.Parent = swapSt.model
-
-            apply_acc_scale(dummy, scaleVal)
-
-            local sAttachment = dummy:FindFirstChildOfClass("Attachment")
-            local sHeadAttachment = swapHead:FindFirstChild(sAttachment and sAttachment.Name or "") or swapHead:FindFirstChild("HatAttachment")
-            local baseOffset = (sHeadAttachment and sHeadAttachment.CFrame or CFrame.new(0, 0.5, 0)) * (sAttachment and sAttachment.CFrame:Inverse() or CFrame.new())
-            local offset = baseOffset * userOffset
-            dummy.CFrame = swapHead.CFrame * offset
-            table.insert(swapSt.accFollowers, {
-                part = dummy,
-                offset = offset,
-                id = cleanId,
-                offX = offX,
-                offY = offY,
-                offZ = offZ,
-                scale = scaleVal
-            })
-        end
-    else
-        -- AVATAR BIASA (tidak sedang swap): Pasang ke karakter fisik biasa
-        local headAttachment = head:FindFirstChild(accAttachment.Name) or head:FindFirstChild("HatAttachment")
-        accessory.Name = "CustomAcc_" .. cleanId
-        accessory.Parent = char
-
-        local weld = Instance.new("Weld")
-        weld.Name = "AccessoryWeld"
-        weld.Part0 = head
-        weld.Part1 = handle
-        local baseC0 = headAttachment and headAttachment.CFrame or CFrame.new(0, 0.5, 0)
-        weld.C0 = baseC0 * userOffset
-        weld.C1 = accAttachment.CFrame
-        weld.Parent = handle
-
-        sanitize_accessory(accessory)
-    end
-
-    -- Simpan riwayat aksesoris untuk target ini
-    shared.CustomAccessories[target] = shared.CustomAccessories[target] or {}
-    local alreadyListed = false
-    for _, id in ipairs(shared.CustomAccessories[target]) do
-        if id == cleanId then alreadyListed = true; break end
-    end
-    if not alreadyListed then
-        table.insert(shared.CustomAccessories[target], cleanId)
-    end
-
-    return true, "Aksesoris ID " .. cleanId .. " dipasang ke " .. target.Name
-end
-
-function update_accessory_transform(targetName, assetId, offX, offY, offZ, scaleVal)
-    local target = find_player(targetName)
-    if not target then return false, "Pemain tidak ditemukan" end
-
-    offX = tonumber(offX) or 0
-    offY = tonumber(offY) or 0
-    offZ = tonumber(offZ) or 0
-    scaleVal = tonumber(scaleVal) or 1
-    if scaleVal <= 0 then scaleVal = 1 end
-
-    local userOffset = CFrame.new(offX, offY, -offZ)
-    local cleanId = assetId and tostring(assetId):match("%d+")
-    local updatedCount = 0
-
-    -- 1. Karakter fisik asli
-    local char = target.Character
-    if char then
-        local head = char:FindFirstChild("Head")
-        for _, obj in ipairs(char:GetChildren()) do
-            if obj:IsA("Accessory") and (not cleanId or obj.Name:find(cleanId) or obj:GetAttribute("CustomAssetId") == cleanId) then
-                local handle = obj:FindFirstChild("Handle")
-                if handle then
-                    apply_acc_scale(handle, scaleVal)
-                    local weld = handle:FindFirstChild("AccessoryWeld")
-                    local accAttachment = handle:FindFirstChildOfClass("Attachment")
-                    if weld and head then
-                        local headAttachment = accAttachment and head:FindFirstChild(accAttachment.Name) or head:FindFirstChild("HatAttachment")
-                        local baseC0 = headAttachment and headAttachment.CFrame or CFrame.new(0, 0.5, 0)
-                        weld.C0 = baseC0 * userOffset
-                        updatedCount = updatedCount + 1
-                    end
-                end
-            end
-        end
-    end
-
-    -- 2. Model Swap (Copy Avatar)
-    local swapSt = SwapState.targets[target]
-    if swapSt and swapSt.model then
-        local swapHead = swapSt.model:FindFirstChild("Head")
-        if swapHead and swapSt.accFollowers then
-            for _, item in ipairs(swapSt.accFollowers) do
-                if not cleanId or item.id == cleanId then
-                    if item.part and item.part.Parent then
-                        apply_acc_scale(item.part, scaleVal)
-                        local sAttachment = item.part:FindFirstChildOfClass("Attachment")
-                        local sHeadAttachment = swapHead:FindFirstChild(sAttachment and sAttachment.Name or "") or swapHead:FindFirstChild("HatAttachment")
-                        local baseOffset = (sHeadAttachment and sHeadAttachment.CFrame or CFrame.new(0, 0.5, 0)) * (sAttachment and sAttachment.CFrame:Inverse() or CFrame.new())
-                        item.offset = baseOffset * userOffset
-                        item.part.CFrame = swapHead.CFrame * item.offset
-                        updatedCount = updatedCount + 1
-                    end
-                end
-            end
-        end
-    end
-
-    if updatedCount > 0 then
-        return true, "Posisi & ukuran " .. updatedCount .. " aksesoris berhasil diperbarui!"
-    else
-        return false, "Aksesoris belum terpasang. Klik 'Pasang Aksesoris' terlebih dahulu."
-    end
-end
-
-function remove_accessory(targetName, assetId)
-    local target = find_player(targetName)
-    if not target then return false, "Pemain tidak ditemukan" end
-
-    local cleanId = assetId and tostring(assetId):match("%d+")
-    local searchPattern = assetId and tostring(assetId):lower():gsub("%s+", "") or ""
-
-    local removedCount = 0
-
-    local function checkAndRemove(acc)
-        if not acc or not acc:IsA("Accessory") then return false end
-        local matched = false
-
-        -- 1. Cek Attribute CustomAssetId
-        local customId = acc:GetAttribute("CustomAssetId")
-        if cleanId and customId and tostring(customId) == cleanId then
-            matched = true
-        end
-
-        -- 2. Cek Nama Accessory (mengandung ID atau kata kunci)
-        if not matched and cleanId and acc.Name:find(cleanId) then
-            matched = true
-        end
-        if not matched and searchPattern ~= "" and acc.Name:lower():find(searchPattern) then
-            matched = true
-        end
-
-        -- 3. Cek MeshId / TextureId di Handle
-        if not matched and cleanId then
-            local handle = acc:FindFirstChild("Handle")
-            if handle then
-                for _, desc in ipairs(handle:GetDescendants()) do
-                    if desc:IsA("SpecialMesh") then
-                        if tostring(desc.MeshId):find(cleanId) or tostring(desc.TextureId):find(cleanId) then
-                            matched = true
-                            break
-                        end
-                    elseif desc:IsA("MeshPart") then
-                        if tostring(desc.MeshId):find(cleanId) or tostring(desc.TextureID):find(cleanId) then
-                            matched = true
-                            break
-                        end
-                    end
-                end
-            end
-        end
-
-        if matched then
-            acc:Destroy()
-            removedCount = removedCount + 1
-            return true
-        end
-        return false
-    end
-
-    -- Hapus dari karakter asli (bisa ava diri sendiri atau ava target di server)
-    local char = target.Character
-    if char then
-        for _, obj in ipairs(char:GetChildren()) do
-            checkAndRemove(obj)
-        end
-    end
-
-    -- Hapus dari model swap (jika sedang pakai copy avatar)
-    local swapSt = SwapState.targets[target]
-    if swapSt and swapSt.model then
-        for _, obj in ipairs(swapSt.model:GetChildren()) do
-            if obj.Name == "CustomAccPart_" .. (cleanId or "") or obj:GetAttribute("CustomAssetId") == cleanId then
-                obj:Destroy()
-                removedCount = removedCount + 1
-            else
-                checkAndRemove(obj)
-            end
-        end
-        if swapSt.accFollowers then
-            for i = #swapSt.accFollowers, 1, -1 do
-                if not cleanId or swapSt.accFollowers[i].id == cleanId or not swapSt.accFollowers[i].part.Parent then
-                    table.remove(swapSt.accFollowers, i)
-                end
-            end
-        end
-    end
-
-    -- Bersihkan dari daftar shared.CustomAccessories
-    if shared.CustomAccessories and shared.CustomAccessories[target] and cleanId then
-        for i = #shared.CustomAccessories[target], 1, -1 do
-            if shared.CustomAccessories[target][i] == cleanId then
-                table.remove(shared.CustomAccessories[target], i)
-            end
-        end
-    end
-
-    if removedCount > 0 then
-        return true, "Berhasil menghapus " .. removedCount .. " aksesoris dari " .. target.Name
-    else
-        return false, "Aksesoris tidak ditemukan pada " .. target.Name
-    end
-end
-
-function remove_all_accessories(targetName)
-    local target = find_player(targetName)
-    if not target then return false, "Pemain tidak ditemukan" end
-
-    local removedCount = 0
-
-    local function removeAccs(container)
-        if not container then return end
-        for _, obj in ipairs(container:GetChildren()) do
-            if obj:IsA("Accessory") then
-                if obj:GetAttribute("IsCustomAccessory") or obj.Name:find("CustomAcc_") then
-                    obj:Destroy()
-                    removedCount = removedCount + 1
-                end
-            end
-        end
-    end
-
-    if target.Character then removeAccs(target.Character) end
-    local swapSt = SwapState.targets[target]
-    if swapSt and swapSt.model then
-        removeAccs(swapSt.model)
-        for _, obj in ipairs(swapSt.model:GetChildren()) do
-            if obj.Name:find("CustomAccPart_") or obj:GetAttribute("IsCustomAccessory") then
-                obj:Destroy()
-                removedCount = removedCount + 1
-            end
-        end
-        swapSt.accFollowers = {}
-    end
-
-    if shared.CustomAccessories then
-        shared.CustomAccessories[target] = nil
-    end
-
-    if removedCount > 0 then
-        return true, "Berhasil menghapus " .. removedCount .. " aksesoris custom dari " .. target.Name
-    else
-        return false, "Tidak ada aksesoris custom yang terpasang pada " .. target.Name
-    end
-end
-
--- ==============================================================================
--- MODUL 4: KORBLOX & HEADLESS MODIFICATIONS
--- ==============================================================================
-shared.KorbloxConns = shared.KorbloxConns or {}
-shared.KorbloxActive = shared.KorbloxActive or {}
-shared.HeadlessActive = shared.HeadlessActive or {}
-shared.HeadlessConns = shared.HeadlessConns or {}
-shared.HeadlessHBConns = shared.HeadlessHBConns or {}
-
-function remove_korblox(targetName)
-    local target = find_player(targetName)
-    if not target then return false, "Pemain tidak ditemukan" end
-
-    shared.KorbloxActive[target] = nil
-
-    if shared.KorbloxConns[target] then
-        for _, c in ipairs(shared.KorbloxConns[target]) do
-            pcall(function() c:Disconnect() end)
-        end
-        shared.KorbloxConns[target] = nil
-    end
-
-    local char = target.Character
-    if char then
-        local torso = char:FindFirstChild("Torso")
-        local oldLimb = char:FindFirstChild("Original_Right_Leg") or char:FindFirstChild("Right Leg")
-
-        -- 1. Hapus part Korblox (part yang ber-attribute IsKorblox atau bernama Right Leg Korblox)
-        for _, child in ipairs(char:GetChildren()) do
-            if child:GetAttribute("IsKorblox") or child.Name == "Right Leg Korblox" or (child ~= oldLimb and child.Name == "Right Leg" and child:IsA("BasePart")) then
-                child:Destroy()
-            end
-        end
-
-        if torso then
-            -- Hapus Motor6D yang kita buat untuk Korblox
-            for _, j in ipairs(torso:GetChildren()) do
-                if j:IsA("Motor6D") and (j.Name == "Right Hip" and (j.Part1 == nil or j.Part1:GetAttribute("IsKorblox") or (oldLimb and j.Part1 ~= oldLimb))) then
-                    j:Destroy()
-                end
-            end
-            -- Kembalikan joint asli
-            local origJoint = torso:FindFirstChild("Right Hip Original") or torso:FindFirstChild("Right Hip")
-            if origJoint and oldLimb then
-                origJoint.Name = "Right Hip"
-                origJoint.Part1 = oldLimb
-            end
-        end
-
-        -- 2. Kembalikan nama kaki lama menjadi "Right Leg"
-        if oldLimb then
-            oldLimb.Name = "Right Leg"
-        end
-
-        -- 3. Atur kembali transparansi kaki
-        local isSwapped = SwapState.targets[target] and SwapState.targets[target].model
-        if isSwapped then
-            -- Karakter asli tetap invisible karena sedang pakai avatar swap
-            if oldLimb then oldLimb.Transparency = 1 end
-            -- Munculkan kembali kaki kanan di model swap
-            local swapRLeg = SwapState.targets[target].model:FindFirstChild("Right Leg")
-            if swapRLeg then
-                swapRLeg.Transparency = 0
-                for _, d in ipairs(swapRLeg:GetChildren()) do
-                    if d:IsA("Decal") or d:IsA("Texture") then d.Transparency = 0 end
-                end
-            end
-        else
-            -- Tidak sedang swap: kembalikan kaki asli ke terlihat normal
-            if oldLimb then
-                oldLimb.Transparency = 0
-            end
-        end
-    end
-
-    return true, "Korblox dinonaktifkan untuk " .. target.Name
-end
-
-function apply_korblox(targetName, assetId, yOffset)
-    local target = find_player(targetName)
-    if not target then return false, "Pemain tidak ditemukan" end
-    local char = target.Character
-    if not char then return false, "Karakter belum spawn" end
-
-    local hum = char:FindFirstChildOfClass("Humanoid")
-    if not hum or hum.RigType ~= Enum.HumanoidRigType.R6 then
-        return false, "Target bukan tipe avatar R6!"
-    end
-
-    local torso = char:FindFirstChild("Torso")
-    local oldLimb = char:FindFirstChild("Right Leg")
-    if not torso or not oldLimb then return false, "Torso / Right Leg tidak ditemukan" end
-
-    -- Jika Korblox sudah terpasang, hapus dulu agar bersih
-    if shared.KorbloxActive[target] or char:FindFirstChild("Original_Right_Leg") or torso:FindFirstChild("Right Hip Original") then
-        remove_korblox(targetName)
-        task.wait(0.05)
-        oldLimb = char:FindFirstChild("Right Leg")
-        torso = char:FindFirstChild("Torso")
-        if not torso or not oldLimb then return false, "Gagal mereset kaki sebelum pasang" end
-    end
-
-    local originalJoint = torso:FindFirstChild("Right Hip")
-    if not originalJoint then return false, "Joint 'Right Hip' tidak ditemukan" end
-
-    local cleanId = tostring(assetId or "139607718"):match("%d+")
-    local offsetVal = tonumber(yOffset) or 0.7
-    local okLoad, objects = pcall(function()
-        return game:GetObjects("rbxassetid://" .. cleanId)
-    end)
-    if not okLoad or not objects or #objects == 0 then
-        return false, "Gagal memuat objek Korblox"
-    end
-
-    local newLimb = objects[1]
-    if not newLimb:IsA("BasePart") then
-        newLimb = newLimb:FindFirstChildWhichIsA("MeshPart") or newLimb:FindFirstChildWhichIsA("BasePart")
-    end
-    if not newLimb then return false, "Part kaki tidak ditemukan" end
-
-    -- Bersihkan script di newLimb
-    for _, s in ipairs(newLimb:GetDescendants()) do
-        if s:IsA("BaseScript") then s:Destroy() end
-    end
-
-    local originalC0 = originalJoint.C0
-    local originalC1 = originalJoint.C1
-
-    -- Sembunyikan kaki lama & rename agar tidak bentrok nama
-    oldLimb.Name = "Original_Right_Leg"
-    oldLimb.Transparency = 1
-    oldLimb.CanCollide = false
-
-    -- Beri nama "Right Leg" pada newLimb agar Animator R6 Roblox menganimasikannya!
-    -- Hitung posisi kaki tegak lurus (rest pose) dari Torso agar kaki Korblox tidak miring/maju ke depan saat berjalan
-    local restLimbCF = torso.CFrame * originalC0 * originalC1:Inverse()
-    newLimb.CFrame = restLimbCF * CFrame.new(0, offsetVal, 0)
-    newLimb.Anchored = false
-    newLimb.CanCollide = false
-    newLimb.Massless = true
-    newLimb.Transparency = 0
-    newLimb:SetAttribute("IsKorblox", true)
-    newLimb.Name = "Right Leg"
-    newLimb.Parent = char
-
-    -- Putuskan Part1 joint asli dan rename agar bisa di-undo
-    originalJoint.Name = "Right Hip Original"
-    originalJoint.Part1 = nil
-
-    -- Buat Motor6D baru dengan C0 asli dan C1 dihitung dari posisi newLimb rest pose
-    local weld = Instance.new("Motor6D")
-    weld.Name = "Right Hip"
-    weld.Part0 = torso
-    weld.Part1 = newLimb
-    weld.C0 = originalC0
-    weld.C1 = newLimb.CFrame:ToObjectSpace(torso.CFrame * originalC0)
-    weld.Parent = torso
-
-    -- Sembunyikan kaki kanan di model swap jika sedang aktif
-    local swapSt = SwapState.targets[target]
-    if swapSt and swapSt.model then
-        local swapRLeg = swapSt.model:FindFirstChild("Right Leg")
-        if swapRLeg then
-            swapRLeg.Transparency = 1
-            for _, d in ipairs(swapRLeg:GetChildren()) do
-                if d:IsA("Decal") or d:IsA("Texture") then d.Transparency = 1 end
-            end
-        end
-    end
-
-    -- Simpan state Korblox
-    shared.KorbloxActive[target] = {
-        assetId = cleanId,
-        yOffset = offsetVal,
-    }
-
-    if shared.KorbloxConns[target] then
-        for _, c in ipairs(shared.KorbloxConns[target]) do
-            pcall(function() c:Disconnect() end)
-        end
-    end
-    shared.KorbloxConns[target] = {}
-
-    -- Heartbeat loop: menjaga newLimb selalu terlihat & swap model Right Leg selalu tersembunyi
-    local hbConn = RunService.Heartbeat:Connect(function()
-        if not newLimb or not newLimb.Parent then return end
-        if newLimb.Transparency ~= 0 then
-            newLimb.Transparency = 0
-        end
-        local currentSwap = SwapState.targets[target]
-        if currentSwap and currentSwap.model then
-            local sRLeg = currentSwap.model:FindFirstChild("Right Leg")
-            if sRLeg and sRLeg.Transparency ~= 1 then
-                sRLeg.Transparency = 1
-            end
-        end
-    end)
-    table.insert(shared.KorbloxConns[target], hbConn)
-
-    -- Pasang ulang otomatis jika target respawn
-    local respawnConn = target.CharacterAdded:Connect(function()
-        task.wait(1)
-        if shared.KorbloxActive[target] then
-            apply_korblox(target.Name, cleanId, offsetVal)
-        end
-    end)
-    table.insert(shared.KorbloxConns[target], respawnConn)
-
-    return true, "Korblox Right Leg dipasang pada " .. target.Name
-end
-
-local function make_headless_char(char)
-    local head = char:FindFirstChild("Head")
-    if head then
-        head.Transparency = 1
-        for _, d in ipairs(head:GetChildren()) do
-            if d:IsA("Decal") or d:IsA("Texture") then d.Transparency = 1 end
-        end
-    end
-end
-
--- Sembunyikan HANYA kepala di swap model (aksesori kepala tetap utuh)
-local function make_headless_swap(target)
-    local swapSt = SwapState.targets[target]
-    if not swapSt or not swapSt.model then return end
-    local swapHead = swapSt.model:FindFirstChild("Head")
-    if swapHead then
-        swapHead.Transparency = 1
-        for _, d in ipairs(swapHead:GetChildren()) do
-            if d:IsA("Decal") or d:IsA("Texture") then d.Transparency = 1 end
-        end
-    end
-end
-
-function apply_headless(targetName)
-    local target = find_player(targetName)
-    if not target then return false, "Target tidak ditemukan" end
-
-    shared.HeadlessActive[target] = true
-
-    -- Disconnect semua koneksi headless lama
-    if shared.HeadlessConns[target] then
-        shared.HeadlessConns[target]:Disconnect()
-        shared.HeadlessConns[target] = nil
-    end
-    if shared.HeadlessHBConns[target] then
-        shared.HeadlessHBConns[target]:Disconnect()
-        shared.HeadlessHBConns[target] = nil
-    end
-
-    local function setup(char)
-        make_headless_char(char)
-        make_headless_swap(target)
-
-        if shared.HeadlessHBConns[target] then
-            shared.HeadlessHBConns[target]:Disconnect()
-        end
-
-        local hbConn
-        hbConn = RunService.Heartbeat:Connect(function()
-            if not char or not char.Parent then
-                hbConn:Disconnect()
-                shared.HeadlessHBConns[target] = nil
-                return
-            end
-            -- Jaga kepala karakter tetap invisible
-            local h = char:FindFirstChild("Head")
-            if h and h.Transparency ~= 1 then make_headless_char(char) end
-            -- Jaga kepala model swap tetap invisible
-            make_headless_swap(target)
-        end)
-        shared.HeadlessHBConns[target] = hbConn
-    end
-
-    if target.Character then setup(target.Character) end
-    shared.HeadlessConns[target] = target.CharacterAdded:Connect(function(newChar)
-        task.wait(0.5)
-        if shared.HeadlessActive[target] then
-            setup(newChar)
-        end
-    end)
-
-    return true, "Headless diterapkan pada " .. target.Name
-end
-
-function remove_headless(targetName)
-    local target = find_player(targetName)
-    if not target then return false, "Target tidak ditemukan" end
-
-    shared.HeadlessActive[target] = nil
-
-    -- Disconnect CharacterAdded listener
-    if shared.HeadlessConns[target] then
-        shared.HeadlessConns[target]:Disconnect()
-        shared.HeadlessConns[target] = nil
-    end
-    -- Disconnect Heartbeat listener
-    if shared.HeadlessHBConns[target] then
-        shared.HeadlessHBConns[target]:Disconnect()
-        shared.HeadlessHBConns[target] = nil
-    end
-
-    local char = target.Character
-    local swapSt = SwapState.targets[target]
-    local isSwapped = swapSt and swapSt.model
-
-    if isSwapped then
-        -- KETIKA SEDANG PAKAI AVATAR SWAP:
-        -- Kepala karakter asli HARUS TETAP invisible (1) agar tidak menabrak / z-fight dengan avatar swap!
-        if char and char:FindFirstChild("Head") then
-            char.Head.Transparency = 1
-            for _, d in ipairs(char.Head:GetChildren()) do
-                if d:IsA("Decal") or d:IsA("Texture") then d.Transparency = 1 end
-            end
-        end
-
-        -- HANYA kembalikan kepala di swap model avatar yang sedang dicopy:
-        local swapHead = swapSt.model:FindFirstChild("Head")
-        if swapHead then
-            swapHead.Transparency = 0
-            for _, d in ipairs(swapHead:GetChildren()) do
-                if d:IsA("Decal") or d:IsA("Texture") then d.Transparency = 0 end
-            end
-        end
-    else
-        -- KETIKA TIDAK SEDANG SWAP (pakai avatar sendiri):
-        if char and char:FindFirstChild("Head") then
-            local head = char.Head
-            head.Transparency = 0
-            for _, d in ipairs(head:GetChildren()) do
-                if d:IsA("Decal") or d:IsA("Texture") then d.Transparency = 0 end
-            end
-        end
-    end
-
-    return true, "Headless dinonaktifkan untuk " .. target.Name
-end
-
-
-
-
-
-
-
-end
-
--- ==============================================================================
-do
--- MODUL 8: FULLBRIGHT + NO FOG
--- ==============================================================================
-fullbrightEnabled = false
-local fullbrightConn = nil
-local origAmbient = nil
-local origOutdoor = nil
-local origBrightness = nil
-local origFogEnd = nil
-local origFogStart = nil
-
-local function fullbright_apply()
-    pcall(function()
-        local lighting = game:GetService("Lighting")
-        lighting.Ambient = Color3.fromRGB(178, 178, 178)
-        lighting.OutdoorAmbient = Color3.fromRGB(178, 178, 178)
-        lighting.Brightness = 2
-        lighting.FogEnd = 100000
-        lighting.FogStart = 100000
-        -- Hapus/disable efek dark
-        for _, child in ipairs(lighting:GetChildren()) do
-            if child:IsA("BloomEffect") or child:IsA("SunRaysEffect") 
-               or child:IsA("ColorCorrectionEffect") then
-                pcall(function() child.Enabled = false end)
-            end
-        end
-    end)
-end
-
-local function fullbright_restore()
-    pcall(function()
-        local lighting = game:GetService("Lighting")
-        if origAmbient then lighting.Ambient = origAmbient end
-        if origOutdoor then lighting.OutdoorAmbient = origOutdoor end
-        if origBrightness then lighting.Brightness = origBrightness end
-        if origFogEnd then lighting.FogEnd = origFogEnd end
-        if origFogStart then lighting.FogStart = origFogStart end
-        -- Kembalikan efek
-        for _, child in ipairs(lighting:GetChildren()) do
-            if child:IsA("BloomEffect") or child:IsA("SunRaysEffect")
-               or child:IsA("ColorCorrectionEffect") then
-                pcall(function() child.Enabled = true end)
-            end
-        end
-    end)
-end
-
-function fullbright_start()
-    pcall(function()
-        local lighting = game:GetService("Lighting")
-        origAmbient = lighting.Ambient
-        origOutdoor = lighting.OutdoorAmbient
-        origBrightness = lighting.Brightness
-        origFogEnd = lighting.FogEnd
-        origFogStart = lighting.FogStart
-    end)
-    fullbright_apply()
-    if fullbrightConn then fullbrightConn:Disconnect() end
-    fullbrightConn = RunService.Heartbeat:Connect(function()
-        if not fullbrightEnabled then return end
-        fullbright_apply()
-    end)
-end
-
-function fullbright_stop()
-    if fullbrightConn then fullbrightConn:Disconnect(); fullbrightConn = nil end
-    fullbright_restore()
-end
-
--- ==============================================================================
--- MODUL 9: CUSTOM FOV (Field of View)
--- ==============================================================================
-customFovEnabled = false
-customFovValue = 70
-local origFov = nil
-local fovConn = nil
-
-function fov_apply(val)
-    pcall(function()
-        workspace.CurrentCamera.FieldOfView = val
-    end)
-end
-
-function fov_start(val)
-    customFovValue = val or customFovValue
-    pcall(function() origFov = workspace.CurrentCamera.FieldOfView end)
-    fov_apply(customFovValue)
-    if fovConn then fovConn:Disconnect() end
-    fovConn = RunService.RenderStepped:Connect(function()
-        if not customFovEnabled then return end
-        pcall(function()
-            if workspace.CurrentCamera.FieldOfView ~= customFovValue then
-                workspace.CurrentCamera.FieldOfView = customFovValue
-            end
-        end)
-    end)
-end
-
-function fov_stop()
-    if fovConn then fovConn:Disconnect(); fovConn = nil end
-    pcall(function()
-        if origFov then workspace.CurrentCamera.FieldOfView = origFov end
-    end)
-end
-
-
 end
 
 -- ==============================================================================
@@ -4174,18 +2941,7 @@ do
 end
 
 
--- State Variabel Form
-local swap_target = ""
-local swap_avatar = "usnavatar"
-
-local outfit_owner = "zhbrxty"
-local outfit_name = "cp 1"
-local outfit_target = ""
-
-local acc_target = ""
-local acc_id = "10159600649"
-
-local mod_target = ""
+-- (State form menu lama dihapus)
 -- ==============================================================================
 -- MODUL 5: PLAYER CONTROLS (SPEED & INFINITE YIELD FLY ENGINE)
 -- ==============================================================================
@@ -4487,6 +3243,9 @@ local RAP_DELAY = 0.5
 local rapFlag = {}
 local rapRunning = false
 local rapGoal = "Player Spawn"
+local rapEggFilter = "Semua Jenis"
+local rapRarityFilter = "Semua Rarity"
+local rapPickedCount = 0
 
 local rapEggNames = {
     "White Egg", "Brown Egg", "Galaxy Egg", "Tidal Egg", "Soul Egg", "Aurora Egg",
@@ -4494,6 +3253,29 @@ local rapEggNames = {
     "Leaf Egg", "Stone Egg", "Easter Egg", "Cracked Egg", "Bloom Egg", "Glass Egg",
     "Ice Egg", "Slime Egg", "Skull Egg", "Flaming Egg", "Dog egg",
 }
+
+local RAP_RARITY = {
+    ["White Egg"] = "Common", ["Brown Egg"] = "Common", ["Leaf Egg"] = "Common",
+    ["Stone Egg"] = "Common", ["Cracked Egg"] = "Common", ["Dog egg"] = "Common",
+    ["Easter Egg"] = "Rare", ["Slime Egg"] = "Rare", ["Ice Egg"] = "Rare", ["Glass Egg"] = "Rare",
+    ["Tidal Egg"] = "Epic", ["Galaxy Egg"] = "Epic", ["Soul Egg"] = "Epic",
+    ["Asteroid Egg"] = "Epic", ["Flower Egg"] = "Epic", ["Bloom Egg"] = "Epic", ["Skull Egg"] = "Epic",
+    ["Aurora Egg"] = "Legendary", ["Golden Egg"] = "Legendary", ["Flaming Egg"] = "Legendary",
+    ["Sinister Egg"] = "Mythic", ["Blackhole Egg"] = "Mythic",
+}
+
+local RARITY_COLOR = {
+    Common    = Color3.fromRGB(168, 230, 161),
+    Rare      = Color3.fromRGB(111, 199, 255),
+    Epic      = Color3.fromRGB(199, 155, 255),
+    Legendary = Color3.fromRGB(255, 211, 92),
+    Mythic    = Color3.fromRGB(255, 107, 138),
+}
+
+local RARITY_LIST = { "Semua Rarity", "Common", "Rare", "Epic", "Legendary", "Mythic" }
+
+local rapTypeList = { "Semua Jenis" }
+for _, n in ipairs(rapEggNames) do table.insert(rapTypeList, n) end
 
 local rapActors = {
     "Snail", "Cheetah", "Giraffe", "Unicorn",
@@ -4503,6 +3285,30 @@ local rapActors = {
 local rapGoals = { "Player Spawn" }
 for _, n in ipairs(rapEggNames) do table.insert(rapGoals, n) end
 for _, n in ipairs(rapActors) do table.insert(rapGoals, n) end
+
+local function rapRarityOf(name)
+    return RAP_RARITY[name] or "Common"
+end
+
+local function rapMatchFilter(name)
+    if rapEggFilter ~= "Semua Jenis" and name ~= rapEggFilter then return false end
+    if rapRarityFilter ~= "Semua Rarity" and rapRarityOf(name) ~= rapRarityFilter then return false end
+    return true
+end
+
+local function rapTriggerPrompt(p)
+    if type(fireproximityprompt) == "function" then
+        pcall(fireproximityprompt, p, 0)
+        return true
+    end
+    pcall(function()
+        local dur = p.HoldDuration or 0
+        p:InputHoldBegin()
+        task.wait(dur + 0.15)
+        p:InputHoldEnd()
+    end)
+    return true
+end
 
 local function rapPassBatch(matchFn, batch)
     local n = 0
@@ -4516,15 +3322,7 @@ local function rapPassBatch(matchFn, batch)
                         d.MaxActivationDistance = 500
                         d.RequiresLineOfSight = false
                     end)
-                    if type(fireproximityprompt) == "function" then
-                        pcall(fireproximityprompt, d, 0)
-                    else
-                        pcall(function()
-                            d:InputHoldBegin()
-                            task.wait(0.05)
-                            d:InputHoldEnd()
-                        end)
-                    end
+                    rapTriggerPrompt(d)
                     n = n + 1
                     if n >= batch then break end
                 end
@@ -4543,10 +3341,15 @@ local function rapPath(container, names)
     return cur
 end
 
-local function rapFire(names)
+local function rapFire(names, arg)
     local r = rapPath(ReplicatedStorage, names)
     if not r then return false end
-    local ok = pcall(function() r:FireServer() end)
+    local ok
+    if arg ~= nil then
+        ok = pcall(function() r:FireServer(arg) end)
+    else
+        ok = pcall(function() r:FireServer() end)
+    end
     return ok
 end
 
@@ -4573,12 +3376,7 @@ local function rapTeleport(name)
     end
     if not target then
         for _, d in ipairs(workspace:GetDescendants()) do
-            if d:IsA("Model") and d.Name == name then target = d; break end
-        end
-    end
-    if not target then
-        for _, d in ipairs(workspace:GetDescendants()) do
-            if d:IsA("BasePart") and d.Name == name then target = d; break end
+            if (d:IsA("Model") or d:IsA("BasePart")) and d.Name == name then target = d; break end
         end
     end
     if not target then
@@ -4594,8 +3392,134 @@ local function rapTeleport(name)
     Window:Notify({ Title = "Teleport", Description = "Pindah ke " .. tostring(name) .. ".", Lifetime = 3 })
 end
 
+-- ============================== AUTO PICKUP TELUR ==============================
+local function rapFindEggName(inst)
+    local cur = inst
+    for _ = 1, 6 do
+        if not cur or not cur.Parent then break end
+        for _, n in ipairs(rapEggNames) do
+            if cur.Name == n then return cur.Name, cur end
+        end
+        cur = cur.Parent
+    end
+    return nil, nil
+end
+
+local function rapMoveTo(pos, maxWait)
+    local char = LocalPlayer.Character
+    local hum = char and char:FindFirstChildOfClass("Humanoid")
+    local root = char and char:FindFirstChild("HumanoidRootPart")
+    if not hum or not root or hum.Health <= 0 then return false end
+    if (root.Position - pos).Magnitude <= 14 then return true end
+    local reached = false
+    local conn
+    conn = hum.MoveToFinished:Connect(function()
+        reached = true
+        pcall(function() if conn then conn:Disconnect() end end)
+    end)
+    pcall(function() hum:MoveTo(pos) end)
+    local t0 = os.clock()
+    while not reached and (os.clock() - t0) < (maxWait or 5) do
+        if not root.Parent then break end
+        if (root.Position - pos).Magnitude <= 14 then break end
+        task.wait(0.1)
+    end
+    pcall(function() if conn then conn:Disconnect() end end)
+    return (root.Position - pos).Magnitude <= 20
+end
+
+local function rapPickupTick()
+    -- 1. Kumpulkan kandidat telur yang cocok filter
+    local candidates = {}
+    local seen = {}
+    pcall(function()
+        for _, d in ipairs(workspace:GetDescendants()) do
+            if d:IsA("ProximityPrompt") and tostring(d.ActionText) == "Pick Up" then
+                local nm = rapFindEggName(d)
+                if nm and rapMatchFilter(nm) and not seen[tostring(d)] then
+                    seen[tostring(d)] = true
+                    local eggPart = d.Parent
+                    local pos = rapEntityPos(eggPart) or rapEntityPos(d)
+                    if pos then
+                        table.insert(candidates, { name = nm, part = eggPart, pos = pos })
+                    end
+                end
+            end
+        end
+    end)
+
+    if #candidates == 0 then return 0 end
+
+    local char = LocalPlayer.Character
+    local root = char and char:FindFirstChild("HumanoidRootPart")
+    local myPos = root and root.Position
+
+    -- 2. Pilih kandidat terdekat lalu gerakkan karakter ke sana
+    local best, bestDist
+    for _, c in ipairs(candidates) do
+        local dist = myPos and (c.pos - myPos).Magnitude or 0
+        if not bestDist or dist < bestDist then best, bestDist = c, dist end
+    end
+
+    local arrived = false
+    if best and myPos and bestDist > 14 then
+        arrived = rapMoveTo(best.pos, 5)
+    elseif best then
+        arrived = true
+    end
+    if not arrived then return 0 end
+
+    -- 3. Saat dekat, ambil SEMUA telur yang cocok dalam radius
+    local n = 0
+    pcall(function()
+        local rootPos = root.Position
+        for _, d in ipairs(workspace:GetDescendants()) do
+            if d:IsA("ProximityPrompt") and tostring(d.ActionText) == "Pick Up" then
+                local nm, egg = rapFindEggName(d)
+                if nm and rapMatchFilter(nm) then
+                    local p1 = rapEntityPos(d.Parent) or rapEntityPos(d)
+                    if p1 and (p1 - rootPos).Magnitude <= 18 then
+                        pcall(function()
+                            d.HoldDuration = 0
+                            d.RequiresLineOfSight = false
+                        end)
+                        rapTriggerPrompt(d)
+                        rapPickedCount = rapPickedCount + 1
+                        n = n + 1
+                        local rar = rapRarityOf(nm)
+                        if rar == "Epic" or rar == "Legendary" or rar == "Mythic" then
+                            Window:Notify({
+                                Title = "Telur Didapat",
+                                Description = ("[%s] %s (Total: %d)"):format(rar, nm, rapPickedCount),
+                                Lifetime = 3,
+                            })
+                        end
+                        if egg then
+                            pcall(function() egg:Destroy() end)
+                        end
+                    end
+                end
+            end
+        end
+    end)
+
+    -- 4. Cadangan: remote EggPickup (tanpa argumen)
+    if n == 0 then
+        rapFire({ "Remotes", "Game", "EggPickup" })
+    end
+
+    if n > 0 and rapPickedCount % 10 == 0 then
+        Window:Notify({
+            Title = "Auto Pickup",
+            Description = ("Total telur: %d (filter: %s / %s)"):format(rapPickedCount, rapEggFilter, rapRarityFilter),
+            Lifetime = 3,
+        })
+    end
+    return n
+end
+
 local function rapStep()
-    if rapFlag.pickup then rapPassBatch(function(a) return a == "Pick Up" end, 5) end
+    if rapFlag.pickup then rapPickupTick() end
     if rapFlag.hatch then rapPassBatch(function(a) return a == "Hatch" end, 3) end
     if rapFlag.grow then rapPassBatch(function(a) return a:find("Skip", 1, true) ~= nil end, 3) end
     if rapFlag.feed then rapPassBatch(function(a) return a == "Feed" end, 3) end
@@ -4633,7 +3557,7 @@ local function rapSet(key, on, title, onMsg, offMsg)
     Window:Notify({ Title = title, Description = on and onMsg or offMsg, Lifetime = 3 })
 end
 
--- ============================== ESP ENGINE ==============================
+-- ============================== ESP ENGINE (REFRESH CEPAT) ==============================
 local ESP_NAME = "RAP_ESP_FOLDER"
 local espHost = nil
 local espMode = { egg = false, zone = false, player = false, npc = false }
@@ -4668,7 +3592,8 @@ local function espMark(inst, label, color)
     hl.Adornee = inst
     hl.FillColor = color
     hl.OutlineColor = Color3.fromRGB(255, 255, 255)
-    hl.FillTransparency = 0.7
+    hl.FillTransparency = 0.25
+    hl.OutlineTransparency = 0
     hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
     hl.Parent = f
     if label and label ~= "" then
@@ -4682,18 +3607,18 @@ local function espMark(inst, label, color)
             local bb = Instance.new("BillboardGui")
             bb.Name = ESP_NAME
             bb.Adornee = part
-            bb.Size = UDim2.new(0, 170, 0, 24)
-            bb.StudsOffset = Vector3.new(0, 3, 0)
+            bb.Size = UDim2.new(0, 220, 0, 34)
+            bb.StudsOffset = Vector3.new(0, 3.5, 0)
             bb.AlwaysOnTop = true
-            bb.MaxDistance = 600
+            bb.MaxDistance = 4000
             local tl = Instance.new("TextLabel")
             tl.Size = UDim2.new(1, 0, 1, 0)
             tl.BackgroundTransparency = 1
-            tl.Font = Enum.Font.GothamBold
-            tl.TextSize = 12
+            tl.Font = Enum.Font.GothamBlack
+            tl.TextSize = 15
             tl.TextColor3 = color
             tl.TextStrokeColor3 = Color3.new(0, 0, 0)
-            tl.TextStrokeTransparency = 0.3
+            tl.TextStrokeTransparency = 0
             tl.Text = label
             tl.Parent = bb
             bb.Parent = f
@@ -4701,14 +3626,19 @@ local function espMark(inst, label, color)
     end
 end
 
-local function rapCountNames(names, mark, color)
+local function rapCountEggs(mark)
     local c = 0
+    local counted = {}
     for _, d in ipairs(workspace:GetDescendants()) do
-        if d:IsA("Model") or d:IsA("BasePart") then
-            for _, n in ipairs(names) do
+        if (d:IsA("Model") or d:IsA("BasePart")) and not counted[d.Name] then
+            for _, n in ipairs(rapEggNames) do
                 if d.Name == n then
+                    counted[d.Name] = true
                     c = c + 1
-                    if mark then espMark(d, d.Name, color) end
+                    if mark then
+                        local rar = rapRarityOf(d.Name)
+                        espMark(d, "[" .. rar .. "] " .. d.Name, RARITY_COLOR[rar] or Color3.fromRGB(255, 255, 255))
+                    end
                     break
                 end
             end
@@ -4722,7 +3652,23 @@ local function rapZones(mark)
     for _, d in ipairs(workspace:GetDescendants()) do
         if (d:IsA("Model") or d:IsA("BasePart")) and d.Parent and d.Parent.Name == "EggSpawns" then
             c = c + 1
-            if mark then espMark(d, "Zone " .. d.Name, Color3.fromRGB(255, 210, 90)) end
+            if mark then espMark(d, "Zone " .. d.Name, Color3.fromRGB(255, 190, 60)) end
+        end
+    end
+    return c
+end
+
+local function rapNpcs(mark)
+    local c = 0
+    for _, d in ipairs(workspace:GetDescendants()) do
+        if d:IsA("Model") then
+            for _, n in ipairs(rapActors) do
+                if d.Name == n then
+                    c = c + 1
+                    if mark then espMark(d, d.Name, Color3.fromRGB(255, 160, 70)) end
+                    break
+                end
+            end
         end
     end
     return c
@@ -4744,7 +3690,7 @@ local function rapPlayers(mark)
             end
             c = c + 1
             if mark then
-                espMark(p.Character, p.DisplayName .. " [" .. tostring(dist) .. "m]", Color3.fromRGB(120, 255, 160))
+                espMark(p.Character, p.DisplayName .. " [" .. tostring(dist) .. "m]", Color3.fromRGB(90, 255, 150))
             end
         end
     end
@@ -4753,9 +3699,9 @@ end
 
 local function espRefresh()
     espWipe()
-    rapEggCount    = rapCountNames(rapEggNames, espMode.egg, Color3.fromRGB(110, 220, 255))
+    rapEggCount    = rapCountEggs(espMode.egg)
     rapZoneCount   = rapZones(espMode.zone)
-    rapNpcCount    = rapCountNames(rapActors, espMode.npc, Color3.fromRGB(255, 170, 90))
+    rapNpcCount    = rapNpcs(espMode.npc)
     rapPlayerCount = rapPlayers(espMode.player)
 end
 
@@ -4765,7 +3711,7 @@ local function espLoopStart()
     task.spawn(function()
         while espMode.egg or espMode.zone or espMode.player or espMode.npc do
             pcall(espRefresh)
-            task.wait(1.5)
+            task.wait(0.45)
         end
         pcall(espWipe)
         espRunning = false
@@ -4786,15 +3732,31 @@ local TabMainRAP = tabGroup:Tab({ Name = "Main", Image = "lucide/zap" })
 local SecAutoEgg = TabMainRAP:Section({ Name = "Auto Telur & Pet", Side = 1 })
 SecAutoEgg:Header({ Name = ZypheraxLib:Gradient("Auto Egg Collector", Color3.fromRGB(72, 214, 200), Color3.fromRGB(99, 130, 255)) })
 
+SecAutoEgg:Dropdown({
+    Name = "Filter Rarity yang Diambil",
+    Items = RARITY_LIST,
+    Default = "Semua Rarity",
+    Callback = function(v) rapRarityFilter = v or "Semua Rarity" end,
+})
+
+SecAutoEgg:Dropdown({
+    Name = "Filter Jenis Telur",
+    Items = rapTypeList,
+    Default = "Semua Jenis",
+    Callback = function(v) rapEggFilter = v or "Semua Jenis" end,
+})
+
 SecAutoEgg:Toggle({
     Name = "Auto Pickup Telur",
     Default = false,
     Callback = function(enabled)
         rapSet("pickup", enabled, "Auto Pickup",
-            "Mengambil semua telur (Pick Up) otomatis.",
+            ("Mengambil telur (rarity: %s, jenis: %s)."):format(rapRarityFilter, rapEggFilter),
             "Auto pickup dimatikan.")
     end,
 })
+
+SecAutoEgg:Label({ Name = "Karakter berjalan ke telur terdekat lalu mengambilnya (jarak aman untuk server)." })
 
 SecAutoEgg:Toggle({
     Name = "Auto Hatch Telur",
@@ -4956,10 +3918,8 @@ SecRide:Button({
     end,
 })
 
-SecRide:Label({ Name = "Prompt dijalankan dengan fireproximityprompt. Jika executor tidak mendukung, fitur prompt mungkin tidak berjalan." })
-
 -- ==============================================================================================
--- MENU: ESP (TELUR, ZONE, PEMAIN & NPC)
+-- MENU: ESP (TELUR BER-RARITY, ZONE, PEMAIN & NPC)
 -- ==============================================================================================
 local TabESPRAP = tabGroup:Tab({ Name = "ESP", Image = "lucide/eye" })
 
@@ -4967,11 +3927,11 @@ local SecEggESP = TabESPRAP:Section({ Name = "ESP Telur & Zone", Side = 1 })
 SecEggESP:Header({ Name = ZypheraxLib:Gradient("ESP Kumpulan Telur", Color3.fromRGB(110, 220, 255), Color3.fromRGB(72, 214, 200)) })
 
 SecEggESP:Toggle({
-    Name = "ESP Semua Telur",
+    Name = "ESP Semua Telur (label [Rarity])",
     Default = false,
     Callback = function(enabled)
         espSet("egg", enabled, "ESP Telur",
-            "Semua telur di-mark biru muda.",
+            "Telur di-mark sesuai rarity (Common hijau, Rare biru, Epic ungu, Legendary emas, Mythic merah).",
             "ESP telur dimatikan.")
     end,
 })
@@ -4992,7 +3952,7 @@ SecEggESP:Button({
         pcall(espRefresh)
         Window:Notify({
             Title = "Target",
-            Description = ("Telur: %d | Zone: %d | NPC/Hewan: %d | Pemain: %d"):format(
+            Description = ("Jenis telur: %d | Zone: %d | NPC/Hewan: %d | Pemain: %d"):format(
                 rapEggCount, rapZoneCount, rapNpcCount, rapPlayerCount),
             Lifetime = 4,
         })
@@ -5017,381 +3977,13 @@ SecWorldESP:Toggle({
     Default = false,
     Callback = function(enabled)
         espSet("npc", enabled, "ESP NPC",
-            "NPC (Tim, Richie, Eggo, Rick) & hewan di-mark oranye.",
+            "NPC & hewan di-mark oranye.",
             "ESP NPC dimatikan.")
     end,
 })
 
-SecWorldESP:Label({ Name = "ESP otomatis di-refresh tiap 1.5 detik." })
+SecWorldESP:Label({ Name = "ESP di-refresh cepat tiap 0.45 detik dan selalu terlihat di depan objek." })
 end -- [End Engine RIDE A PET]
-
--- ==============================================================================
--- TAB: VIEW (FULLBRIGHT + CUSTOM FOV)
--- ==============================================================================
-do
-local TabView = tabGroup:Tab({ Name = "View", Image = "lucide/sun" })
-
--- SEKSI 1: FULLBRIGHT + NO FOG
-local SecFB = TabView:Section({ Name = "Fullbright", Side = 1 })
-SecFB:Header({ Name = ZypheraxLib:Gradient("Fullbright & No Fog", Color3.fromRGB(240,190,100), Color3.fromRGB(255,200,130)) })
-
-SecFB:Toggle({
-    Name = "Aktifkan Fullbright + No Fog",
-    Default = false,
-    Callback = function(enabled)
-        fullbrightEnabled = enabled
-        if enabled then
-            fullbright_start()
-            Window:Notify({ Title = "Fullbright", Description = "Map terang sempurna! Semua fog dihapus.", Lifetime = 3 })
-        else
-            fullbright_stop()
-            Window:Notify({ Title = "Fullbright", Description = "Fullbright dimatikan. Lighting normal.", Lifetime = 2 })
-        end
-    end
-})
-
--- SEKSI 2: CUSTOM FOV
-local SecFov = TabView:Section({ Name = "Custom FOV", Side = 2 })
-SecFov:Header({ Name = ZypheraxLib:Gradient("Custom FOV (Field of View)", Color3.fromRGB(99,130,255), Color3.fromRGB(140,200,255)) })
-
-SecFov:Toggle({
-    Name = "Aktifkan Custom FOV",
-    Default = false,
-    Callback = function(enabled)
-        customFovEnabled = enabled
-        if enabled then
-            fov_start(customFovValue)
-            Window:Notify({ Title = "Custom FOV", Description = "FOV diubah ke " .. tostring(customFovValue) .. "!", Lifetime = 3 })
-        else
-            fov_stop()
-            Window:Notify({ Title = "Custom FOV", Description = "FOV dikembalikan normal (70).", Lifetime = 2 })
-        end
-    end
-})
-
-SecFov:Slider({
-    Name = "FOV Value (derajat)",
-    Default = 70,
-    Minimum = 40,
-    Maximum = 120,
-    DisplayMethod = "Round",
-    Precision = 0,
-    Callback = function(val)
-        customFovValue = val
-        if customFovEnabled then
-            fov_apply(val)
-        end
-    end
-})
-
-SecFov:Button({
-    Name = "Reset FOV ke Default (70)",
-    Callback = function()
-        customFovValue = 70
-        if customFovEnabled then fov_apply(70) end
-        Window:Notify({ Title = "FOV", Description = "FOV direset ke 70.", Lifetime = 2 })
-    end
-})
-end -- [End TabView]
--- ==============================================================================
--- TAB 4: MODIFIKASI (VERTIKAL SCROLL KE BAWAH)
--- ==============================================================================
-do
-local TabMod = tabGroup:Tab({ Name = "Modifikasi", Image = "lucide/sparkles" })
-
-
--- SEKSI 1: SALIN AVATAR PEMAIN
-local SecAvatar = TabMod:Section({ Name = "Avatar Swap", Side = 1 })
-SecAvatar:Header({ Name = ZypheraxLib:Gradient("Salin Avatar Pemain", Color3.fromRGB(99,130,255), Color3.fromRGB(168,120,255)) })
-
-SecAvatar:Input({
-    Name = "Target di Server",
-    Default = "",
-    Placeholder = "Kosongkan untuk diri sendiri...",
-    Callback = function(text) swap_target = text end,
-    onChanged = function(text) swap_target = text end,
-})
-
-SecAvatar:Input({
-    Name = "Username Avatar Roblox",
-    Default = "usnavatar",
-    Placeholder = "Ketik username avatar Roblox...",
-    Callback = function(text) swap_avatar = text end,
-    onChanged = function(text) swap_avatar = text end,
-})
-
-SecAvatar:Button({
-    Name = "Terapkan Avatar",
-    Bold = true,
-    Callback = function()
-        Window:Notify({ Title = "Avatar Swap", Description = "Memproses penyalinan avatar...", Lifetime = 3 })
-        task.spawn(function()
-            local success, msg = apply_avatar_swap(swap_target, swap_avatar)
-            Window:Notify({
-                Title = success and "Berhasil!" or "Gagal!",
-                Description = msg or "",
-                Lifetime = 4
-            })
-        end)
-    end,
-})
-
-SecAvatar:Button({
-    Name = "Reset Avatar Normal",
-    Callback = function()
-        local success, msg = reset_avatar_swap(swap_target)
-        Window:Notify({
-            Title = "Reset Avatar",
-            Description = msg or "",
-            Lifetime = 4
-        })
-    end,
-})
-
--- SEKSI 2: KLONING OUTFIT TERSIMPAN
-local SecOutfit = TabMod:Section({ Name = "Outfit Clone", Side = 2 })
-SecOutfit:Header({ Name = ZypheraxLib:Gradient("Kloning Outfit Tersimpan", Color3.fromRGB(232,110,170), Color3.fromRGB(168,120,255)) })
-
-SecOutfit:Input({
-    Name = "Username Pemilik Outfit",
-    Default = "zhbrxty",
-    Placeholder = "Contoh: zhbrxty",
-    Callback = function(text) outfit_owner = text end,
-    onChanged = function(text) outfit_owner = text end,
-})
-
-SecOutfit:Input({
-    Name = "Nama / ID Outfit",
-    Default = "cp 1",
-    Placeholder = "Contoh: cp 1 atau ID outfit...",
-    Callback = function(text) outfit_name = text end,
-    onChanged = function(text) outfit_name = text end,
-})
-
-SecOutfit:Input({
-    Name = "Target di Server",
-    Default = "",
-    Placeholder = "Kosongkan untuk diri sendiri...",
-    Callback = function(text) outfit_target = text end,
-    onChanged = function(text) outfit_target = text end,
-})
-
-SecOutfit:Button({
-    Name = "Pasang Outfit ke Target",
-    Bold = true,
-    Callback = function()
-        Window:Notify({ Title = "Outfit Cloner", Description = "Mengambil data outfit...", Lifetime = 3 })
-        task.spawn(function()
-            local success, msg = apply_outfit(outfit_owner, outfit_name, outfit_target)
-            Window:Notify({
-                Title = success and "Berhasil!" or "Gagal!",
-                Description = msg or "",
-                Lifetime = 4
-            })
-        end)
-    end,
-})
-
--- SEKSI 3: PEMUAT AKSESORIS CATALOG
-local SecAcc = TabMod:Section({ Name = "Catalog Accessories", Side = 1 })
-SecAcc:Header({ Name = ZypheraxLib:Gradient("Pemuat Aksesoris Catalog", Color3.fromRGB(86,204,158), Color3.fromRGB(120,160,255)) })
-
-local acc_offset_y = 0
-local acc_offset_z = 0
-local acc_offset_x = 0
-local acc_scale = 1.0
-
-SecAcc:Input({
-    Name = "Target di Server",
-    Default = "",
-    Placeholder = "Kosongkan untuk diri sendiri...",
-    Callback = function(text) acc_target = text end,
-    onChanged = function(text) acc_target = text end,
-})
-
-SecAcc:Input({
-    Name = "Roblox Catalog Asset ID",
-    Default = "10159600649",
-    Placeholder = "Contoh: 10159600649",
-    Callback = function(text) acc_id = text end,
-    onChanged = function(text) acc_id = text end,
-})
-
-SecAcc:Slider({
-    Name = "Atas / Bawah (Y Offset)",
-    Default = 0,
-    Minimum = -30,
-    Maximum = 30,
-    DisplayMethod = "Round",
-    Precision = 1,
-    Callback = function(val)
-        acc_offset_y = val / 10
-    end
-})
-
-SecAcc:Slider({
-    Name = "Depan / Belakang (Z Offset)",
-    Default = 0,
-    Minimum = -30,
-    Maximum = 30,
-    DisplayMethod = "Round",
-    Precision = 1,
-    Callback = function(val)
-        acc_offset_z = val / 10
-    end
-})
-
-SecAcc:Slider({
-    Name = "Kiri / Kanan (X Offset)",
-    Default = 0,
-    Minimum = -30,
-    Maximum = 30,
-    DisplayMethod = "Round",
-    Precision = 1,
-    Callback = function(val)
-        acc_offset_x = val / 10
-    end
-})
-
-SecAcc:Slider({
-    Name = "Ukuran / Scale (Besar - Kecil)",
-    Default = 10,
-    Minimum = 2,
-    Maximum = 30,
-    DisplayMethod = "Round",
-    Precision = 1,
-    Callback = function(val)
-        acc_scale = val / 10
-    end
-})
-
-SecAcc:Button({
-    Name = "Pasang Aksesoris",
-    Bold = true,
-    Callback = function()
-        Window:Notify({ Title = "Aksesoris", Description = "Memuat aksesoris...", Lifetime = 3 })
-        task.spawn(function()
-            local success, msg = add_accessory(acc_target, acc_id, acc_offset_x, acc_offset_y, acc_offset_z, acc_scale)
-            Window:Notify({
-                Title = success and "Berhasil!" or "Gagal!",
-                Description = msg or "",
-                Lifetime = 4
-            })
-        end)
-    end,
-})
-
-SecAcc:Button({
-    Name = "Terapkan Posisi & Ukuran (Live Update)",
-    Callback = function()
-        local success, msg = update_accessory_transform(acc_target, acc_id, acc_offset_x, acc_offset_y, acc_offset_z, acc_scale)
-        Window:Notify({
-            Title = "Posisi Aksesoris",
-            Description = msg or "",
-            Lifetime = 3
-        })
-    end,
-})
-
-SecAcc:Button({
-    Name = "Hapus Aksesoris (ID / Nama)",
-    Callback = function()
-        local success, msg = remove_accessory(acc_target, acc_id)
-        Window:Notify({
-            Title = "Aksesoris",
-            Description = msg or "",
-            Lifetime = 4
-        })
-    end,
-})
-
-SecAcc:Button({
-    Name = "Hapus Semua Aksesoris Custom",
-    Callback = function()
-        local success, msg = remove_all_accessories(acc_target)
-        Window:Notify({
-            Title = "Aksesoris",
-            Description = msg or "",
-            Lifetime = 4
-        })
-    end,
-})
-
--- SEKSI 4: KORBLOX & HEADLESS
-local SecBody = TabMod:Section({ Name = "Korblox & Headless", Side = 2 })
-SecBody:Header({ Name = ZypheraxLib:Gradient("Korblox & Headless", Color3.fromRGB(232,130,110), Color3.fromRGB(200,110,150)) })
-
-local korblox_offset = 0.7
-
-SecBody:Input({
-    Name = "Target di Server",
-    Default = "",
-    Placeholder = "Kosongkan untuk diri sendiri...",
-    Callback = function(text) mod_target = text end,
-    onChanged = function(text) mod_target = text end,
-})
-
-SecBody:Input({
-    Name = "Korblox Y Offset",
-    Default = "0.7",
-    Placeholder = "Default: 0.7 (sesuai contoh pas)",
-    Callback = function(text) korblox_offset = tonumber(text) or 0.7 end,
-    onChanged = function(text) korblox_offset = tonumber(text) or 0.7 end,
-})
-
-SecBody:Button({
-    Name = "Pasang Korblox Leg (Khusus R6)",
-    Bold = true,
-    Callback = function()
-        Window:Notify({ Title = "Korblox", Description = "Memasang Korblox leg...", Lifetime = 3 })
-        task.spawn(function()
-            local success, msg = apply_korblox(mod_target, 139607718, korblox_offset)
-            Window:Notify({
-                Title = success and "Berhasil!" or "Gagal!",
-                Description = msg or "",
-                Lifetime = 4
-            })
-        end)
-    end,
-})
-
-SecBody:Button({
-    Name = "Hapus Korblox Leg",
-    Callback = function()
-        local success, msg = remove_korblox(mod_target)
-        Window:Notify({
-            Title = "Korblox",
-            Description = msg or "",
-            Lifetime = 4
-        })
-    end,
-})
-
-SecBody:Button({
-    Name = "Pasang Headless",
-    Bold = true,
-    Callback = function()
-        local success, msg = apply_headless(mod_target)
-        Window:Notify({
-            Title = success and "Berhasil!" or "Gagal!",
-            Description = msg or "",
-            Lifetime = 4
-        })
-    end,
-})
-
-SecBody:Button({
-    Name = "Hapus Headless",
-    Callback = function()
-        local success, msg = remove_headless(mod_target)
-        Window:Notify({
-            Title = "Headless",
-            Description = msg or "",
-            Lifetime = 4
-        })
-    end,
-})
-end -- [End TabMod]
 
 -- ==============================================================================
 -- TAB 3: PENGATURAN & TEMA
@@ -5626,7 +4218,7 @@ Window:Notify({
 })
 
 -- Hanya muncul kalau ZYPHERAX_DEBUG = true
-log("Zypherax Hub (Ride A Pet - 6 Tabs) berhasil dijalankan")
+log("Zypherax Hub (Ride A Pet - 4 Tabs) berhasil dijalankan")
 end -- [End TabConfig]
 -- Ekspor ke environment executor supaya bisa diakses dari konsol.
 -- Contoh: ZYPHERAX_DEBUG = true   -> nyalakan log detail
