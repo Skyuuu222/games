@@ -1477,7 +1477,7 @@ function ZypheraxUI:CreateWindow(config)
             U.New("UIListLayout", { SortOrder = Enum.SortOrder.LayoutOrder, Padding = UDim.new(0, 8), Parent = secContainer })
             U.New("UIPadding", { PaddingBottom = UDim.new(0, 10), Parent = secContainer })
 
-            local SectionObj = { _box = sectionBox, _name = displayName, _items = {} }
+            local SectionObj = { _box = sectionBox, _container = secContainer, _name = displayName, _items = {} }
             table.insert(tabEntry.sections, SectionObj)
 
             -- Header updater (Sets section title without duplicate labels)
@@ -3243,22 +3243,34 @@ local RAP_DELAY = 0.5
 local rapFlag = {}
 local rapRunning = false
 local rapGoal = "Player Spawn"
-local rapEggFilter = "Semua Jenis"
-local rapRarityFilter = "Semua Rarity"
+-- Filter multi-pilih (tabel set). Tabel kosong = tampil semua.
+local rapEggFilterSet = {}
+local rapRarityFilterSet = {}
 local rapPickedCount = 0
 local rapPickupMode = "Biasa"
 local rapReturnRanch = true
 local rapEggCapacity = 5
 local rapEggsCarried = 0
+local rapPickupWarned = false
+-- Anti-spam pengambilan telur: cegah kirim permintaan delivery berkali-kali (penyebab "egg delivery failed").
+local rapPickupCD = 0
+local rapHandled = setmetatable({}, { __mode = "k" })
 
 -- SELL / BUY state
-local rapSellRarity = "Semua Rarity"
+local rapSellRaritySet = {}
 local rapSellMaxWeight = 0      -- 0 = abaikan filter berat
 local rapUseWeightFilter = false
 local rapSellCount = 0
 local rapBuyFood = false
 local rapBuyGear = false
 local rapBuyCount = 0
+local rapBuyFoodSet = {}
+local rapBuyGearSet = {}
+local rapFoodItems = {}
+local rapGearItems = {}
+local rapLastSpell = 0
+local rapLastSkill = ""
+local rapFoodDD, rapGearDD = nil, nil
 
 local rapEggNames = {
     "White Egg", "Brown Egg", "Galaxy Egg", "Tidal Egg", "Soul Egg", "Aurora Egg",
@@ -3285,9 +3297,9 @@ local RARITY_COLOR = {
     Mythic    = Color3.fromRGB(255, 107, 138),
 }
 
-local RARITY_LIST = { "Semua Rarity", "Common", "Rare", "Epic", "Legendary", "Mythic" }
+local RARITY_LIST = { "Common", "Rare", "Epic", "Legendary", "Mythic" }
 
-local rapTypeList = { "Semua Jenis" }
+local rapTypeList = {}
 for _, n in ipairs(rapEggNames) do table.insert(rapTypeList, n) end
 
 local rapActors = { "Snail", "Cheetah", "Giraffe", "Unicorn", "Tim", "Richie", "Eggo", "Rick" }
@@ -3296,13 +3308,50 @@ local rapGoals = { "Player Spawn" }
 for _, n in ipairs(rapEggNames) do table.insert(rapGoals, n) end
 for _, n in ipairs(rapActors) do table.insert(rapGoals, n) end
 
+local function rapSetCount(t)
+    local n = 0
+    if t then for _ in pairs(t) do n = n + 1 end end
+    return n
+end
+
+local function rapInSet(t, v)
+    if rapSetCount(t) == 0 then return true end
+    return t[v] == true
+end
+
+local function rapKeysOf(t)
+    local out = {}
+    if t then for k in pairs(t) do table.insert(out, tostring(k)) end end
+    table.sort(out)
+    return out
+end
+
+local function rapFilterText(t, allText)
+    local k = rapKeysOf(t)
+    if #k == 0 then return allText end
+    return table.concat(k, ", ")
+end
+
 local function rapRarityOf(name)
     return RAP_RARITY[name] or "Common"
 end
 
+local function rapRarityOfName(nm)
+    nm = tostring(nm or "")
+    if RAP_RARITY[nm] then return RAP_RARITY[nm] end
+    for k, v in pairs(RAP_RARITY) do
+        if string.find(nm, k, 1, true) then return v end
+    end
+    local low = string.lower(nm)
+    for k, v in pairs(RAP_RARITY) do
+        if string.find(low, string.lower(k), 1, true) then return v end
+    end
+    return nil
+end
+
 local function rapMatchFilter(name)
-    if rapEggFilter ~= "Semua Jenis" and name ~= rapEggFilter then return false end
-    if rapRarityFilter ~= "Semua Rarity" and rapRarityOf(name) ~= rapRarityFilter then return false end
+    if not rapInSet(rapEggFilterSet, name) then return false end
+    if not rapInSet(rapRarityFilterSet, rapRarityOf(name)) then return false end
     return true
 end
 
@@ -3543,7 +3592,7 @@ local function rapPickupTick()
         rapTeleportTo(best.pos, "Egg")
         task.wait(0.15)
         arrived = true
-    elseif bestDist > 14 then
+    elseif bestDist > 10 then
         arrived = rapMoveTo(best.pos, 5)
     else
         arrived = true
@@ -3553,54 +3602,100 @@ local function rapPickupTick()
     root = rapGetRoot()
     if not root then return 0 end
 
-    local n = 0
+    -- Ambil prompt "Pick Up" yang benar-benar paling dekat dengan telur terdekat.
+    local prompt, promptDist = nil, nil
     pcall(function()
-        local rootPos = root.Position
+        local rp = rapGetRoot()
+        if not rp then return end
         for _, d in ipairs(workspace:GetDescendants()) do
             if d:IsA("ProximityPrompt") and tostring(d.ActionText) == "Pick Up" then
-                local nm, egg = rapFindEggName(d)
+                local nm = rapFindEggName(d)
                 if nm and rapMatchFilter(nm) then
                     local p1 = rapEntityPos(d.Parent) or rapEntityPos(d)
-                    if p1 and (p1 - rootPos).Magnitude <= 30 then
-                        pcall(function()
-                            d.HoldDuration = 0
-                            d.RequiresLineOfSight = false
-                        end)
-                        rapTriggerPrompt(d)
-                        rapPickedCount = rapPickedCount + 1
-                        n = n + 1
-                        local rar = rapRarityOf(nm)
-                        if rar == "Epic" or rar == "Legendary" or rar == "Mythic" then
-                            Window:Notify({
-                                Title = "Telur Didapat",
-                                Description = ("[%s] %s (Total: %d)"):format(rar, nm, rapPickedCount),
-                                Lifetime = 3,
-                            })
+                    if p1 then
+                        local dist = (p1 - rp.Position).Magnitude
+                        if not promptDist or dist < promptDist then
+                            promptDist = dist
+                            prompt = d
                         end
-                        if egg then pcall(function() egg:Destroy() end) end
                     end
                 end
             end
         end
     end)
+    if not prompt then return 0 end
 
-    if n == 0 then
-        rapFire({ "Remotes", "Game", "EggPickup" })
-    else
-        rapEggsCarried = rapEggsCarried + n
+    if os.clock() < rapPickupCD then return 0 end
+    if rapHandled[prompt] then return 0 end
+
+    local eggName = rapFindEggName(prompt) or "Egg"
+    local eggPart = prompt.Parent
+    local beforePos = root.Position
+
+    -- Dekati telur (mode Biasa = jalan, bukan teleport) supaya server tetap sah.
+    local eggPos = eggPart and rapEntityPos(eggPart)
+    if rapPickupMode == "Instant" then
+        if eggPos then rapTeleportTo(eggPos, "Egg") end
+        task.wait(0.2)
+    elseif eggPos and promptDist and promptDist > 9 then
+        rapMoveTo(eggPos, 4)
+        task.wait(0.15)
     end
 
-    -- Setelah ambil telur: balik ke RANCH (bukan placed egg)
-    if rapReturnRanch and rapEggsCarried > 0 and rapEggsCarried >= rapEggCapacity then
+    pcall(function()
+        prompt.HoldDuration = 0
+        prompt.MaxActivationDistance = 500
+        prompt.RequiresLineOfSight = false
+    end)
+
+    -- Tandai SEBELUM menembak supaya loop tidak menembak telur yang sama dua kali.
+    rapHandled[prompt] = true
+    rapTriggerPrompt(prompt)
+
+    -- Tunggu server menyelesaikan pengiriman telur. JANGAN ganggu proses ini
+    -- (dulu loop langsung teleport ke ranch -> server balas "egg delivery failed").
+    local goneWait = (rapPickupMode == "Instant") and 0.25 or 0.8
+    task.wait(goneWait)
+    local gone = (prompt.Parent == nil) or (not prompt:IsDescendantOf(workspace))
+    local curRoot = rapGetRoot()
+    local moved = curRoot and (curRoot.Position - beforePos).Magnitude or 0
+
+    -- Server memindahkan karakter (ke ranch) ATAU telur hilang = terkirim sukses.
+    local delivered = gone or moved > 20
+
+    if delivered then
+        if eggPart then pcall(function() eggPart:Destroy() end) end
+        pcall(function() prompt:Destroy() end)
+        rapPickedCount = rapPickedCount + 1
+        rapEggsCarried = rapEggsCarried + 1
+        rapPickupCD = os.clock() + 0.9
+        local rar = rapRarityOf(eggName)
+        if rar == "Epic" or rar == "Legendary" or rar == "Mythic"
+            or rapEggsCarried >= rapEggCapacity then
+            Window:Notify({
+                Title = "Telur Didapat",
+                Description = ("[%s] %s (bawa %d, total %d)"):format(rar, eggName, rapEggsCarried, rapPickedCount),
+                Lifetime = 3,
+            })
+        end
+    else
+        -- Gagal terkirim: lepas tanda + beri jeda, jangan spam ulang.
+        rapHandled[prompt] = nil
+        rapPickupCD = os.clock() + 1.6
+    end
+
+    -- Balik ke ranch SETELAH pengiriman benar-benar selesai.
+    if rapReturnRanch and rapEggsCarried >= rapEggCapacity then
+        task.wait(0.8)
         rapGoRanch(false)
         rapEggsCarried = 0
         Window:Notify({
             Title = "Ranch",
-            Description = ("Balik ke ranch (%d telur, total %d)."):format(n, rapPickedCount),
+            Description = ("Balik ke ranch setelah %d telur (total %d)."):format(rapEggCapacity, rapPickedCount),
             Lifetime = 3,
         })
     end
-    return n
+    return delivered and 1 or 0
 end
 
 -- ============================== AUTO SELL (RARITY + WEIGHT) ==============================
@@ -3644,8 +3739,10 @@ end
 
 local function rapShouldSell(obj)
     local rar = rapGetItemRarity(obj)
-    if rapSellRarity ~= "Semua Rarity" then
-        if not rar or rar ~= rapSellRarity then return false end
+    local nm = tostring(obj and obj.Name or "")
+    local key = rar or rapRarityOfName(nm) or "Unknown"
+    if rapSetCount(rapSellRaritySet) > 0 then
+        if not (rapInSet(rapSellRaritySet, key) or rapInSet(rapSellRaritySet, nm)) then return false end
     end
     if rapUseWeightFilter and rapSellMaxWeight > 0 then
         local w = rapGetItemWeight(obj)
@@ -3654,64 +3751,122 @@ local function rapShouldSell(obj)
     return true
 end
 
-local function rapSellTick(forceAll)
-    local n = 0
-    local target = nil
+-- Kumpulkan tombol "Sell/Jual/Sell All" yang terlihat di layar.
+local function rapSellButtons(scope)
+    local out = {}
     pcall(function()
-        for _, d in ipairs(workspace:GetDescendants()) do
-            if d:IsA("ProximityPrompt") and tostring(d.ActionText) == "Sell" then
-                local obj = d.Parent and d.Parent.Parent or d.Parent
-                if forceAll or rapShouldSell(obj) then
-                    local pos = rapEntityPos(d.Parent) or rapEntityPos(d)
-                    if pos then target = pos; break end
+        for _, d in ipairs(scope:GetDescendants()) do
+            if d:IsA("GuiButton") and d.Visible then
+                local txt = tostring(d.Text or ""):lower()
+                if txt:find("sell all", 1, true) or txt == "sell" or txt:find("jual", 1, true) then
+                    table.insert(out, d)
                 end
             end
         end
     end)
-    -- Dekati NPC dulu supaya prompt benar-benar bisa dipicu
-    if target then
-        local root = rapGetRoot()
-        if root and (root.Position - target).Magnitude > 12 then
-            rapTeleportTo(target, "Sell")
-            task.wait(0.35)
-        end
-    end
+    return out
+end
+
+local function rapClickButton(btn)
+    if not btn or not btn.Parent then return false end
+    pcall(function() btn:Activate() end)
+    pcall(function() btn.MouseButton1Click:Fire() end)
+    return true
+end
+
+-- Cari prompt "Sell" di dunia (dipakai kalau belum ada tombol UI).
+local function rapFindSellPrompt()
+    local root = rapGetRoot()
+    local best, bestDist = nil, nil
     pcall(function()
         for _, d in ipairs(workspace:GetDescendants()) do
             if d:IsA("ProximityPrompt") and tostring(d.ActionText) == "Sell" then
-                local obj = d.Parent and d.Parent.Parent or d.Parent
-                if forceAll or rapShouldSell(obj) then
+                local p = rapEntityPos(d.Parent) or rapEntityPos(d)
+                if p then
+                    local dist = root and (p - root.Position).Magnitude or 0
+                    if not bestDist or dist < bestDist then best, bestDist = d, dist end
+                end
+            end
+        end
+    end)
+    return best, bestDist
+end
+
+-- Langsung menjual: pencet tombol Sell/Sell All / tembak prompt Sell dari jarak jauh.
+-- TIDAK teleport ke NPC Sell dan TIDAK perlu buka menu sell manual.
+local function rapSellTick(forceAll)
+    local n = 0
+    local gui = LocalPlayer:FindFirstChild("PlayerGui")
+    local scope = gui or (gethui and gethui()) or game:GetService("CoreGui")
+
+    local function clickVisible()
+        local c = 0
+        for _, b in ipairs(rapSellButtons(scope)) do
+            if rapClickButton(b) then
+                c = c + 1
+                task.wait(0.06)
+            end
+        end
+        return c
+    end
+
+    -- Fase 1: kalau menu Sell sudah terbuka, langsung pencet tombolnya.
+    n = n + clickVisible()
+    if n > 0 then return n end
+
+    -- Fase 2: tembak prompt Sell dari jarak jauh (fireproximityprompt tak peduli jarak).
+    local fired = false
+    pcall(function()
+        for _, d in ipairs(workspace:GetDescendants()) do
+            if d:IsA("ProximityPrompt") then
+                local act = string.lower(tostring(d.ActionText or ""))
+                if act:find("sell", 1, true) or act:find("jual", 1, true) then
                     pcall(function()
                         d.HoldDuration = 0
-                        d.MaxActivationDistance = 500
+                        d.MaxActivationDistance = 100000
                         d.RequiresLineOfSight = false
                     end)
                     rapTriggerPrompt(d)
-                    n = n + 1
-                    rapSellCount = rapSellCount + 1
-                    if n >= 60 then break end
+                    fired = true
                 end
             end
         end
     end)
-    if n == 0 then
-        -- Cadangan: klik tombol UI "Sell All" / "Sell"
-        pcall(function()
-            local gui = LocalPlayer:FindFirstChild("PlayerGui")
-            local scope = gui or (gethui and gethui()) or game:GetService("CoreGui")
-            for _, d in ipairs(scope:GetDescendants()) do
-                if d:IsA("GuiButton") then
-                    local txt = tostring(d.Text or ""):lower()
-                    if txt:find("sell all", 1, true) or txt == "sell" or txt:find("jual", 1, true) then
-                        pcall(function() d:Activate() end)
-                        pcall(function() d.MouseButton1Click:Fire() end)
-                        n = n + 1
-                        rapSellCount = rapSellCount + 1
+
+    -- Remote cadangan (kalau game pakai RemoteEvent, bukan ProximityPrompt).
+    rapFire({ "Remotes", "Game", "SellAll" })
+    rapFire({ "Remotes", "Game", "Sell" })
+    rapFire({ "Remotes", "Game", "SellPet" })
+    rapFire({ "Remotes", "Reusable", "SellAll" })
+
+    if fired then
+        rapSellCount = rapSellCount + 1
+        n = n + 1
+    end
+
+    -- Fase 3: kalau prompt tadi memunculkan GUI, langsung pencet Sell / Sell All.
+    for _ = 1, 10 do
+        task.wait(0.16)
+        local c = clickVisible()
+        if c > 0 then n = n + c; break end
+    end
+
+    -- Bila menu menampilkan baris pet (bukan Sell All), pilih baris sesuai filter.
+    pcall(function()
+        for _, d in ipairs(scope:GetDescendants()) do
+            if d:IsA("GuiButton") and d.Visible then
+                local row = d:FindFirstAncestorOfClass("Frame")
+                if row and row.Name ~= "" and (forceAll or rapShouldSell(row)) then
+                    local nm = tostring(row.Name):lower()
+                    if nm:find("pet", 1, true) or nm:find("animal", 1, true)
+                        or nm:find("egg", 1, true) or nm:find("item", 1, true) then
+                        rapClickButton(d)
+                        task.wait(0.05)
                     end
                 end
             end
-        end)
-    end
+        end
+    end)
     return n
 end
 
@@ -3728,72 +3883,220 @@ local function rapZoneOf(obj)
     return nil
 end
 
-local function rapBuyTick()
-    local n = 0
-    -- Dekati prompt Buy terdekat dulu (kalau ada)
-    local target = nil
-    pcall(function()
-        for _, d in ipairs(workspace:GetDescendants()) do
-            if d:IsA("ProximityPrompt") then
-                local act = tostring(d.ActionText or ""):lower()
-                if act:find("buy", 1, true) or act:find("beli", 1, true) then
-                    local zone = rapZoneOf(d.Parent)
-                    if (zone == "food" and rapBuyFood) or (zone == "gear" and rapBuyGear) then
-                        local pos = rapEntityPos(d.Parent) or rapEntityPos(d)
-                        if pos then target = pos; break end
-                    end
-                end
-            end
-        end
-    end)
-    if target then
-        local root = rapGetRoot()
-        if root and (root.Position - target).Magnitude > 12 then
-            rapTeleportTo(target, "Buy")
-            task.wait(0.35)
-        end
+local function rapKeyMatch(set, text)
+    if rapSetCount(set) == 0 then return true end
+    local low = string.lower(tostring(text or ""))
+    for k in pairs(set) do
+        if string.find(low, string.lower(tostring(k)), 1, true) then return true end
     end
-    -- 1. ProximityPrompt beli di dunia
+    return false
+end
+
+-- Cari tombol beli yang cocok dengan pilihan item di sebuah zona (food/gear).
+local function rapBuyInScope(scope, wantFood, wantGear, set)
+    local n = 0
     pcall(function()
-        for _, d in ipairs(workspace:GetDescendants()) do
-            if d:IsA("ProximityPrompt") then
-                local act = tostring(d.ActionText or ""):lower()
-                if act:find("buy", 1, true) or act:find("beli", 1, true) then
-                    local zone = rapZoneOf(d.Parent)
-                    if (zone == "food" and rapBuyFood) or (zone == "gear" and rapBuyGear) then
-                        pcall(function()
-                            d.HoldDuration = 0
-                            d.MaxActivationDistance = 500
-                            d.RequiresLineOfSight = false
-                        end)
-                        rapTriggerPrompt(d)
-                        n = n + 1
-                        rapBuyCount = rapBuyCount + 1
-                    end
-                end
-            end
-        end
-    end)
-    -- 2. Tombol UI shop (Food / Gears)
-    pcall(function()
-        local gui = LocalPlayer:FindFirstChild("PlayerGui")
-        local scope = gui or (gethui and gethui()) or game:GetService("CoreGui")
         for _, d in ipairs(scope:GetDescendants()) do
             if d:IsA("GuiButton") and d.Visible then
-                local txt = tostring(d.Text or ""):lower()
-                if txt:find("buy", 1, true) or txt:find("beli", 1, true) then
-                    local zone = rapZoneOf(d)
-                    if (zone == "food" and rapBuyFood) or (zone == "gear" and rapBuyGear) then
-                        pcall(function() d:Activate() end)
-                        pcall(function() d.MouseButton1Click:Fire() end)
-                        n = n + 1
-                        rapBuyCount = rapBuyCount + 1
+                local txt = tostring(d.Text or "")
+                local low = string.lower(txt)
+                local isBuy = low:find("buy", 1, true) or low:find("beli", 1, true) or low:find("purchase", 1, true)
+                -- Nama item biasanya ada di label tombol atau di sebelahnya.
+                local lbl = nil
+                pcall(function()
+                    local par = d.Parent
+                    if par then
+                        lbl = par:FindFirstChildWhichIsA("TextLabel")
                     end
+                end)
+                local labelTxt = lbl and tostring(lbl.Text) or ""
+                local combined = txt .. " " .. labelTxt
+                local zone = rapZoneOf(d) or rapZoneOf(d.Parent)
+                local okZone = (zone == "food" and wantFood) or (zone == "gear" and wantGear)
+                    or (not zone and (wantFood or wantGear))
+                if okZone and (isBuy or labelTxt ~= "") and rapKeyMatch(set, combined) then
+                    pcall(function() d:Activate() end)
+                    pcall(function() d.MouseButton1Click:Fire() end)
+                    n = n + 1
+                    rapBuyCount = rapBuyCount + 1
+                    task.wait(0.05)
                 end
             end
         end
     end)
     return n
+end
+
+local rapScanShopItems -- forward declaration (didefinisikan di bawah)
+
+local function rapBuyTick()
+    local n = 0
+    local root = rapGetRoot()
+    local rootPos = root and root.Position
+
+    -- Auto-scan sekali supaya daftar item di menu ikut terisi sendiri.
+    if (rapBuyFood and #rapFoodItems == 0) or (rapBuyGear and #rapGearItems == 0) then
+        pcall(rapScanShopItems)
+    end
+
+    -- 1. Prompt beli di dunia (kalau shop berupa objek di map).
+    local target = nil
+    pcall(function()
+        for _, d in ipairs(workspace:GetDescendants()) do
+            if d:IsA("ProximityPrompt") then
+                local act = tostring(d.ActionText or "")
+                local low = string.lower(act)
+                if low:find("buy", 1, true) or low:find("beli", 1, true) or low:find("purchase", 1, true) then
+                    local zone = rapZoneOf(d.Parent)
+                    local wantF, wantG = false, false
+                    if zone == "food" and rapBuyFood then wantF = true end
+                    if zone == "gear" and rapBuyGear then wantG = true end
+                    if zone == nil and (rapBuyFood or rapBuyGear) then
+                        wantF = rapBuyFood; wantG = rapBuyGear
+                    end
+                    if wantF or wantG then
+                        local set = wantF and rapBuyFoodSet or rapBuyGearSet
+                        local pName = d.Parent and tostring(d.Parent.Name) or ""
+                        if rapKeyMatch(set, pName .. " " .. act) then
+                            local p = rapEntityPos(d.Parent) or rapEntityPos(d)
+                            if p and not target then target = p end
+                        end
+                    end
+                end
+            end
+        end
+    end)
+    if target and rootPos and (rootPos - target).Magnitude > 10 then
+        rapTeleportTo(target, "Buy")
+        task.wait(0.3)
+    end
+    pcall(function()
+        for _, d in ipairs(workspace:GetDescendants()) do
+            if d:IsA("ProximityPrompt") then
+                local act = tostring(d.ActionText or "")
+                local low = string.lower(act)
+                if low:find("buy", 1, true) or low:find("beli", 1, true) or low:find("purchase", 1, true) then
+                    local zone = rapZoneOf(d.Parent)
+                    local wantF = (zone == "food" and rapBuyFood) or (zone == nil and rapBuyFood)
+                    local wantG = (zone == "gear" and rapBuyGear) or (zone == nil and rapBuyGear)
+                    if wantF or wantG then
+                        local set = wantF and rapBuyFoodSet or rapBuyGearSet
+                        local pName = d.Parent and tostring(d.Parent.Name) or ""
+                        if rapKeyMatch(set, pName .. " " .. act) then
+                            pcall(function()
+                                d.HoldDuration = 0
+                                d.MaxActivationDistance = 500
+                                d.RequiresLineOfSight = false
+                            end)
+                            rapTriggerPrompt(d)
+                            n = n + 1
+                            rapBuyCount = rapBuyCount + 1
+                        end
+                    end
+                end
+            end
+        end
+    end)
+
+    -- 2. Tombol UI shop (Food / Gears) sesuai item yang dipilih.
+    local gui = LocalPlayer:FindFirstChild("PlayerGui")
+    local scope = gui or (gethui and gethui()) or game:GetService("CoreGui")
+    if rapBuyFood then n = n + rapBuyInScope(scope, true, false, rapBuyFoodSet) end
+    if rapBuyGear then n = n + rapBuyInScope(scope, false, true, rapBuyGearSet) end
+    return n
+end
+
+-- Pindai nama item Food & Gears dari tombol shop yang sedang terbuka.
+rapScanShopItems = function()
+    local foundFood, foundGear = {}, {}
+    local gui = LocalPlayer:FindFirstChild("PlayerGui")
+    local scope = gui or (gethui and gethui()) or game:GetService("CoreGui")
+    pcall(function()
+        for _, d in ipairs(scope:GetDescendants()) do
+            if (d:IsA("GuiButton") or d:IsA("TextLabel")) and d.Visible then
+                local txt = tostring(d.Text or ""):gsub("^%s+", ""):gsub("%s+$", "")
+                local low = string.lower(txt)
+                if #txt >= 2 and #txt <= 40
+                    and not low:find("buy", 1, true) and not low:find("beli", 1, true)
+                    and not low:find("sell", 1, true) and not low:find("close", 1, true)
+                    and not low:find("equip", 1, true) and low ~= "food" and low ~= "gears"
+                    and low ~= "gear" and low ~= "foods" then
+                    local zone = rapZoneOf(d)
+                    if not zone then
+                        -- Fallback: coba tebak dari teks header/tombolnya.
+                        if low:find("food", 1, true) or low:find("meat", 1, true)
+                            or low:find("apple", 1, true) or low:find("carrot", 1, true)
+                            or low:find("makanan", 1, true) or low:find("beri", 1, true) then
+                            zone = "food"
+                        elseif low:find("gear", 1, true) or low:find("tool", 1, true)
+                            or low:find("stick", 1, true) or low:find("leash", 1, true) then
+                            zone = "gear"
+                        end
+                    end
+                    if zone == "food" then foundFood[txt] = true end
+                    if zone == "gear" then foundGear[txt] = true end
+                end
+            end
+        end
+    end)
+    local function keyList(t)
+        local out = {}
+        for k in pairs(t) do table.insert(out, k) end
+        table.sort(out)
+        return out
+    end
+    local f, g = keyList(foundFood), keyList(foundGear)
+    local function apply(dest, src)
+        if #src == 0 then return end
+        for i = #dest, 1, -1 do dest[i] = nil end
+        for i = 1, #src do dest[i] = src[i] end
+    end
+    apply(rapFoodItems, f)
+    apply(rapGearItems, g)
+    if rapFoodDD then pcall(function() rapFoodDD:SetItems(rapFoodItems) end) end
+    if rapGearDD then pcall(function() rapGearDD:SetItems(rapGearItems) end) end
+    return #rapFoodItems, #rapGearItems
+end
+
+-- ============================== SKILL & SPELL (ONE-SHOT) ==============================
+local function rapSpellTick()
+    local now = os.clock()
+    if (now - rapLastSpell) < 0.6 then return end
+    rapLastSpell = now
+
+    -- 1. Tombol skill/spell yang terlihat di layar.
+    local hit = 0
+    local gui = LocalPlayer:FindFirstChild("PlayerGui")
+    local scope = gui or (gethui and gethui()) or game:GetService("CoreGui")
+    pcall(function()
+        for _, d in ipairs(scope:GetDescendants()) do
+            if d:IsA("GuiButton") and d.Visible then
+                local low = string.lower(tostring(d.Text or ""))
+                local nm  = string.lower(tostring(d.Name or ""))
+                local key = low .. " " .. nm
+                if key:find("cast", 1, true) or key:find("skill", 1, true)
+                    or key:find("spell", 1, true) or key:find("ability", 1, true)
+                    or key:find("eat", 1, true) or key:find("use", 1, true)
+                    or key:find("equip", 1, true) or key:find("feed", 1, true) then
+                    if rapLastSkill == "" or low == "" or low == rapLastSkill
+                        or string.find(low, rapLastSkill, 1, true) then
+                        pcall(function() d:Activate() end)
+                        pcall(function() d.MouseButton1Click:Fire() end)
+                        hit = hit + 1
+                        task.wait(0.05)
+                    end
+                end
+            end
+        end
+    end)
+
+    -- 2. Remote generik untuk skill / feed pet.
+    rapFire({ "Remotes", "Game", "UseSkill" })
+    rapFire({ "Remotes", "Game", "CastSpell" })
+    rapFire({ "Remotes", "Game", "FeedPet" })
+    rapFire({ "Remotes", "Game", "UseFood" })
+    rapFire({ "Remotes", "Game", "UseGear" })
+    return hit
 end
 
 -- ============================== LOOP ==============================
@@ -3802,6 +4105,7 @@ local function rapStep()
     if rapFlag.hatch then rapPassBatch(function(a) return a == "Hatch" end, 3) end
     if rapFlag.grow then rapPassBatch(function(a) return a:find("Skip", 1, true) ~= nil end, 3) end
     if rapFlag.feed then rapPassBatch(function(a) return a == "Feed" end, 3) end
+    if rapFlag.skill then rapSpellTick() end
     if rapFlag.ride then rapPassBatch(function(a) return a == "Ride" end, 1) end
     if rapFlag.join then rapPassBatch(function(a) return a:find("Join", 1, true) ~= nil end, 1) end
     if rapFlag.claim then rapPassBatch(function(a) return a == "Claim" or a:find("Unlock", 1, true) ~= nil end, 2) end
@@ -4030,6 +4334,302 @@ local function espSet(key, on, title, onMsg, offMsg)
 end
 
 -- ==============================================================================================
+-- KONTROL FILTER: SEARCH + MULTI-PILIH
+-- Dipakai di semua filter. Punya kotak pencarian dan bisa memilih lebih dari satu nilai.
+-- ==============================================================================================
+local function rapMultiSelect(cfg)
+    local nm      = cfg.Label or cfg.Name or "Filter"
+    local options = cfg.Options or cfg.Items or {}
+    local cb      = cfg.Callback or function() end
+    local selected = {}
+    local query    = ""
+    local isOpen   = false
+
+    -- Bisa diberi SectionObj atau Frame langsung. SectionObj bukan Instance,
+    -- jadi harus diterjemahkan ke container-nya dulu.
+    local host = cfg.Parent
+    if type(host) == "table" then
+        host = host._container or host._box or host
+    end
+
+    local base = U.New("Frame", {
+        Size = UDim2.new(1, 0, 0, 36),
+        BackgroundColor3 = T.Surface2,
+        BackgroundTransparency = 0.25,
+        BorderSizePixel = 0,
+        ClipsDescendants = true,
+        ZIndex = 5,
+        Parent = host,
+    })
+    U.Corner(base, T.CornerSm)
+    local stroke = U.Stroke(base, T.Stroke, 1, 0)
+    RegisterThemeColor(base, "BackgroundColor3", "Surface2")
+    RegisterThemeColor(stroke, "Color", "Stroke")
+    base:SetAttribute("ControlName", nm)
+    if type(cfg.Parent) == "table" and cfg.Parent._items then
+        table.insert(cfg.Parent._items, base)
+    end
+
+    local lbl = U.New("TextLabel", {
+        Text = nm .. ": Semua",
+        Font = T.FontRegular,
+        TextSize = 12,
+        TextColor3 = T.Text,
+        BackgroundTransparency = 1,
+        Position = UDim2.new(0, 10, 0, 0),
+        Size = UDim2.new(1, -40, 0, 36),
+        TextXAlignment = Enum.TextXAlignment.Left,
+        TextTruncate = Enum.TextTruncate.AtEnd,
+        ZIndex = 6,
+        Parent = base,
+    })
+    RegisterThemeColor(lbl, "TextColor3", "Text")
+
+    local chevron = U.New("TextLabel", {
+        Text = "v",
+        Font = T.FontBold,
+        TextSize = 12,
+        TextColor3 = T.TextMuted,
+        BackgroundTransparency = 1,
+        Position = UDim2.new(1, -26, 0, 0),
+        Size = UDim2.new(0, 20, 0, 36),
+        ZIndex = 6,
+        Parent = base,
+    })
+    RegisterThemeColor(chevron, "TextColor3", "TextMuted")
+
+    local body = U.New("Frame", {
+        Size = UDim2.new(1, -16, 0, 0),
+        Position = UDim2.new(0, 8, 0, 38),
+        BackgroundTransparency = 1,
+        ClipsDescendants = true,
+        Visible = false,
+        ZIndex = 7,
+        Parent = base,
+    })
+    U.New("UIListLayout", {
+        SortOrder = Enum.SortOrder.LayoutOrder,
+        Padding = UDim.new(0, 4),
+        Parent = body,
+    })
+
+    local search = U.New("TextBox", {
+        Size = UDim2.new(1, 0, 0, 28),
+        BackgroundColor3 = T.Surface3,
+        BorderSizePixel = 0,
+        Text = "",
+        PlaceholderText = "Cari (search)...",
+        Font = T.FontRegular,
+        TextSize = 11,
+        TextColor3 = T.Text,
+        PlaceholderColor3 = T.TextDim,
+        TextXAlignment = Enum.TextXAlignment.Left,
+        ClearTextOnFocus = false,
+        ZIndex = 8,
+        Parent = body,
+    })
+    U.Corner(search, UDim.new(0, 4))
+    U.New("UIPadding", { PaddingLeft = UDim.new(0, 8), Parent = search })
+    RegisterThemeColor(search, "BackgroundColor3", "Surface3")
+    RegisterThemeColor(search, "TextColor3", "Text")
+    RegisterThemeColor(search, "PlaceholderColor3", "TextDim")
+
+    local actsFrame = U.New("Frame", {
+        Size = UDim2.new(1, 0, 0, 24),
+        BackgroundTransparency = 1,
+        ZIndex = 8,
+        Parent = body,
+    })
+    U.New("UIListLayout", {
+        FillDirection = Enum.FillDirection.Horizontal,
+        SortOrder = Enum.SortOrder.LayoutOrder,
+        Padding = UDim.new(0, 4),
+        Parent = actsFrame,
+    })
+
+    local listFrame = U.New("Frame", {
+        Size = UDim2.new(1, 0, 0, 0),
+        BackgroundTransparency = 1,
+        ClipsDescendants = true,
+        ZIndex = 8,
+        Parent = body,
+    })
+    U.New("UIListLayout", {
+        SortOrder = Enum.SortOrder.LayoutOrder,
+        Padding = UDim.new(0, 2),
+        Parent = listFrame,
+    })
+
+    local function refreshLabel()
+        local k = rapKeysOf(selected)
+        if #k == 0 then
+            lbl.Text = nm .. ": Semua"
+        elseif #k <= 2 then
+            lbl.Text = nm .. ": " .. table.concat(k, ", ")
+        else
+            lbl.Text = nm .. ": " .. k[1] .. " +" .. tostring(#k - 1) .. " lagi"
+        end
+    end
+
+    local buildList
+
+    local function setOpen(open)
+        isOpen = open
+        if open then
+            body.Visible = true
+            buildList()
+            chevron.Text = "^"
+        else
+            chevron.Text = "v"
+            body.Visible = false
+            body.Size = UDim2.new(1, -16, 0, 0)
+            base.Size = UDim2.new(1, 0, 0, 36)
+        end
+    end
+
+    buildList = function()
+        for _, c in ipairs(listFrame:GetChildren()) do
+            if c:IsA("TextButton") or c:IsA("TextLabel") then c:Destroy() end
+        end
+        local low = string.lower(query)
+        local shown = 0
+        for _, it in ipairs(options) do
+            local s = tostring(it)
+            if low == "" or string.find(string.lower(s), low, 1, true) then
+                local on = selected[it] == true
+                local btn = U.New("TextButton", {
+                    Size = UDim2.new(1, 0, 0, 24),
+                    BackgroundColor3 = on and T.Accent or T.Surface3,
+                    BackgroundTransparency = on and 0.5 or 1,
+                    Text = (on and "[x] " or "[ ] ") .. s,
+                    Font = T.FontRegular,
+                    TextSize = 11,
+                    TextColor3 = on and T.Accent or T.Text,
+                    TextXAlignment = Enum.TextXAlignment.Left,
+                    BorderSizePixel = 0,
+                    ZIndex = 9,
+                    Parent = listFrame,
+                })
+                U.Corner(btn, UDim.new(0, 4))
+                U.New("UIPadding", { PaddingLeft = UDim.new(0, 6), Parent = btn })
+                track(btn.MouseButton1Click:Connect(function()
+                    if selected[it] then selected[it] = nil else selected[it] = true end
+                    refreshLabel()
+                    buildList()
+                    pcall(cb, rapKeysOf(selected))
+                end))
+                shown = shown + 1
+            end
+        end
+        if shown == 0 then
+            local empty = U.New("TextLabel", {
+                Size = UDim2.new(1, 0, 0, 22),
+                BackgroundTransparency = 1,
+                Text = "Tidak ada hasil",
+                Font = T.FontRegular,
+                TextSize = 11,
+                TextColor3 = T.TextDim,
+                TextXAlignment = Enum.TextXAlignment.Left,
+                ZIndex = 9,
+                Parent = listFrame,
+            })
+            RegisterThemeColor(empty, "TextColor3", "TextDim")
+        end
+        local listH = math.min(shown * 26, 260)
+        if shown == 0 then listH = 22 end
+        local bodyH = 28 + 4 + 24 + 4 + listH + 4
+        listFrame.Size = UDim2.new(1, 0, 0, listH)
+        body.Size = UDim2.new(1, -16, 0, bodyH)
+        base.Size = UDim2.new(1, 0, 0, 38 + bodyH + 6)
+    end
+
+    track(search:GetPropertyChangedSignal("Text"):Connect(function()
+        query = search.Text or ""
+        if isOpen then buildList() end
+    end))
+
+    local btnAll = U.New("TextButton", {
+        Size = UDim2.new(0, 92, 0, 22),
+        BackgroundColor3 = T.Surface3,
+        BorderSizePixel = 0,
+        Text = "Pilih Semua",
+        Font = T.FontRegular,
+        TextSize = 10,
+        TextColor3 = T.Text,
+        ZIndex = 9,
+        Parent = actsFrame,
+    })
+    U.Corner(btnAll, UDim.new(0, 4))
+    track(btnAll.MouseButton1Click:Connect(function()
+        for _, it in ipairs(options) do selected[it] = true end
+        refreshLabel()
+        if isOpen then buildList() end
+        pcall(cb, rapKeysOf(selected))
+    end))
+
+    local btnNone = U.New("TextButton", {
+        Size = UDim2.new(0, 92, 0, 22),
+        BackgroundColor3 = T.Surface3,
+        BorderSizePixel = 0,
+        Text = "Kosongkan",
+        Font = T.FontRegular,
+        TextSize = 10,
+        TextColor3 = T.Text,
+        ZIndex = 9,
+        Parent = actsFrame,
+    })
+    U.Corner(btnNone, UDim.new(0, 4))
+    track(btnNone.MouseButton1Click:Connect(function()
+        selected = {}
+        refreshLabel()
+        if isOpen then buildList() end
+        pcall(cb, rapKeysOf(selected))
+    end))
+
+    local toggle = U.New("TextButton", {
+        Size = UDim2.new(1, 0, 0, 36),
+        BackgroundTransparency = 1,
+        Text = "",
+        ZIndex = 10,
+        Parent = base,
+    })
+    track(toggle.MouseButton1Click:Connect(function()
+        setOpen(not isOpen)
+    end))
+
+    refreshLabel()
+
+    return {
+        Set = function(_, list)
+            selected = {}
+            for _, v in ipairs(list or {}) do selected[v] = true end
+            refreshLabel()
+            if isOpen then buildList() end
+            pcall(cb, rapKeysOf(selected))
+        end,
+        Get = function() return rapKeysOf(selected) end,
+        SetItems = function(_, list)
+            options = list or {}
+            if isOpen then buildList() end
+        end,
+        _base = base,
+    }
+end
+
+local function rapNewFilter(parent, label, options, defaultList, callback)
+    local sel = {}
+    for _, v in ipairs(defaultList or {}) do sel[v] = true end
+    local obj = rapMultiSelect({
+        Parent = parent,
+        Label = label,
+        Options = options,
+        Callback = callback,
+    })
+    if obj and obj.Set then pcall(function() obj:Set(rapKeysOf(sel)) end) end
+    return obj
+end
+
+-- ==============================================================================================
 -- MENU: MAIN
 -- ==============================================================================================
 local TabMainRAP = tabGroup:Tab({ Name = "Main", Image = "lucide/zap" })
@@ -4037,19 +4637,17 @@ local TabMainRAP = tabGroup:Tab({ Name = "Main", Image = "lucide/zap" })
 local SecAutoEgg = TabMainRAP:Section({ Name = "Auto Telur & Pet", Side = 1 })
 SecAutoEgg:Header({ Name = ZypheraxLib:Gradient("Auto Egg Collector", Color3.fromRGB(72, 214, 200), Color3.fromRGB(99, 130, 255)) })
 
-SecAutoEgg:Dropdown({
-    Name = "Filter Rarity yang Diambil",
-    Items = RARITY_LIST,
-    Default = "Semua Rarity",
-    Callback = function(v) rapRarityFilter = v or "Semua Rarity" end,
-})
+rapNewFilter(SecAutoEgg, "Filter Rarity", RARITY_LIST, {}, function(list)
+    rapRarityFilterSet = {}
+    for _, v in ipairs(list) do rapRarityFilterSet[v] = true end
+end)
 
-SecAutoEgg:Dropdown({
-    Name = "Filter Jenis Telur",
-    Items = rapTypeList,
-    Default = "Semua Jenis",
-    Callback = function(v) rapEggFilter = v or "Semua Jenis" end,
-})
+rapNewFilter(SecAutoEgg, "Filter Jenis Telur", rapTypeList, {}, function(list)
+    rapEggFilterSet = {}
+    for _, v in ipairs(list) do rapEggFilterSet[v] = true end
+end)
+
+SecAutoEgg:Label({ Name = "Filter punya kotak search & bisa pilih banyak. Kosong = semua." })
 
 SecAutoEgg:Dropdown({
     Name = "Mode Auto Pickup",
@@ -4088,7 +4686,10 @@ SecAutoEgg:Toggle({
     Default = false,
     Callback = function(enabled)
         rapSet("pickup", enabled, "Auto Pickup",
-            ("Mengambil telur (rarity: %s, jenis: %s, mode: %s)."):format(rapRarityFilter, rapEggFilter, rapPickupMode),
+            ("Mengambil telur (rarity: %s, jenis: %s, mode: %s)."):format(
+                rapFilterText(rapRarityFilterSet, "Semua Rarity"),
+                rapFilterText(rapEggFilterSet, "Semua Jenis"),
+                rapPickupMode),
             "Auto pickup dimatikan.")
     end,
 })
@@ -4255,6 +4856,14 @@ SecEvent:Toggle({
     end,
 })
 
+SecEvent:Toggle({
+    Name = "Auto Pakai Skill / Spell / Feed",
+    Default = false,
+    Callback = function(enabled)
+        rapSet("skill", enabled, "Auto Skill", "Menekan skill/spell/ability/feed otomatis.", "Auto skill dimatikan.")
+    end,
+})
+
 -- ==============================================================================================
 -- MENU: SHOP (AUTO BUY FOOD/GEARS + AUTO SELL / SELL ALL)
 -- ==============================================================================================
@@ -4262,6 +4871,25 @@ local TabShop = tabGroup:Tab({ Name = "Shop", Image = "lucide/shopping-cart" })
 
 local SecBuyFood = TabShop:Section({ Name = "Auto Buy - Food", Side = 1 })
 SecBuyFood:Header({ Name = ZypheraxLib:Gradient("Auto Buy Food", Color3.fromRGB(120, 230, 140), Color3.fromRGB(72, 214, 200)) })
+
+rapFoodDD = rapNewFilter(SecBuyFood, "Pilih Food yang Dibeli", rapFoodItems, {}, function(list)
+    rapBuyFoodSet = {}
+    for _, v in ipairs(list) do rapBuyFoodSet[v] = true end
+end)
+
+SecBuyFood:Button({
+    Name = "Scan Item Shop (Food + Gears)",
+    Callback = function()
+        local f, g = rapScanShopItems()
+        Window:Notify({
+            Title = "Scan Shop",
+            Description = ("Dapat %d food & %d gears. Buka dulu tab Food/Gears di shop game-nya."):format(f, g),
+            Lifetime = 4,
+        })
+    end,
+})
+
+SecBuyFood:Label({ Name = "Pilih food yang mau dibeli (bisa banyak + search). Kosong = beli semua food." })
 
 SecBuyFood:Toggle({
     Name = "Auto Buy Food",
@@ -4271,7 +4899,7 @@ SecBuyFood:Toggle({
         if enabled then rapLoopStart() end
         Window:Notify({
             Title = "Auto Buy Food",
-            Description = enabled and "Membeli food otomatis di shop." or "Auto buy food dimatikan.",
+            Description = enabled and ("Membeli food: " .. rapFilterText(rapBuyFoodSet, "Semua")) or "Auto buy food dimatikan.",
             Lifetime = 3,
         })
     end,
@@ -4291,6 +4919,13 @@ SecBuyFood:Label({ Name = "Buka shop in-game dulu agar tombol Food muncul, lalu 
 
 local SecBuyGear = TabShop:Section({ Name = "Auto Buy - Gears", Side = 2 })
 SecBuyGear:Header({ Name = ZypheraxLib:Gradient("Auto Buy Gears", Color3.fromRGB(255, 190, 90), Color3.fromRGB(255, 130, 120)) })
+
+rapGearDD = rapNewFilter(SecBuyGear, "Pilih Gears yang Dibeli", rapGearItems, {}, function(list)
+    rapBuyGearSet = {}
+    for _, v in ipairs(list) do rapBuyGearSet[v] = true end
+end)
+
+SecBuyGear:Label({ Name = "Pilih gears yang mau dibeli (bisa banyak + search). Kosong = beli semua gears." })
 
 SecBuyGear:Toggle({
     Name = "Auto Buy Gears",
@@ -4321,12 +4956,12 @@ SecBuyGear:Label({ Name = "Gears dipisah dari Food, toggle-nya berdiri sendiri."
 local SecSell = TabShop:Section({ Name = "Auto Sell & Sell All", Side = 1 })
 SecSell:Header({ Name = ZypheraxLib:Gradient("Auto Sell (Rarity + Weight)", Color3.fromRGB(255, 107, 138), Color3.fromRGB(199, 155, 255)) })
 
-SecSell:Dropdown({
-    Name = "Filter Rarity untuk Dijual",
-    Items = RARITY_LIST,
-    Default = "Semua Rarity",
-    Callback = function(v) rapSellRarity = v or "Semua Rarity" end,
-})
+rapNewFilter(SecSell, "Filter Rarity untuk Dijual", RARITY_LIST, {}, function(list)
+    rapSellRaritySet = {}
+    for _, v in ipairs(list) do rapSellRaritySet[v] = true end
+end)
+
+SecSell:Label({ Name = "Filter bisa pilih banyak + search. Kosong = semua rarity." })
 
 SecSell:Toggle({
     Name = "Pakai Filter Weight",
@@ -4351,7 +4986,7 @@ SecSell:Toggle({
     Default = false,
     Callback = function(enabled)
         rapSet("autoSell", enabled, "Auto Sell",
-            ("Menjual otomatis (rarity: %s)."):format(rapSellRarity),
+            ("Menjual otomatis (rarity: %s)."):format(rapFilterText(rapSellRaritySet, "Semua Rarity")),
             "Auto sell dimatikan.")
     end,
 })
@@ -4395,6 +5030,7 @@ SecShopInfo:Button({
 })
 
 SecShopInfo:Label({ Name = "Auto Sell & Sell All hanya menjual item yang lolos filter rarity/weight yang kamu set." })
+SecShopInfo:Label({ Name = "Sell All / Auto Sell langsung menyelesaikan penjualan (tekan prompt Sell + tombol Sell/Sell All), bukan cuma teleport." })
 SecShopInfo:Label({ Name = "Jika tombol Buy/Sell berupa tombol UI, buka shop-nya dulu supaya tombol terdeteksi." })
 
 -- ==============================================================================================
