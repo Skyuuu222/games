@@ -3256,6 +3256,18 @@ local rapPickupWarned = false
 local rapPickupCD = 0
 local rapHandled = setmetatable({}, { __mode = "k" })
 
+-- Cache descendant workspace untuk satu siklus rapStep. Tanpa ini rapStep
+-- memanggil workspace:GetDescendants() 7-8 kali per putaran (tiap rapPassBatch,
+-- pickup, buy, autoTp). Di map yang padat itu puluhan pemindaian penuh per detik
+-- -> frame drop berat sampai Roblox menutup paksa.
+local rapTickCache = nil
+local function rapTickBegin() rapTickCache = nil end
+local function rapTickEnd() rapTickCache = nil end
+local function rapTickList()
+    if not rapTickCache then rapTickCache = workspace:GetDescendants() end
+    return rapTickCache
+end
+
 -- SELL / BUY state
 local rapSellRaritySet = {}
 local rapSellMaxWeight = 0      -- 0 = abaikan filter berat
@@ -3372,7 +3384,7 @@ end
 local function rapPassBatch(matchFn, batch)
     local n = 0
     pcall(function()
-        for _, d in ipairs(workspace:GetDescendants()) do
+        for _, d in ipairs(rapTickList()) do
             if d:IsA("ProximityPrompt") then
                 local act = tostring(d.ActionText or "")
                 if matchFn(act, d) then
@@ -3437,11 +3449,15 @@ local RANCH_PATTERNS = { "ranch", "pen", "nest", "home", "base" }
 
 local function rapRefreshRanch()
     local found = nil
-    for _, pat in ipairs(RANCH_PATTERNS) do
-        for _, d in ipairs(workspace:GetDescendants()) do
-            if (d:IsA("Model") or d:IsA("BasePart")) and tostring(d.Name):lower():find(pat, 1, true) then
-                local p = rapEntityPos(d)
-                if p then found = p; break end
+    -- Satu pemindaian saja; dulu tiap pola memicu GetDescendants() sendiri (5x).
+    for _, d in ipairs(rapTickList()) do
+        if d:IsA("Model") or d:IsA("BasePart") then
+            local low = tostring(d.Name):lower()
+            for _, pat in ipairs(RANCH_PATTERNS) do
+                if low:find(pat, 1, true) then
+                    local p = rapEntityPos(d)
+                    if p then found = p; break end
+                end
             end
         end
         if found then break end
@@ -3487,7 +3503,7 @@ local function rapPlaceEggs()
     if not root then return 0 end
     local n = 0
     pcall(function()
-        for _, d in ipairs(workspace:GetDescendants()) do
+        for _, d in ipairs(rapTickList()) do
             if d:IsA("ProximityPrompt") then
                 local act = tostring(d.ActionText or ""):lower()
                 if act:find("place", 1, true) or act:find("taruh", 1, true)
@@ -3554,14 +3570,14 @@ local function rapPickupTick()
     local candidates = {}
     local seen = {}
     pcall(function()
-        for _, d in ipairs(workspace:GetDescendants()) do
+        for _, d in ipairs(rapTickList()) do
             if d:IsA("ProximityPrompt") and tostring(d.ActionText) == "Pick Up" then
                 local nm = rapFindEggName(d)
                 if nm and rapMatchFilter(nm) and not seen[tostring(d)] then
                     seen[tostring(d)] = true
                     local pos = rapEntityPos(d.Parent) or rapEntityPos(d)
                     if pos then
-                        table.insert(candidates, { name = nm, part = d.Parent, pos = pos })
+                        table.insert(candidates, { name = nm, part = d.Parent, pos = pos, prompt = d })
                     end
                 end
             end
@@ -3602,28 +3618,11 @@ local function rapPickupTick()
     root = rapGetRoot()
     if not root then return 0 end
 
-    -- Ambil prompt "Pick Up" yang benar-benar paling dekat dengan telur terdekat.
-    local prompt, promptDist = nil, nil
-    pcall(function()
-        local rp = rapGetRoot()
-        if not rp then return end
-        for _, d in ipairs(workspace:GetDescendants()) do
-            if d:IsA("ProximityPrompt") and tostring(d.ActionText) == "Pick Up" then
-                local nm = rapFindEggName(d)
-                if nm and rapMatchFilter(nm) then
-                    local p1 = rapEntityPos(d.Parent) or rapEntityPos(d)
-                    if p1 then
-                        local dist = (p1 - rp.Position).Magnitude
-                        if not promptDist or dist < promptDist then
-                            promptDist = dist
-                            prompt = d
-                        end
-                    end
-                end
-            end
-        end
-    end)
-    if not prompt then return 0 end
+    -- Prompt yang sudah dikumpulkan di pemindaian pertama; tidak perlu memindai
+    -- seluruh workspace untuk kedua kalinya.
+    local prompt = best.prompt
+    local promptDist = bestDist or 0
+    if not prompt or not prompt.Parent then return 0 end
 
     if os.clock() < rapPickupCD then return 0 end
     if rapHandled[prompt] then return 0 end
@@ -3737,12 +3736,21 @@ local function rapGetItemRarity(obj)
     return nil
 end
 
-local function rapShouldSell(obj)
-    local rar = rapGetItemRarity(obj)
-    local nm = tostring(obj and obj.Name or "")
-    local key = rar or rapRarityOfName(nm) or "Unknown"
+local function rapShouldSell(obj, label)
+    local nm = tostring(label or (obj and obj.Name) or "")
+    -- Rarity hasil deteksi struktur item, kalau tidak ada baru tebak dari teks.
+    local rar = rapGetItemRarity(obj) or rapRarityOfName(nm)
+    local key = rar or "Unknown"
     if rapSetCount(rapSellRaritySet) > 0 then
-        if not (rapInSet(rapSellRaritySet, key) or rapInSet(rapSellRaritySet, nm)) then return false end
+        local matched = rapInSet(rapSellRaritySet, key) or rapInSet(rapSellRaritySet, nm)
+        if not matched then
+            -- Di menu per-pet nama rarity biasanya cuma muncul di teks baris.
+            local low = string.lower(nm)
+            for k in pairs(rapSellRaritySet) do
+                if string.find(low, string.lower(tostring(k)), 1, true) then matched = true; break end
+            end
+        end
+        if not matched then return false end
     end
     if rapUseWeightFilter and rapSellMaxWeight > 0 then
         local w = rapGetItemWeight(obj)
@@ -3751,15 +3759,52 @@ local function rapShouldSell(obj)
     return true
 end
 
+-- Ambil teks yang terlihat di dalam satu baris pet (nama + rarity), plus atribut.
+local function rapRowText(row, skipBtn)
+    local parts = {}
+    pcall(function()
+        for _, d in ipairs(row:GetDescendants()) do
+            if d ~= skipBtn and (d:IsA("TextLabel") or d:IsA("TextButton")) and d.Visible then
+                local t = tostring(d.Text or ""):gsub("%s+", " ")
+                if #t > 0 and #t <= 60 then table.insert(parts, t) end
+            end
+        end
+    end)
+    pcall(function()
+        for _, k in ipairs({ "Rarity", "rarity", "PetName", "ItemName", "Name" }) do
+            local ok, v = pcall(function() return row:GetAttribute(k) end)
+            if ok and type(v) == "string" and #v > 0 then table.insert(parts, v) end
+        end
+    end)
+    return table.concat(parts, " ")
+end
+
 -- Kumpulkan tombol "Sell/Jual/Sell All" yang terlihat di layar.
-local function rapSellButtons(scope)
+-- Kalau filter rarity aktif, tombol per-baris hanya ikut kalau barisnya cocok.
+local function rapSellButtons(scope, forceAll)
     local out = {}
+    local filterOn = (not forceAll) and rapSetCount(rapSellRaritySet) > 0
     pcall(function()
         for _, d in ipairs(scope:GetDescendants()) do
             if d:IsA("GuiButton") and d.Visible then
                 local txt = tostring(d.Text or ""):lower()
-                if txt:find("sell all", 1, true) or txt == "sell" or txt:find("jual", 1, true) then
-                    table.insert(out, d)
+                local isAll  = txt:find("sell all", 1, true) ~= nil
+                local isSell = isAll or txt == "sell" or txt:find("jual", 1, true) ~= nil
+                if isSell then
+                    local row = d:FindFirstAncestorOfClass("Frame")
+                    if filterOn and isAll then
+                        -- "Sell All" menjual semuanya -> lewati supaya filter tidak dilanggar.
+                        -- (Pakai tombol "Sell All Now" kalau memang mau jual semua.)
+                    elseif isAll or not row or not filterOn then
+                        -- "Sell All" / tombol global / tanpa filter: apa adanya.
+                        table.insert(out, d)
+                    else
+                        -- Baris pet: hanya jual kalau labelnya bisa dipastikan cocok.
+                        local label = rapRowText(row, d)
+                        if label ~= "" and rapShouldSell(row, label) then
+                            table.insert(out, d)
+                        end
+                    end
                 end
             end
         end
@@ -3779,7 +3824,7 @@ local function rapFindSellPrompt()
     local root = rapGetRoot()
     local best, bestDist = nil, nil
     pcall(function()
-        for _, d in ipairs(workspace:GetDescendants()) do
+        for _, d in ipairs(rapTickList()) do
             if d:IsA("ProximityPrompt") and tostring(d.ActionText) == "Sell" then
                 local p = rapEntityPos(d.Parent) or rapEntityPos(d)
                 if p then
@@ -3799,9 +3844,9 @@ local function rapSellTick(forceAll)
     local gui = LocalPlayer:FindFirstChild("PlayerGui")
     local scope = gui or (gethui and gethui()) or game:GetService("CoreGui")
 
-    local function clickVisible()
+    local function clickVisible(all)
         local c = 0
-        for _, b in ipairs(rapSellButtons(scope)) do
+        for _, b in ipairs(rapSellButtons(scope, all)) do
             if rapClickButton(b) then
                 c = c + 1
                 task.wait(0.06)
@@ -3811,19 +3856,19 @@ local function rapSellTick(forceAll)
     end
 
     -- Fase 1: kalau menu Sell sudah terbuka, langsung pencet tombolnya.
-    n = n + clickVisible()
+    n = n + clickVisible(forceAll)
     if n > 0 then return n end
 
     -- Fase 2: tembak prompt Sell dari jarak jauh (fireproximityprompt tak peduli jarak).
     local fired = false
     pcall(function()
-        for _, d in ipairs(workspace:GetDescendants()) do
+        for _, d in ipairs(rapTickList()) do
             if d:IsA("ProximityPrompt") then
                 local act = string.lower(tostring(d.ActionText or ""))
                 if act:find("sell", 1, true) or act:find("jual", 1, true) then
                     pcall(function()
                         d.HoldDuration = 0
-                        d.MaxActivationDistance = 100000
+                        d.MaxActivationDistance = 300
                         d.RequiresLineOfSight = false
                     end)
                     rapTriggerPrompt(d)
@@ -3834,10 +3879,19 @@ local function rapSellTick(forceAll)
     end)
 
     -- Remote cadangan (kalau game pakai RemoteEvent, bukan ProximityPrompt).
-    rapFire({ "Remotes", "Game", "SellAll" })
-    rapFire({ "Remotes", "Game", "Sell" })
-    rapFire({ "Remotes", "Game", "SellPet" })
-    rapFire({ "Remotes", "Reusable", "SellAll" })
+    -- PENTING: "SellAll" itu setara jual-semua, jadi JANGAN ditembak saat filter
+    -- rarity aktif -> bisa menjual pet yang sebenarnya mau disimpan.
+    local filterOn = (not forceAll) and rapSetCount(rapSellRaritySet) > 0
+    if not filterOn then
+        rapFire({ "Remotes", "Game", "SellAll" })
+        rapFire({ "Remotes", "Reusable", "SellAll" })
+        rapFire({ "Remotes", "Game", "Sell" })
+        rapFire({ "Remotes", "Game", "SellPet" })
+    elseif n == 0 and not fired then
+        -- Tidak ada tombol/prompt yang ketemu; coba remote satuan saja.
+        rapFire({ "Remotes", "Game", "SellPet" })
+        rapFire({ "Remotes", "Game", "Sell" })
+    end
 
     if fired then
         rapSellCount = rapSellCount + 1
@@ -3847,26 +3901,9 @@ local function rapSellTick(forceAll)
     -- Fase 3: kalau prompt tadi memunculkan GUI, langsung pencet Sell / Sell All.
     for _ = 1, 10 do
         task.wait(0.16)
-        local c = clickVisible()
+        local c = clickVisible(forceAll)
         if c > 0 then n = n + c; break end
     end
-
-    -- Bila menu menampilkan baris pet (bukan Sell All), pilih baris sesuai filter.
-    pcall(function()
-        for _, d in ipairs(scope:GetDescendants()) do
-            if d:IsA("GuiButton") and d.Visible then
-                local row = d:FindFirstAncestorOfClass("Frame")
-                if row and row.Name ~= "" and (forceAll or rapShouldSell(row)) then
-                    local nm = tostring(row.Name):lower()
-                    if nm:find("pet", 1, true) or nm:find("animal", 1, true)
-                        or nm:find("egg", 1, true) or nm:find("item", 1, true) then
-                        rapClickButton(d)
-                        task.wait(0.05)
-                    end
-                end
-            end
-        end
-    end)
     return n
 end
 
@@ -3940,9 +3977,11 @@ local function rapBuyTick()
     end
 
     -- 1. Prompt beli di dunia (kalau shop berupa objek di map).
-    local target = nil
+    --    Satu kali pemindaian saja: hasilnya dipakai untuk cari target teleport
+    --    sekaligus untuk menembak prompt (dulu workspace dipindai dua kali).
+    local matched = {}
     pcall(function()
-        for _, d in ipairs(workspace:GetDescendants()) do
+        for _, d in ipairs(rapTickList()) do
             if d:IsA("ProximityPrompt") then
                 local act = tostring(d.ActionText or "")
                 local low = string.lower(act)
@@ -3959,44 +3998,40 @@ local function rapBuyTick()
                         local pName = d.Parent and tostring(d.Parent.Name) or ""
                         if rapKeyMatch(set, pName .. " " .. act) then
                             local p = rapEntityPos(d.Parent) or rapEntityPos(d)
-                            if p and not target then target = p end
+                            table.insert(matched, { prompt = d, pos = p })
                         end
                     end
                 end
             end
         end
     end)
-    if target and rootPos and (rootPos - target).Magnitude > 10 then
+
+    -- Teleport ke prompt terdekat dulu supaya prompt bisa diaktifkan server.
+    local target, targetDist = nil, nil
+    for _, m in ipairs(matched) do
+        if m.pos and rootPos then
+            local dist = (m.pos - rootPos).Magnitude
+            if not targetDist or dist < targetDist then target, targetDist = m.pos, dist end
+        end
+    end
+    if target and targetDist and targetDist > 10 then
         rapTeleportTo(target, "Buy")
         task.wait(0.3)
     end
-    pcall(function()
-        for _, d in ipairs(workspace:GetDescendants()) do
-            if d:IsA("ProximityPrompt") then
-                local act = tostring(d.ActionText or "")
-                local low = string.lower(act)
-                if low:find("buy", 1, true) or low:find("beli", 1, true) or low:find("purchase", 1, true) then
-                    local zone = rapZoneOf(d.Parent)
-                    local wantF = (zone == "food" and rapBuyFood) or (zone == nil and rapBuyFood)
-                    local wantG = (zone == "gear" and rapBuyGear) or (zone == nil and rapBuyGear)
-                    if wantF or wantG then
-                        local set = wantF and rapBuyFoodSet or rapBuyGearSet
-                        local pName = d.Parent and tostring(d.Parent.Name) or ""
-                        if rapKeyMatch(set, pName .. " " .. act) then
-                            pcall(function()
-                                d.HoldDuration = 0
-                                d.MaxActivationDistance = 500
-                                d.RequiresLineOfSight = false
-                            end)
-                            rapTriggerPrompt(d)
-                            n = n + 1
-                            rapBuyCount = rapBuyCount + 1
-                        end
-                    end
-                end
-            end
+
+    for _, m in ipairs(matched) do
+        local d = m.prompt
+        if d and d.Parent then
+            pcall(function()
+                d.HoldDuration = 0
+                d.MaxActivationDistance = 500
+                d.RequiresLineOfSight = false
+            end)
+            rapTriggerPrompt(d)
+            n = n + 1
+            rapBuyCount = rapBuyCount + 1
         end
-    end)
+    end
 
     -- 2. Tombol UI shop (Food / Gears) sesuai item yang dipilih.
     local gui = LocalPlayer:FindFirstChild("PlayerGui")
@@ -4101,6 +4136,7 @@ end
 
 -- ============================== LOOP ==============================
 local function rapStep()
+    rapTickBegin()
     if rapFlag.pickup then rapPickupTick() end
     if rapFlag.hatch then rapPassBatch(function(a) return a == "Hatch" end, 3) end
     if rapFlag.grow then rapPassBatch(function(a) return a:find("Skip", 1, true) ~= nil end, 3) end
@@ -4117,7 +4153,7 @@ local function rapStep()
     if rapFlag.autoSell then rapSellTick(false) end
     if rapBuyFood or rapBuyGear then rapBuyTick() end
     if rapFlag.autoTp then
-        for _, d in ipairs(workspace:GetDescendants()) do
+        for _, d in ipairs(rapTickList()) do
             if (d:IsA("Model") or d:IsA("BasePart")) and d.Name == rapGoal then
                 local p = rapEntityPos(d)
                 if p then rapTeleportTo(p, rapGoal) end
@@ -4125,6 +4161,7 @@ local function rapStep()
             end
         end
     end
+    rapTickEnd()
 end
 
 local function rapLoopStart()
@@ -4158,6 +4195,20 @@ local espMode = { egg = false, zone = false, player = false, npc = false, ranch 
 local espRunning = false
 local rapEggCount, rapZoneCount, rapNpcCount, rapPlayerCount = 0, 0, 0, 0
 
+-- ESP INKREMENTAL.
+-- Versi lama menghapus SEMUA penanda lalu membuat ulang setiap 0.45 detik.
+-- Di map yang banyak telur/NPC itu berarti ribuan Highlight + BillboardGui
+-- dibuat & dibuang per detik -> GC berat dan Roblox akhirnya crash.
+-- Sekarang penanda dipakai ulang; hanya yang sudah basi yang dihapus.
+local espLive  = {}   -- [instance] = { hl=, bb=, part=, label=, color=, frame= }
+local espFrame = 0
+
+-- Daftar descendant workspace di-cache satu kali per refresh supaya tidak
+-- memanggil workspace:GetDescendants() berulang-ulang di tick yang sama.
+local rapDescCache = nil
+local function rapDescRefresh() rapDescCache = workspace:GetDescendants() end
+local function rapDescList() return rapDescCache or workspace:GetDescendants() end
+
 local function espFolder()
     if espHost and espHost.Parent then return espHost end
     local f = workspace:FindFirstChild(ESP_NAME)
@@ -4170,26 +4221,65 @@ local function espFolder()
     return f
 end
 
+local function espDrop(inst)
+    local e = espLive[inst]
+    if not e then return end
+    espLive[inst] = nil
+    pcall(function() if e.hl then e.hl:Destroy() end end)
+    pcall(function() if e.bb then e.bb:Destroy() end end)
+end
+
 local function espWipe()
     pcall(function()
+        local all = {}
+        for inst in pairs(espLive) do table.insert(all, inst) end
+        for _, inst in ipairs(all) do espDrop(inst) end
         if espHost then
             for _, c in ipairs(espHost:GetChildren()) do c:Destroy() end
         end
     end)
 end
 
-local function espMark(inst, label, color)
+local function espColorEq(a, b)
+    if a == b then return true end
+    if not a or not b then return false end
+    return a.R == b.R and a.G == b.G and a.B == b.B
+end
+
+local function espMark(inst, label, color, key)
     if not inst or not inst.Parent then return end
     local f = espFolder()
+    key = key or label
+
+    -- Sudah ada dan masih cocok -> pakai ulang, jangan bikin instance baru.
+    local e = espLive[inst]
+    if e and e.hl and e.hl.Parent and e.key == key and espColorEq(e.color, color) then
+        e.frame = espFrame
+        pcall(function() e.hl.Adornee = inst end)
+        pcall(function() if e.bb then e.bb.Adornee = e.part end end)
+        -- teks bisa berubah (mis. jarak player) -> perbarui tanpa alokasi baru
+        if e.tl and e.tl.Text ~= label then e.tl.Text = label end
+        return
+    end
+    if e then espDrop(inst) end
+
     local hl = Instance.new("Highlight")
     hl.Name = ESP_NAME
     hl.Adornee = inst
     hl.FillColor = color
     hl.OutlineColor = Color3.fromRGB(255, 255, 255)
-    hl.FillTransparency = 0.25
+    hl.FillTransparency = 0.15
     hl.OutlineTransparency = 0
     hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
     hl.Parent = f
+
+    local entry = { hl = hl, label = label, key = key, frame = espFrame }
+    if color and color.R then
+        entry.color = Color3.new(color.R, color.G, color.B)
+    else
+        entry.color = color
+    end
+
     if label and label ~= "" then
         local part = nil
         if inst:IsA("BasePart") then
@@ -4216,18 +4306,34 @@ local function espMark(inst, label, color)
             tl.Text = label
             tl.Parent = bb
             bb.Parent = f
+            entry.bb = bb
+            entry.tl = tl
+            entry.part = part
         end
+    end
+    espLive[inst] = entry
+end
+
+-- Buang penanda yang tidak lagi terpakai di refresh ini.
+local function espSweep()
+    local dead = nil
+    for inst, e in pairs(espLive) do
+        if e.frame ~= espFrame then
+            dead = dead or {}
+            table.insert(dead, inst)
+        end
+    end
+    if dead then
+        for _, inst in ipairs(dead) do espDrop(inst) end
     end
 end
 
 local function rapCountEggs(mark)
     local c = 0
-    local counted = {}
-    for _, d in ipairs(workspace:GetDescendants()) do
-        if (d:IsA("Model") or d:IsA("BasePart")) and not counted[d.Name] then
+    for _, d in ipairs(rapDescList()) do
+        if d:IsA("Model") or d:IsA("BasePart") then
             for _, n in ipairs(rapEggNames) do
                 if d.Name == n then
-                    counted[d.Name] = true
                     c = c + 1
                     if mark then
                         local rar = rapRarityOf(d.Name)
@@ -4243,7 +4349,7 @@ end
 
 local function rapZones(mark)
     local c = 0
-    for _, d in ipairs(workspace:GetDescendants()) do
+    for _, d in ipairs(rapDescList()) do
         if (d:IsA("Model") or d:IsA("BasePart")) and d.Parent and d.Parent.Name == "EggSpawns" then
             c = c + 1
             if mark then espMark(d, "Zone " .. d.Name, Color3.fromRGB(255, 190, 60)) end
@@ -4254,7 +4360,7 @@ end
 
 local function rapNpcs(mark)
     local c = 0
-    for _, d in ipairs(workspace:GetDescendants()) do
+    for _, d in ipairs(rapDescList()) do
         if d:IsA("Model") then
             for _, n in ipairs(rapActors) do
                 if d.Name == n then
@@ -4280,7 +4386,7 @@ local function rapPlayers(mark)
             end
             c = c + 1
             if mark then
-                espMark(p.Character, p.DisplayName .. " [" .. tostring(dist) .. "m]", Color3.fromRGB(90, 255, 150))
+                espMark(p.Character, p.DisplayName .. " [" .. tostring(dist) .. "m]", Color3.fromRGB(90, 255, 150), "player:" .. tostring(p.UserId))
             end
         end
     end
@@ -4291,7 +4397,7 @@ local function rapRanchMark(mark)
     if not mark then return 0 end
     local found = nil
     for _, pat in ipairs(RANCH_PATTERNS) do
-        for _, d in ipairs(workspace:GetDescendants()) do
+        for _, d in ipairs(rapDescList()) do
             if (d:IsA("Model") or d:IsA("BasePart")) and tostring(d.Name):lower():find(pat, 1, true) then
                 found = d; break
             end
@@ -4306,75 +4412,140 @@ local function rapRanchMark(mark)
 end
 
 local function espRefresh()
-    espWipe()
+    espFrame = espFrame + 1
+    rapDescRefresh()
     rapEggCount    = rapCountEggs(espMode.egg)
     rapZoneCount   = rapZones(espMode.zone)
     rapNpcCount    = rapNpcs(espMode.npc)
     rapPlayerCount = rapPlayers(espMode.player)
     if espMode.ranch then rapRanchMark(true) end
+    espSweep()
+    rapDescCache = nil  -- jangan tahan daftar besar di memori
 end
 
+-- Satu task permanen (dibuat sekali). Loop lama start/stop punya balapan:
+-- toggle OFF lalu ON dalam <0.45s bisa membuat loop keluar & ESP mati permanen.
 local function espLoopStart()
     if espRunning then return end
     espRunning = true
     task.spawn(function()
-        while espMode.egg or espMode.zone or espMode.player or espMode.npc or espMode.ranch do
-            pcall(espRefresh)
-            task.wait(0.45)
+        while true do
+            local any = espMode.egg or espMode.zone or espMode.player or espMode.npc or espMode.ranch
+            if any then
+                pcall(espRefresh)
+                task.wait(0.45)
+            else
+                if next(espLive) ~= nil then pcall(espWipe) end
+                task.wait(0.5)
+            end
         end
-        pcall(espWipe)
-        espRunning = false
     end)
 end
 
 local function espSet(key, on, title, onMsg, offMsg)
     espMode[key] = on and true or nil
-    if on then espLoopStart() end
+    espLoopStart()
     Window:Notify({ Title = title, Description = on and onMsg or offMsg, Lifetime = 3 })
 end
 
 -- ==============================================================================================
 -- KONTROL FILTER: SEARCH + MULTI-PILIH
--- Dipakai di semua filter. Punya kotak pencarian dan bisa memilih lebih dari satu nilai.
+-- Punya kotak pencarian dan bisa memilih lebih dari satu nilai sekaligus.
+-- Dibuat MANDIRI (Instance.new + palet warna sendiri) karena U, T, track, dan
+-- RegisterThemeColor adalah LOCAL di dalam IIFE pembuat UI ZypheraxUI sehingga
+-- tidak terlihat dari sini. Ini penyebab error "attempt to index nil with 'New'".
 -- ==============================================================================================
 local function rapMultiSelect(cfg)
-    local nm      = cfg.Label or cfg.Name or "Filter"
-    local options = cfg.Options or cfg.Items or {}
-    local cb      = cfg.Callback or function() end
-    local selected = {}
-    local query    = ""
-    local isOpen   = false
+    local nm        = cfg.Label or cfg.Name or "Filter"
+    local titleAttr = cfg.Name or nm
+    local options   = cfg.Options or cfg.Items or {}
+    local cb        = cfg.Callback or function() end
+    local selected  = {}
+    local query     = ""
+    local isOpen    = false
 
-    -- Bisa diberi SectionObj atau Frame langsung. SectionObj bukan Instance,
-    -- jadi harus diterjemahkan ke container-nya dulu.
-    local host = cfg.Parent
-    if type(host) == "table" then
-        host = host._container or host._box or host
+    local COL = {
+        Bg     = Color3.fromRGB(26, 30, 42),
+        Bg2    = Color3.fromRGB(34, 40, 56),
+        Accent = Color3.fromRGB(0, 200, 255),
+        Text   = Color3.fromRGB(242, 244, 250),
+        Muted  = Color3.fromRGB(145, 152, 170),
+        Dim    = Color3.fromRGB(90, 96, 112),
+        Stroke = Color3.fromRGB(38, 43, 58),
+    }
+    local FONT      = Enum.Font.Gotham
+    local FONT_BOLD = Enum.Font.GothamBold
+
+    local function mk(class, props)
+        local inst = Instance.new(class)
+        for k, v in pairs(props or {}) do
+            if k ~= "Parent" then pcall(function() inst[k] = v end) end
+        end
+        if props and props.Parent then
+            pcall(function() inst.Parent = props.Parent end)
+        end
+        return inst
     end
 
-    local base = U.New("Frame", {
+    local function round(inst, r)
+        mk("UICorner", { CornerRadius = r or UDim.new(0, 6), Parent = inst })
+    end
+
+    local function outline(inst)
+        mk("UIStroke", {
+            Color = COL.Stroke,
+            Thickness = 1,
+            Transparency = 0,
+            ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
+            Parent = inst,
+        })
+    end
+
+    -- Parent bisa berupa SectionObj (bukan Instance) atau Frame langsung.
+    -- SectionObj diterjemahkan ke elemen container-nya dulu.
+    local host = cfg.Parent
+    if type(host) == "table" then
+        host = host._container or host._box or nil
+    end
+    if not (host and host.Parent) then
+        local okBool, isInstance = pcall(function() return host ~= nil and host.Parent ~= nil end)
+        if not (okBool and isInstance) then
+            local fallback = nil
+            if type(cfg.Parent) == "table" and cfg.Parent._box then
+                fallback = cfg.Parent._box.Parent
+            end
+            if not fallback then
+                local okh, h = pcall(function() return gethui() end)
+                if okh and h then fallback = h end
+            end
+            if not fallback then fallback = game:GetService("CoreGui") end
+            host = fallback
+        end
+    end
+    if not host then return nil end
+
+    local base = mk("Frame", {
+        Name = "Filter_" .. tostring(titleAttr),
         Size = UDim2.new(1, 0, 0, 36),
-        BackgroundColor3 = T.Surface2,
-        BackgroundTransparency = 0.25,
+        BackgroundColor3 = COL.Bg,
+        BackgroundTransparency = 0.15,
         BorderSizePixel = 0,
         ClipsDescendants = true,
         ZIndex = 5,
         Parent = host,
     })
-    U.Corner(base, T.CornerSm)
-    local stroke = U.Stroke(base, T.Stroke, 1, 0)
-    RegisterThemeColor(base, "BackgroundColor3", "Surface2")
-    RegisterThemeColor(stroke, "Color", "Stroke")
-    base:SetAttribute("ControlName", nm)
+    round(base, UDim.new(0, 6))
+    outline(base)
+    pcall(function() base:SetAttribute("ControlName", titleAttr) end)
     if type(cfg.Parent) == "table" and cfg.Parent._items then
-        table.insert(cfg.Parent._items, base)
+        pcall(function() table.insert(cfg.Parent._items, base) end)
     end
 
-    local lbl = U.New("TextLabel", {
+    local lbl = mk("TextLabel", {
         Text = nm .. ": Semua",
-        Font = T.FontRegular,
+        Font = FONT,
         TextSize = 12,
-        TextColor3 = T.Text,
+        TextColor3 = COL.Text,
         BackgroundTransparency = 1,
         Position = UDim2.new(0, 10, 0, 0),
         Size = UDim2.new(1, -40, 0, 36),
@@ -4383,22 +4554,20 @@ local function rapMultiSelect(cfg)
         ZIndex = 6,
         Parent = base,
     })
-    RegisterThemeColor(lbl, "TextColor3", "Text")
 
-    local chevron = U.New("TextLabel", {
+    local chevron = mk("TextLabel", {
         Text = "v",
-        Font = T.FontBold,
+        Font = FONT_BOLD,
         TextSize = 12,
-        TextColor3 = T.TextMuted,
+        TextColor3 = COL.Muted,
         BackgroundTransparency = 1,
         Position = UDim2.new(1, -26, 0, 0),
         Size = UDim2.new(0, 20, 0, 36),
         ZIndex = 6,
         Parent = base,
     })
-    RegisterThemeColor(chevron, "TextColor3", "TextMuted")
 
-    local body = U.New("Frame", {
+    local body = mk("Frame", {
         Size = UDim2.new(1, -16, 0, 0),
         Position = UDim2.new(0, 8, 0, 38),
         BackgroundTransparency = 1,
@@ -4407,54 +4576,51 @@ local function rapMultiSelect(cfg)
         ZIndex = 7,
         Parent = base,
     })
-    U.New("UIListLayout", {
+    mk("UIListLayout", {
         SortOrder = Enum.SortOrder.LayoutOrder,
         Padding = UDim.new(0, 4),
         Parent = body,
     })
 
-    local search = U.New("TextBox", {
+    local search = mk("TextBox", {
         Size = UDim2.new(1, 0, 0, 28),
-        BackgroundColor3 = T.Surface3,
+        BackgroundColor3 = COL.Bg2,
         BorderSizePixel = 0,
         Text = "",
         PlaceholderText = "Cari (search)...",
-        Font = T.FontRegular,
+        Font = FONT,
         TextSize = 11,
-        TextColor3 = T.Text,
-        PlaceholderColor3 = T.TextDim,
+        TextColor3 = COL.Text,
+        PlaceholderColor3 = COL.Dim,
         TextXAlignment = Enum.TextXAlignment.Left,
         ClearTextOnFocus = false,
         ZIndex = 8,
         Parent = body,
     })
-    U.Corner(search, UDim.new(0, 4))
-    U.New("UIPadding", { PaddingLeft = UDim.new(0, 8), Parent = search })
-    RegisterThemeColor(search, "BackgroundColor3", "Surface3")
-    RegisterThemeColor(search, "TextColor3", "Text")
-    RegisterThemeColor(search, "PlaceholderColor3", "TextDim")
+    round(search, UDim.new(0, 4))
+    mk("UIPadding", { PaddingLeft = UDim.new(0, 8), Parent = search })
 
-    local actsFrame = U.New("Frame", {
+    local actsFrame = mk("Frame", {
         Size = UDim2.new(1, 0, 0, 24),
         BackgroundTransparency = 1,
         ZIndex = 8,
         Parent = body,
     })
-    U.New("UIListLayout", {
+    mk("UIListLayout", {
         FillDirection = Enum.FillDirection.Horizontal,
         SortOrder = Enum.SortOrder.LayoutOrder,
         Padding = UDim.new(0, 4),
         Parent = actsFrame,
     })
 
-    local listFrame = U.New("Frame", {
+    local listFrame = mk("Frame", {
         Size = UDim2.new(1, 0, 0, 0),
         BackgroundTransparency = 1,
         ClipsDescendants = true,
         ZIndex = 8,
         Parent = body,
     })
-    U.New("UIListLayout", {
+    mk("UIListLayout", {
         SortOrder = Enum.SortOrder.LayoutOrder,
         Padding = UDim.new(0, 2),
         Parent = listFrame,
@@ -4464,10 +4630,13 @@ local function rapMultiSelect(cfg)
         local k = rapKeysOf(selected)
         if #k == 0 then
             lbl.Text = nm .. ": Semua"
+            lbl.TextColor3 = COL.Text
         elseif #k <= 2 then
             lbl.Text = nm .. ": " .. table.concat(k, ", ")
+            lbl.TextColor3 = COL.Accent
         else
             lbl.Text = nm .. ": " .. k[1] .. " +" .. tostring(#k - 1) .. " lagi"
+            lbl.TextColor3 = COL.Accent
         end
     end
 
@@ -4489,7 +4658,9 @@ local function rapMultiSelect(cfg)
 
     buildList = function()
         for _, c in ipairs(listFrame:GetChildren()) do
-            if c:IsA("TextButton") or c:IsA("TextLabel") then c:Destroy() end
+            if c:IsA("TextButton") or c:IsA("TextLabel") then
+                pcall(function() c:Destroy() end)
+            end
         end
         local low = string.lower(query)
         local shown = 0
@@ -4497,105 +4668,107 @@ local function rapMultiSelect(cfg)
             local s = tostring(it)
             if low == "" or string.find(string.lower(s), low, 1, true) then
                 local on = selected[it] == true
-                local btn = U.New("TextButton", {
+                local btn = mk("TextButton", {
                     Size = UDim2.new(1, 0, 0, 24),
-                    BackgroundColor3 = on and T.Accent or T.Surface3,
-                    BackgroundTransparency = on and 0.5 or 1,
+                    BackgroundColor3 = on and COL.Accent or COL.Bg2,
+                    BackgroundTransparency = on and 0.55 or 0,
                     Text = (on and "[x] " or "[ ] ") .. s,
-                    Font = T.FontRegular,
+                    Font = FONT,
                     TextSize = 11,
-                    TextColor3 = on and T.Accent or T.Text,
+                    TextColor3 = on and COL.Accent or COL.Text,
                     TextXAlignment = Enum.TextXAlignment.Left,
                     BorderSizePixel = 0,
+                    AutoButtonColor = true,
                     ZIndex = 9,
                     Parent = listFrame,
                 })
-                U.Corner(btn, UDim.new(0, 4))
-                U.New("UIPadding", { PaddingLeft = UDim.new(0, 6), Parent = btn })
-                track(btn.MouseButton1Click:Connect(function()
+                round(btn, UDim.new(0, 4))
+                mk("UIPadding", { PaddingLeft = UDim.new(0, 6), Parent = btn })
+                btn.MouseButton1Click:Connect(function()
                     if selected[it] then selected[it] = nil else selected[it] = true end
                     refreshLabel()
                     buildList()
                     pcall(cb, rapKeysOf(selected))
-                end))
+                end)
                 shown = shown + 1
             end
         end
         if shown == 0 then
-            local empty = U.New("TextLabel", {
+            mk("TextLabel", {
                 Size = UDim2.new(1, 0, 0, 22),
                 BackgroundTransparency = 1,
                 Text = "Tidak ada hasil",
-                Font = T.FontRegular,
+                Font = FONT,
                 TextSize = 11,
-                TextColor3 = T.TextDim,
+                TextColor3 = COL.Dim,
                 TextXAlignment = Enum.TextXAlignment.Left,
                 ZIndex = 9,
                 Parent = listFrame,
             })
-            RegisterThemeColor(empty, "TextColor3", "TextDim")
         end
-        local listH = math.min(shown * 26, 260)
-        if shown == 0 then listH = 22 end
+        local listH = (shown == 0) and 22 or math.min(shown * 26, 260)
         local bodyH = 28 + 4 + 24 + 4 + listH + 4
         listFrame.Size = UDim2.new(1, 0, 0, listH)
         body.Size = UDim2.new(1, -16, 0, bodyH)
-        base.Size = UDim2.new(1, 0, 0, 38 + bodyH + 6)
+        base.Size = UDim2.new(1, 0, 0, 44 + bodyH)
     end
 
-    track(search:GetPropertyChangedSignal("Text"):Connect(function()
+    search:GetPropertyChangedSignal("Text"):Connect(function()
         query = search.Text or ""
         if isOpen then buildList() end
-    end))
+    end)
 
-    local btnAll = U.New("TextButton", {
+    local btnAll = mk("TextButton", {
         Size = UDim2.new(0, 92, 0, 22),
-        BackgroundColor3 = T.Surface3,
+        BackgroundColor3 = COL.Bg2,
         BorderSizePixel = 0,
         Text = "Pilih Semua",
-        Font = T.FontRegular,
+        Font = FONT,
         TextSize = 10,
-        TextColor3 = T.Text,
+        TextColor3 = COL.Text,
+        AutoButtonColor = true,
         ZIndex = 9,
         Parent = actsFrame,
     })
-    U.Corner(btnAll, UDim.new(0, 4))
-    track(btnAll.MouseButton1Click:Connect(function()
+    round(btnAll, UDim.new(0, 4))
+    btnAll.MouseButton1Click:Connect(function()
         for _, it in ipairs(options) do selected[it] = true end
         refreshLabel()
         if isOpen then buildList() end
         pcall(cb, rapKeysOf(selected))
-    end))
+    end)
 
-    local btnNone = U.New("TextButton", {
+    local btnNone = mk("TextButton", {
         Size = UDim2.new(0, 92, 0, 22),
-        BackgroundColor3 = T.Surface3,
+        BackgroundColor3 = COL.Bg2,
         BorderSizePixel = 0,
         Text = "Kosongkan",
-        Font = T.FontRegular,
+        Font = FONT,
         TextSize = 10,
-        TextColor3 = T.Text,
+        TextColor3 = COL.Text,
+        AutoButtonColor = true,
         ZIndex = 9,
         Parent = actsFrame,
     })
-    U.Corner(btnNone, UDim.new(0, 4))
-    track(btnNone.MouseButton1Click:Connect(function()
+    round(btnNone, UDim.new(0, 4))
+    btnNone.MouseButton1Click:Connect(function()
         selected = {}
         refreshLabel()
         if isOpen then buildList() end
         pcall(cb, rapKeysOf(selected))
-    end))
+    end)
 
-    local toggle = U.New("TextButton", {
+    local toggle = mk("TextButton", {
         Size = UDim2.new(1, 0, 0, 36),
         BackgroundTransparency = 1,
         Text = "",
+        AutoButtonColor = false,
         ZIndex = 10,
         Parent = base,
     })
-    track(toggle.MouseButton1Click:Connect(function()
+    toggle.MouseButton1Click:Connect(function()
         setOpen(not isOpen)
-    end))
+    end)
 
     refreshLabel()
 
@@ -4609,6 +4782,7 @@ local function rapMultiSelect(cfg)
         end,
         Get = function() return rapKeysOf(selected) end,
         SetItems = function(_, list)
+            -- Ganti daftar opsi tanpa menghapus pilihan yang sudah ada.
             options = list or {}
             if isOpen then buildList() end
         end,
@@ -4725,7 +4899,11 @@ SecAutoEgg:Slider({
     Maximum = 30,
     DisplayMethod = "Round",
     Precision = 0,
-    Callback = function(value) RAP_DELAY = value / 10 end,
+    Callback = function(value)
+        -- batas bawah 0.25s: di bawah itu loop keburu memindai workspace
+        -- berulang-ulang dan bikin frame drop / memori naik.
+        RAP_DELAY = math.max(0.25, (tonumber(value) or 5) / 10)
+    end,
 })
 
 local SecRanch = TabMainRAP:Section({ Name = "Ranch & Auto Placed Egg", Side = 2 })
@@ -4786,7 +4964,7 @@ SecTele:Dropdown({
 SecTele:Button({
     Name = "Teleport ke Tujuan Terpilih",
     Callback = function()
-        for _, d in ipairs(workspace:GetDescendants()) do
+        for _, d in ipairs(rapTickList()) do
             if (d:IsA("Model") or d:IsA("BasePart")) and d.Name == rapGoal then
                 local p = rapEntityPos(d)
                 if p then
