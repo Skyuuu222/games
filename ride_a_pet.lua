@@ -2517,6 +2517,14 @@ end)()
     -- --------------------------------------------------------------------------
     local function _zy_make_section(zsec)
         local S = {}
+        -- Expose wadah asli ZypheraxUI supaya rapMultiSelect bisa parent ke dalam
+        -- section (tanpa ini filter jatuh ke gethui/CoreGui dan tampil di luar window).
+        S._zsec = zsec
+        pcall(function()
+            S._container = zsec._container
+            S._box = zsec._box
+            S._items = zsec._items
+        end)
 
         local function _emit(kind, cfg)
             if cfg == nil then return end
