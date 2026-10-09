@@ -1421,7 +1421,7 @@ local function radar_create_gui()
     local COL_BG      = Color3.fromRGB(12, 15, 24)
     local COL_CARD    = Color3.fromRGB(20, 24, 38)
     local COL_BORDER  = Color3.fromRGB(54, 62, 88)
-    local COL_ACCENT  = Color3.fromRGB(0, 200, 255)
+    local COL_ACCENT  = Color3.fromRGB(0, 170, 255)
     local COL_ACCENT2 = Color3.fromRGB(130, 120, 255)
     local COL_GRID    = Color3.fromRGB(42, 50, 74)
     local COL_SELF    = Color3.fromRGB(70, 240, 140)
@@ -3700,9 +3700,9 @@ do
 
     -- Penyempurnaan tampilan (dipakai untuk jalur GitHub maupun salinan lokal).
     local TWEAKS = {
-        { "Accent           = Color3.fromRGB(0, 180, 255),   -- primary accent",
-          "Accent           = Color3.fromRGB(0, 200, 255),   -- primary accent" },
-        { "AccentGradient   = Color3.fromRGB(30, 140, 220),  -- subtle gradient end",
+        { "Accent           = Color3.fromRGB(0, 170, 255),   -- primary accent",
+          "Accent           = Color3.fromRGB(0, 170, 255),   -- primary accent" },
+        { "AccentGradient   = Color3.fromRGB(0, 140, 230),  -- subtle gradient end",
           "AccentGradient   = Color3.fromRGB(130, 120, 255), -- subtle gradient end" },
         { "CornerLg         = UDim.new(0, 10),",
           "CornerLg         = UDim.new(0, 12)," },
@@ -3813,7 +3813,7 @@ local Themes = {
         Surface          = Color3.fromRGB(20, 23, 31),
         Surface2         = Color3.fromRGB(26, 30, 42),
         Surface3         = Color3.fromRGB(34, 40, 56),
-        Accent           = Color3.fromRGB(0, 200, 255),
+        Accent           = Color3.fromRGB(0, 170, 255),
         AccentDark       = Color3.fromRGB(0, 120, 190),
         AccentGradient   = Color3.fromRGB(130, 120, 255),
         Text             = Color3.fromRGB(242, 244, 250),
@@ -3821,7 +3821,7 @@ local Themes = {
         TextDim          = Color3.fromRGB(90, 96, 112),
         Stroke           = Color3.fromRGB(38, 43, 58),
         StrokeHover      = Color3.fromRGB(55, 62, 84),
-        StrokeActive     = Color3.fromRGB(0, 200, 255),
+        StrokeActive     = Color3.fromRGB(0, 170, 255),
         Success          = Color3.fromRGB(60, 215, 120),
         Warning          = Color3.fromRGB(255, 189, 46),
         Error            = Color3.fromRGB(255, 95, 86),
@@ -3835,7 +3835,7 @@ local Themes = {
         Surface          = Color3.fromRGB(255, 255, 255),
         Surface2         = Color3.fromRGB(238, 241, 248),
         Surface3         = Color3.fromRGB(224, 228, 238),
-        Accent           = Color3.fromRGB(0, 150, 240),
+        Accent           = Color3.fromRGB(0, 170, 255),
         AccentDark       = Color3.fromRGB(0, 110, 180),
         AccentGradient   = Color3.fromRGB(90, 110, 230),
         Text             = Color3.fromRGB(25, 28, 36),
@@ -3843,7 +3843,7 @@ local Themes = {
         TextDim          = Color3.fromRGB(150, 155, 168),
         Stroke           = Color3.fromRGB(216, 222, 234),
         StrokeHover      = Color3.fromRGB(190, 198, 214),
-        StrokeActive     = Color3.fromRGB(0, 150, 240),
+        StrokeActive     = Color3.fromRGB(0, 170, 255),
         Success          = Color3.fromRGB(40, 180, 100),
         Warning          = Color3.fromRGB(240, 160, 30),
         Error            = Color3.fromRGB(240, 70, 70),
@@ -4452,12 +4452,26 @@ function ZypheraxUI:CreateWindow(config)
         Name = "MainWindow",
         Size = UDim2.fromScale(1, 1),
         BackgroundColor3 = T.Background,
-        BackgroundTransparency = 0.04,
+        BackgroundTransparency = 0.12,
         ClipsDescendants = true,
         ZIndex = 1,
         Parent = shadow
     })
     U.Corner(main, T.CornerLg)
+    pcall(function()
+        local bgwm = U.New("ImageLabel", {
+            Name = "BackgroundWatermark",
+            Image = "rbxassetid://106764279090045",
+            BackgroundTransparency = 1,
+            ImageTransparency = 0.87,
+            ScaleType = Enum.ScaleType.Fit,
+            AnchorPoint = Vector2.new(0.5, 0.5),
+            Position = UDim2.new(0.60, 0, 0.55, 0),
+            Size = UDim2.fromOffset(460, 460),
+            ZIndex = 1,
+            Parent = main
+        })
+    end)
     local mainStroke = U.Stroke(main, T.Stroke, 1.2, 0)
     RegisterThemeColor(main, "BackgroundColor3", "Background")
     RegisterThemeColor(mainStroke, "Color", "Stroke")
@@ -4558,20 +4572,31 @@ function ZypheraxUI:CreateWindow(config)
     end)
 
     -- Window Title & Subtitle below traffic lights
+    local headLogo = U.New("ImageLabel", {
+        Name = "SidebarLogo",
+        Image = "rbxassetid://106764279090045",
+        BackgroundTransparency = 1,
+        ScaleType = Enum.ScaleType.Fit,
+        Position = UDim2.new(0, 14, 0, 30),
+        Size = UDim2.fromOffset(20, 20),
+        ZIndex = 6,
+        Parent = sidebarHeader
+    })
+    U.Corner(headLogo, UDim.new(0, 5))
     local titleLbl = U.New("TextLabel", {
         Text = string.upper(title),
         Font = T.FontBold,
         TextSize = 13,
         TextColor3 = T.Accent,
         BackgroundTransparency = 1,
-        Position = UDim2.new(0, 14, 0, 32),
+        Position = UDim2.new(0, 40, 0, 30),
         Size = UDim2.new(1, -24, 0, 16),
         TextXAlignment = Enum.TextXAlignment.Left,
         TextTruncate = Enum.TextTruncate.AtEnd,
         ZIndex = 5,
         Parent = sidebarHeader
     })
-    RegisterThemeColor(titleLbl, "TextColor3", "Accent")
+    titleLbl.TextColor3 = Color3.fromRGB(0, 170, 255) -- LOGOBLUE_TITLE
 
     local subLbl = U.New("TextLabel", {
         Text = sub,
@@ -4579,7 +4604,7 @@ function ZypheraxUI:CreateWindow(config)
         TextSize = 10,
         TextColor3 = T.TextMuted,
         BackgroundTransparency = 1,
-        Position = UDim2.new(0, 14, 0, 48),
+        Position = UDim2.new(0, 40, 0, 46),
         Size = UDim2.new(1, -24, 0, 14),
         TextXAlignment = Enum.TextXAlignment.Left,
         TextTruncate = Enum.TextTruncate.AtEnd,
@@ -5030,7 +5055,7 @@ function ZypheraxUI:CreateWindow(config)
                 local base = U.New(cls, {
                     Size = UDim2.new(1, 0, 0, height or 38),
                     BackgroundColor3 = T.Surface2,
-                    BackgroundTransparency = 0.25,
+                    BackgroundTransparency = 0.5,
                     BorderSizePixel = 0,
                     ZIndex = 5,
                     Parent = secContainer
@@ -5569,7 +5594,7 @@ function ZypheraxUI:CreateWindow(config)
                     Size = UDim2.new(1, 0, 0, 0),
                     AutomaticSize = Enum.AutomaticSize.Y,
                     BackgroundColor3 = T.Surface,
-                    BackgroundTransparency = 0.3,
+                    BackgroundTransparency = 0.35,
                     ZIndex = 5,
                     Parent = secContainer
                 })
@@ -6249,9 +6274,9 @@ do
         border    = Color3.fromRGB(45, 50, 66),
         textMain  = Color3.fromRGB(240, 242, 248),
         textMuted = Color3.fromRGB(150, 156, 172),
-        accentA   = Color3.fromRGB(0, 180, 255),
-        accentB   = Color3.fromRGB(30, 140, 220),
-        accentC   = Color3.fromRGB(140, 120, 255),
+        accentA   = Color3.fromRGB(0, 170, 255),
+        accentB   = Color3.fromRGB(0, 140, 230),
+        accentC   = Color3.fromRGB(0, 170, 255),
     }
 
     local function _round(p, r)
@@ -6315,24 +6340,25 @@ do
 
             -- Logo kotak gradien.
             local logo = Instance.new("Frame")
-            logo.Size = UDim2.fromOffset(56, 56)
-            logo.Position = UDim2.new(0.5, -28, 0, 26)
-            logo.BackgroundColor3 = Color3.new(1, 1, 1)
+            logo.Size = UDim2.fromOffset(84, 84)
+            logo.Position = UDim2.new(0.5, -42, 0, 14)
+            logo.BackgroundTransparency = 1
+            logo.BackgroundColor3 = Color3.new(1, 1, 1) -- transparan (BackgroundTransparency=1)
             logo.BorderSizePixel = 0
             logo.ZIndex = 6
             logo.Parent = card
             _round(logo, 14)
-            _grad(logo, P.accentA, P.accentC, 135)
+            -- logoPure: tanpa kotak gradien
 
-            local logoText = Instance.new("TextLabel")
-            logoText.Size = UDim2.fromScale(1, 1)
-            logoText.BackgroundTransparency = 1
-            logoText.Text = "Z"
-            logoText.Font = Enum.Font.GothamBold
-            logoText.TextSize = 30
-            logoText.TextColor3 = Color3.new(1, 1, 1)
-            logoText.ZIndex = 7
-            logoText.Parent = logo
+            local logoImg = Instance.new("ImageLabel")
+            logoImg.AnchorPoint = Vector2.new(0.5, 0.5)
+            logoImg.Position = UDim2.fromScale(0.5, 0.5)
+            logoImg.Size = UDim2.fromScale(1, 1)
+            logoImg.BackgroundTransparency = 1
+            logoImg.Image = "rbxassetid://106764279090045"
+            logoImg.ScaleType = Enum.ScaleType.Fit
+            logoImg.ZIndex = 7
+            logoImg.Parent = logo
 
             -- Judul + subjudul.
             local title = Instance.new("TextLabel")
@@ -6346,7 +6372,7 @@ do
             title.TextColor3 = Color3.new(1, 1, 1)
             title.ZIndex = 6
             title.Parent = card
-            _grad(title, P.accentA, P.accentC, 20)
+            _grad(title, P.accentA, P.accentB, 20)
 
             local sub = Instance.new("TextLabel")
             sub.AnchorPoint = Vector2.new(0.5, 0)
