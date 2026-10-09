@@ -938,7 +938,7 @@ function ZypheraxUI:CreateWindow(config)
             Size = UDim2.fromOffset(460, 460),
             ZIndex = 1,
             Parent = main
-        })        })
+        })
     end)
 --     local mainStroke = U.Stroke(main, T.Stroke, 1.2, 0)
     RegisterThemeColor(main, "BackgroundColor3", "Background")
