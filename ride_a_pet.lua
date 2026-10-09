@@ -2722,7 +2722,9 @@ end
 ZypheraxWindow = Window
 
 -- Frosted watermark (blur background, sharp text) ala executor Real
-local function _zy_show_watermark(title)
+-- Frosted watermark elegant (warna ikut logo, teks tajam)
+-- Frosted watermark elegant v4 (logo asli, biru logo, 2 label)
+local function _zy_show_watermark(gameName)
     pcall(function()
         local core = (gethui and gethui()) or (cloneref and cloneref(game:GetService("CoreGui"))) or game:GetService("CoreGui")
         local old = core:FindFirstChild("ZypheraxWatermarkGui")
@@ -2733,32 +2735,76 @@ local function _zy_show_watermark(title)
         sg.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
         sg.DisplayOrder = 9990
         sg.Parent = core
+        local shadow = Instance.new("ImageLabel")
+        shadow.BackgroundTransparency = 1
+        shadow.Image = "rbxassetid://1316045217"
+        shadow.ImageColor3 = Color3.new(0, 0, 0)
+        shadow.ImageTransparency = 0.55
+        shadow.ScaleType = Enum.ScaleType.Slice
+        shadow.SliceCenter = Rect.new(10, 10, 118, 118)
+        shadow.Position = UDim2.new(0, 8, 0, 10)
+        shadow.Size = UDim2.fromOffset(300, 42)
+        shadow.Parent = sg
         local pill = Instance.new("Frame")
-        pill.Name = "WMPill"
         pill.Position = UDim2.new(0, 12, 0, 12)
-        pill.Size = UDim2.fromOffset(250, 30)
-        pill.BackgroundColor3 = Color3.fromRGB(12, 14, 20)
-        pill.BackgroundTransparency = 0.35
+        pill.Size = UDim2.fromOffset(292, 32)
+        pill.BackgroundColor3 = Color3.fromRGB(10, 13, 20)
+        pill.BackgroundTransparency = 0.22
         pill.BorderSizePixel = 0
         pill.Active = true
         pill.Draggable = true
         pill.Parent = sg
-        local cn = Instance.new("UICorner") cn.CornerRadius = UDim.new(0, 8) cn.Parent = pill
-        local sk = Instance.new("UIStroke") sk.Color = Color3.fromRGB(0, 170, 255) sk.Thickness = 1 sk.Transparency = 0.35 sk.Parent = pill
+        local cn = Instance.new("UICorner") cn.CornerRadius = UDim.new(0, 10) cn.Parent = pill
+        local sk = Instance.new("UIStroke") sk.Color = Color3.fromRGB(0, 170, 255) sk.Thickness = 1 sk.Transparency = 0.55 sk.ApplyStrokeMode = Enum.ApplyStrokeMode.Border sk.Parent = pill
+        local hi = Instance.new("Frame")
+        hi.BackgroundColor3 = Color3.fromRGB(255, 255, 255) hi.BackgroundTransparency = 0.88 hi.BorderSizePixel = 0
+        hi.Position = UDim2.new(0, 12, 0, 1) hi.Size = UDim2.new(1, -24, 0, 1) hi.Parent = pill
         local lg = Instance.new("ImageLabel")
-        lg.Name = "WMLogo" lg.BackgroundTransparency = 1
+        lg.BackgroundTransparency = 1
         lg.Image = "rbxassetid://106764279090045" lg.ScaleType = Enum.ScaleType.Fit
-        lg.Size = UDim2.fromOffset(18, 18) lg.Position = UDim2.new(0, 8, 0.5, -9)
+        lg.Size = UDim2.fromOffset(20, 20) lg.Position = UDim2.new(0, 9, 0.5, -10)
         lg.Parent = pill
-        local lb = Instance.new("TextLabel")
-        lb.Name = "WMLabel" lb.BackgroundTransparency = 1
-        lb.Position = UDim2.new(0, 32, 0, 0) lb.Size = UDim2.new(1, -40, 1, 0)
-        lb.Font = Enum.Font.GothamBold lb.TextSize = 12
-        lb.TextColor3 = Color3.fromRGB(240, 242, 248)
-        lb.TextXAlignment = Enum.TextXAlignment.Left
-        lb.TextTruncate = Enum.TextTruncate.AtEnd
-        lb.Text = title
-        lb.Parent = pill
+        local lgc = Instance.new("UICorner") lgc.CornerRadius = UDim.new(0, 5) lgc.Parent = lg
+        local dot = Instance.new("Frame")
+        dot.BackgroundColor3 = Color3.fromRGB(0, 180, 255) dot.BorderSizePixel = 0
+        dot.Position = UDim2.new(0, 33, 0.5, -3) dot.Size = UDim2.fromOffset(6, 6) dot.Parent = pill
+        local dtc = Instance.new("UICorner") dtc.CornerRadius = UDim.new(1, 0) dtc.Parent = dot
+        task.spawn(function()
+            local ts = game:GetService("TweenService")
+            while dot.Parent do
+                pcall(function()
+                    ts:Create(dot, TweenInfo.new(1, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut), {BackgroundTransparency = 0.4}):Play()
+                    task.wait(1)
+                    ts:Create(dot, TweenInfo.new(1, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut), {BackgroundTransparency = 0}):Play()
+                    task.wait(1)
+                end)
+            end
+        end)
+        local t1 = Instance.new("TextLabel")
+        t1.BackgroundTransparency = 1
+        t1.Position = UDim2.new(0, 45, 0, 0) t1.Size = UDim2.new(0, 108, 1, 0)
+        t1.Font = Enum.Font.GothamBlack t1.TextSize = 12
+        t1.TextColor3 = Color3.fromRGB(0, 180, 255)
+        t1.TextXAlignment = Enum.TextXAlignment.Left
+        t1.Text = "ZYPHERAX HUB"
+        t1.Parent = pill
+        local sep = Instance.new("TextLabel")
+        sep.BackgroundTransparency = 1
+        sep.Position = UDim2.new(0, 153, 0, 0) sep.Size = UDim2.new(0, 10, 1, 0)
+        sep.Font = Enum.Font.Gotham sep.TextSize = 12
+        sep.TextColor3 = Color3.fromRGB(70, 78, 96)
+        sep.TextXAlignment = Enum.TextXAlignment.Center
+        sep.Text = "|"
+        sep.Parent = pill
+        local t2 = Instance.new("TextLabel")
+        t2.BackgroundTransparency = 1
+        t2.Position = UDim2.new(0, 165, 0, 0) t2.Size = UDim2.new(1, -173, 1, 0)
+        t2.Font = Enum.Font.GothamMedium t2.TextSize = 11
+        t2.TextColor3 = Color3.fromRGB(170, 178, 198)
+        t2.TextXAlignment = Enum.TextXAlignment.Left
+        t2.TextTruncate = Enum.TextTruncate.AtEnd
+        t2.Text = tostring(gameName)
+        t2.Parent = pill
         task.spawn(function()
             local fps = 60
             pcall(function()
@@ -2773,13 +2819,13 @@ local function _zy_show_watermark(title)
                 pcall(function()
                     local ms = 0
                     pcall(function() ms = math.floor(game:GetService("Stats").Network.ServerStatsItem["Data Ping"]:GetValue() + 0.5) end)
-                    lb.Text = title .. "  |  " .. tostring(fps) .. " FPS  |  " .. tostring(ms) .. " ms"
+                    t2.Text = tostring(gameName) .. "   " .. tostring(fps) .. " FPS   " .. tostring(ms) .. " ms"
                 end)
             end
         end)
     end)
 end
-_zy_show_watermark("ZYPHERAX HUB  |  Ride A Pet")
+_zy_show_watermark("Ride A Pet")
 
 
 
