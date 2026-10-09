@@ -919,7 +919,7 @@ function ZypheraxUI:CreateWindow(config)
         Name = "MainWindow",
         Size = UDim2.fromScale(1, 1),
         BackgroundColor3 = T.Background,
-        BackgroundTransparency = 0.04,
+        BackgroundTransparency = 0.12,
         ClipsDescendants = true,
         ZIndex = 1,
         Parent = shadow
@@ -1524,7 +1524,7 @@ function ZypheraxUI:CreateWindow(config)
                 local base = U.New(cls, {
                     Size = UDim2.new(1, 0, 0, height or 38),
                     BackgroundColor3 = T.Surface2,
-                    BackgroundTransparency = 0.25,
+                    BackgroundTransparency = 0.45,
                     BorderSizePixel = 0,
                     ZIndex = 5,
                     Parent = secContainer
@@ -5324,51 +5324,6 @@ SecAutoEgg:Toggle({
         rapSet("feed", enabled, "Auto Feed", "Memberi makan pet otomatis.", "Auto feed dimatikan.")
     end,
 })
-local SecRanch = TabMainRAP:Section({ Name = "My Plot", Side = 1 })
-SecRanch:Header({ Name = ZypheraxLib:Gradient("My Plot", Color3.fromRGB(255, 170, 90), Color3.fromRGB(255, 110, 140)) })
-
-SecRanch:Label({ Name = "My Plot dideteksi otomatis (nama objek mengandung 'ranch/pen/nest/home/base'), cadangan dari SpawnLocation." })
-
-SecRanch:Button({
-    Name = "Balik ke My Plot Sekarang",
-    Callback = function() rapGoPlot(true) end,
-})
-
-SecRanch:Button({
-    Name = "Deteksi Ulang My Plot",
-    Callback = function()
-        rapRanchPos = nil rapPlotPos = nil
-        local p = rapRefreshRanch()
-        Window:Notify({
-            Title = "Plot",
-            Description = p and ("My Plot ditemukan: " .. tostring(math.floor(p.X)) .. ", " .. tostring(math.floor(p.Z))) or "My Plot tidak ditemukan.",
-            Lifetime = 4,
-        })
-    end,
-})
-
-SecRanch:Toggle({
-    Name = "Auto Placed Egg (Taruh Telur di Plot)",
-    Default = false,
-    Callback = function(enabled)
-        rapSet("placedEgg", enabled, "Placed Egg",
-            "Telur otomatis ditaruh di My Plot.",
-            "Auto placed egg dimatikan.")
-    end,
-})
-
-SecRanch:Button({
-    Name = "Taruh Telur Sekarang",
-    Callback = function()
-        local n = rapPlaceEggs()
-        Window:Notify({
-            Title = "Placed Egg",
-            Description = (n > 0) and ("Menaruh telur (%d prompt)."):format(n) or "Tidak ada prompt taruh telur ditemukan di plot.",
-            Lifetime = 4,
-        })
-    end,
-})
-
 local SecTele = TabMainRAP:Section({ Name = "Teleport", Side = 2 })
 SecTele:Header({ Name = ZypheraxLib:Gradient("Teleport Cepat", Color3.fromRGB(240, 190, 100), Color3.fromRGB(255, 160, 120)) })
 
@@ -5414,6 +5369,51 @@ SecTele:Toggle({
         rapSet("autoTp", enabled, "Auto Teleport",
             "Terus pindah ke " .. tostring(rapGoal) .. ".",
             "Auto teleport dimatikan.")
+    end,
+})
+
+local SecRanch = TabMainRAP:Section({ Name = "My Plot", Side = 2 })
+SecRanch:Header({ Name = ZypheraxLib:Gradient("My Plot", Color3.fromRGB(255, 170, 90), Color3.fromRGB(255, 110, 140)) })
+
+SecRanch:Label({ Name = "My Plot dideteksi otomatis (nama objek mengandung 'ranch/pen/nest/home/base'), cadangan dari SpawnLocation." })
+
+SecRanch:Button({
+    Name = "Balik ke My Plot Sekarang",
+    Callback = function() rapGoPlot(true) end,
+})
+
+SecRanch:Button({
+    Name = "Deteksi Ulang My Plot",
+    Callback = function()
+        rapRanchPos = nil rapPlotPos = nil
+        local p = rapRefreshRanch()
+        Window:Notify({
+            Title = "Plot",
+            Description = p and ("My Plot ditemukan: " .. tostring(math.floor(p.X)) .. ", " .. tostring(math.floor(p.Z))) or "My Plot tidak ditemukan.",
+            Lifetime = 4,
+        })
+    end,
+})
+
+SecRanch:Toggle({
+    Name = "Auto Placed Egg (Taruh Telur di Plot)",
+    Default = false,
+    Callback = function(enabled)
+        rapSet("placedEgg", enabled, "Placed Egg",
+            "Telur otomatis ditaruh di My Plot.",
+            "Auto placed egg dimatikan.")
+    end,
+})
+
+SecRanch:Button({
+    Name = "Taruh Telur Sekarang",
+    Callback = function()
+        local n = rapPlaceEggs()
+        Window:Notify({
+            Title = "Placed Egg",
+            Description = (n > 0) and ("Menaruh telur (%d prompt)."):format(n) or "Tidak ada prompt taruh telur ditemukan di plot.",
+            Lifetime = 4,
+        })
     end,
 })
 
