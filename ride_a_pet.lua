@@ -947,18 +947,18 @@ function ZypheraxUI:CreateWindow(config)
     U.Corner(sidebar, T.CornerLg)
     RegisterThemeColor(sidebar, "BackgroundColor3", "SidebarBg")
 
-    -- Right border separator of sidebar
-    local sideDiv = U.New("Frame", {
-        Size = UDim2.new(0, 1, 1, 0),
-        Position = UDim2.new(1, 0, 0, 0),
-        BackgroundColor3 = T.Stroke,
-        BorderSizePixel = 0,
-        ZIndex = 3,
-        Parent = sidebar
-    })
-    RegisterThemeColor(sideDiv, "BackgroundColor3", "Stroke")
-
-    -- // SIDEBAR HEADER (MacOS Traffic Lights + Titles) \ --
+    -- Right border separator of sidebar (DISABLED - user requested removal)
+--     local sideDiv = U.New("Frame", {
+--         Size = UDim2.new(0, 1, 1, 0),
+--         Position = UDim2.new(1, 0, 0, 0),
+--         BackgroundColor3 = T.Stroke,
+--         BorderSizePixel = 0,
+--         ZIndex = 3,
+--         Parent = sidebar
+--     })
+--     RegisterThemeColor(sideDiv, "BackgroundColor3", "Stroke")
+-- 
+--     -- // SIDEBAR HEADER (MacOS Traffic Lights + Titles) \ --
     local sidebarHeader = U.New("Frame", {
         Name = "SidebarHeader",
         Size = UDim2.new(1, 0, 0, 78),
@@ -967,7 +967,7 @@ function ZypheraxUI:CreateWindow(config)
         Parent = sidebar
     })
 
-    -- MacOS Traffic Light Buttons (🔴 Red, 🟡 Yellow, 🟢 Green - Compact)
+    -- MacOS Traffic Light Buttons (ðŸ”´ Red, ðŸŸ¡ Yellow, ðŸŸ¢ Green - Compact)
     local trafficContainer = U.New("Frame", {
         Name = "MacOSTrafficLights",
         Size = UDim2.new(0, 48, 0, 12),
@@ -1006,17 +1006,17 @@ function ZypheraxUI:CreateWindow(config)
         return dot
     end
 
-    -- 🔴 Close: smoothly closes window
+    -- ðŸ”´ Close: smoothly closes window
     makeTrafficDot(Color3.fromRGB(255, 95, 86), Color3.fromRGB(255, 120, 110), function()
         Win:ToggleVisibility(false)
     end)
 
-    -- 🟡 Minimize: minimizes window
+    -- ðŸŸ¡ Minimize: minimizes window
     makeTrafficDot(Color3.fromRGB(255, 189, 46), Color3.fromRGB(255, 210, 80), function()
         Win:ToggleVisibility(false)
     end)
 
-    -- 🟢 Maximize: toggles size
+    -- ðŸŸ¢ Maximize: toggles size
     local isMaximized = false
     makeTrafficDot(Color3.fromRGB(39, 201, 63), Color3.fromRGB(60, 225, 90), function()
         isMaximized = not isMaximized
@@ -1736,7 +1736,7 @@ function ZypheraxUI:CreateWindow(config)
                 })
 
                 local chevron = U.New("TextLabel", {
-                    Text = "▼",
+                    Text = "â–¼",
                     Font = T.FontBold,
                     TextSize = 10,
                     TextColor3 = T.TextMuted,
@@ -1782,7 +1782,7 @@ function ZypheraxUI:CreateWindow(config)
                             isOpen = false
                             listFrame.Visible = false
                             U.Tween(base, 0.2, { Size = UDim2.new(1, 0, 0, 36) })
-                            chevron.Text = "▼"
+                            chevron.Text = "â–¼"
                             pcall(cb, selected)
                             rebuild()
                         end))
@@ -1798,13 +1798,13 @@ function ZypheraxUI:CreateWindow(config)
                         local h = #items * 28 + 4
                         U.Tween(base, 0.2, { Size = UDim2.new(1, 0, 0, 42 + h) })
                         U.Tween(listFrame, 0.2, { Size = UDim2.new(1, -16, 0, h) })
-                        chevron.Text = "▲"
+                        chevron.Text = "â–²"
                     else
                         U.Tween(base, 0.2, { Size = UDim2.new(1, 0, 0, 36) })
                         U.Tween(listFrame, 0.2, { Size = UDim2.new(1, -16, 0, 0) }).Completed:Connect(function()
                             listFrame.Visible = false
                         end)
-                        chevron.Text = "▼"
+                        chevron.Text = "â–¼"
                     end
                 end))
 
@@ -2054,7 +2054,7 @@ function ZypheraxUI:CreateWindow(config)
                 -- Title
                 local topRow = U.New("Frame", { Size = UDim2.new(1, 0, 0, 20), BackgroundTransparency = 1, Parent = confBox })
                 U.New("TextLabel", {
-                    Text = "⚙  Config Manager",
+                    Text = "âš™  Config Manager",
                     Font = T.FontBold,
                     TextSize = 13,
                     TextColor3 = T.Accent,
@@ -3246,6 +3246,7 @@ local rapGoal = "Player Spawn"
 -- Filter multi-pilih (tabel set). Tabel kosong = tampil semua.
 local rapEggFilterSet = {}
 local rapRarityFilterSet = {}
+local rapMutationFilterSet = {}
 local rapPickedCount = 0
 local rapPickupMode = "Biasa"
 local rapReturnRanch = true
@@ -4897,12 +4898,29 @@ rapNewFilter(SecAutoEgg, "Filter Rarity", RARITY_LIST, {}, function(list)
     for _, v in ipairs(list) do rapRarityFilterSet[v] = true end
 end)
 
-rapNewFilter(SecAutoEgg, "Filter Jenis Telur", rapTypeList, {}, function(list)
+rapNewFilter(SecAutoEgg, "Filter Mutasi", RAP_MUTATIONS, {}, function(list)
+    rapMutationFilterSet = {}
+    for _, v in ipairs(list) do rapMutationFilterSet[v] = true end
+end)
+
+-- Build egg list organized by rarity: "[Rarity] EggName"
+local rapEggByRarity = {}
+for _, eggName in ipairs(rapEggNames) do
+    local rarity = RAP_RARITY[eggName] or "Unknown"
+    table.insert(rapEggByRarity, "[" .. rarity .. "] " .. eggName)
+end
+
+rapNewFilter(SecAutoEgg, "Filter Jenis Telur (by Rarity)", rapEggByRarity, {}, function(list)
     rapEggFilterSet = {}
-    for _, v in ipairs(list) do rapEggFilterSet[v] = true end
+    for _, v in ipairs(list) do
+        -- Extract actual egg name from "[Rarity] EggName" format
+        local eggName = v:match("%[.+%]%s+(.+)") or v
+        rapEggFilterSet[eggName] = true
+    end
 end)
 
 SecAutoEgg:Label({ Name = "Filter punya kotak search & bisa pilih banyak. Kosong = semua." })
+SecAutoEgg:Label({ Name = "Format: [Rarity] EggName -- pilih jenis telur spesifik per rarity." })
 
 SecAutoEgg:Dropdown({
     Name = "Mode Auto Pickup",
@@ -5398,215 +5416,15 @@ SecTheme:Toggle({
     end
 })
 
-SecTheme:Toggle({
-    Name = "Tampilkan Info User",
-    Default = Window:GetUserInfoState(),
-    Callback = function(bool)
-        Window:SetUserInfoState(bool)
-    end
-})
 
--- Toggle warna header: gradient warna-warni vs putih/hitam polos
-local headerColorMode = "gradient"
 
-local function findWmacGuis()
-    local found = {}
-    local containers = {}
-    pcall(function() if gethui then table.insert(containers, gethui()) end end)
-    pcall(function() table.insert(containers, CoreGui) end)
-    pcall(function()
-        if LocalPlayer and LocalPlayer:FindFirstChild("PlayerGui") then
-            table.insert(containers, LocalPlayer.PlayerGui)
-        end
-    end)
 
-    for _, container in ipairs(containers) do
-        for _, sg in ipairs(container:GetChildren()) do
-            if sg:IsA("ScreenGui") then
-                if sg:FindFirstChild("Notifications") or sg.Name:lower():find("zypherax") or sg.Name:lower():find("mac") then
-                    table.insert(found, sg)
-                else
-                    for _, desc in ipairs(sg:GetDescendants()) do
-                        if desc:IsA("TextLabel") and (desc.Text:find("Zypherax") or desc.Text:find("Modifikasi") or desc.Text:find("Korblox")) then
-                            table.insert(found, sg)
-                            break
-                        end
-                    end
-                end
-            end
-        end
-    end
-    return found
-end
 
-local function applyHeaderColor(mode)
-    pcall(function()
-        local guis = findWmacGuis()
-        for _, target in ipairs(guis) do
-            -- Listener otomatis bila ada header / TextLabel baru yang dimuat
-            if not target:GetAttribute("HeaderColorHooked") then
-                target:SetAttribute("HeaderColorHooked", true)
-                target.DescendantAdded:Connect(function(d)
-                    if d:IsA("TextLabel") and headerColorMode ~= "gradient" then
-                        task.wait(0.05)
-                        local txt = d.Text
-                        if txt:find("<font color=") or d:GetAttribute("OrigHeaderRichText") then
-                            if not d:GetAttribute("OrigHeaderRichText") then
-                                d:SetAttribute("OrigHeaderRichText", txt)
-                            end
-                            local clean = d:GetAttribute("OrigHeaderRichText"):gsub("<[^>]->", "")
-                            if headerColorMode == "white" then
-                                d.Text = string.format('<font color="rgb(255,255,255)">%s</font>', clean)
-                            elseif headerColorMode == "black" then
-                                d.Text = string.format('<font color="rgb(20,20,20)">%s</font>', clean)
-                            end
-                        end
-                    end
-                end)
-            end
 
-            for _, obj in ipairs(target:GetDescendants()) do
-                if obj:IsA("TextLabel") then
-                    -- ZypheraxLib:Gradient menghasilkan rich text dengan tag <font color="rgb(...)"> per huruf
-                    local txt = obj.Text
-                    if txt:find("<font color=") or obj:GetAttribute("OrigHeaderRichText") then
-                        if not obj:GetAttribute("OrigHeaderRichText") then
-                            obj:SetAttribute("OrigHeaderRichText", txt)
-                        end
-                        local orig = obj:GetAttribute("OrigHeaderRichText")
-                        local clean = orig:gsub("<[^>]->", "")
 
-                        if mode == "white" then
-                            obj.Text = string.format('<font color="rgb(255,255,255)">%s</font>', clean)
-                        elseif mode == "black" then
-                            obj.Text = string.format('<font color="rgb(20,20,20)">%s</font>', clean)
-                        else
-                            obj.Text = orig
-                        end
-                    end
-                end
-            end
-        end
-    end)
-end
 
-SecTheme:Dropdown({
-    Name = "Warna Teks Header",
-    Options = { "Gradient (Warna-warni)", "Putih Polos", "Hitam Polos" },
-    Default = "Gradient (Warna-warni)",
-    Callback = function(choice)
-        if choice == "Putih Polos" then
-            headerColorMode = "white"
-        elseif choice == "Hitam Polos" then
-            headerColorMode = "black"
-        else
-            headerColorMode = "gradient"
-        end
-        applyHeaderColor(headerColorMode)
-        Window:Notify({ Title = "Teks Header", Description = "Warna teks diubah: " .. choice, Lifetime = 3 })
-    end
-})
 
--- ==============================================================================
--- SEKSI 2: WATERMARK & WINDOW
--- ==============================================================================
-local SecWin = TabConfig:Section({ Name = "Window & Watermark", Side = 2 })
-SecWin:Header({ Name = ZypheraxLib:Gradient("Jendela & Kontrol", Color3.fromRGB(99,130,255), Color3.fromRGB(168,120,255)) })
 
--- Toggle log diagnostik.
--- Matikan = console bersih. Nyalakan = semua detail fitur tampil lagi,
--- berguna kalau ada fitur yang tidak bekerja dan perlu diperiksa.
-SecWin:Toggle({
-    Name = "Log Detail (Debug)",
-    Default = false,
-    Callback = function(enabled)
-        ZYPHERAX_DEBUG = enabled
-        Window:Notify({
-            Title = "Log Detail",
-            Description = enabled
-                and "Log detail ON. Semua output diagnostik akan muncul di console (F9)."
-                or "Log detail OFF. Console hanya menampilkan hasil akhir.",
-            Lifetime = 3
-        })
-    end
-})
 
--- Salin log ke clipboard.
--- Kalau ada fitur yang bermasalah, user bisa nyalakan Log Detail,
--- pakai fitur, lalu tekan tombol ini dan paste hasilnya ke chat.
-SecWin:Button({
-    Name = "Salin Log Terakhir",
-    Callback = function()
-        if not ZYPHERAX_DEBUG then
-            Window:Notify({
-                Title = "Log Kosong",
-                Description = "Nyalakan Log Detail (Debug) dulu supaya ada yang bisa disalin.",
-                Lifetime = 3
-            })
-            return
-        end
-        pcall(function()
-            setclipboard(ZYPHERAX_LOG_BUFFER)
-        end)
-        Window:Notify({
-            Title = "Log Disalin",
-            Description = "Log sudah masuk clipboard, siap di-paste.",
-            Lifetime = 3
-        })
-    end
-})
 
--- Widget Watermark lama dihapus; floating toggle ORB tetap ada untuk membuka UI kembali
-pcall(function()
-    local core = (gethui and gethui()) or (cloneref and cloneref(game:GetService("CoreGui"))) or game:GetService("CoreGui")
-    local oldWm = core:FindFirstChild("ZypheraxWatermarkGui")
-    if oldWm then oldWm:Destroy() end
-end)
 
-SecWin:Slider({
-    Name = "Ukuran Jendela (Window Size)",
-    Default = 50,
-    Minimum = 0,
-    Maximum = 100,
-    DisplayMethod = "Percent",
-    Precision = 0,
-    Callback = function(value)
-        local t = value / 100
-        Window:SetSize(UDim2.fromOffset(450 + (900 - 450) * t, 350 + (650 - 350) * t))
-    end
-})
-
-SecWin:Keybind({
-    Name = "Shortcut Buka / Tutup Menu",
-    Default = Enum.KeyCode.RightControl,
-    onBinded = function(bind)
-        Window:SetKeybind(bind)
-        Window:Notify({ Title = "Keybind", Description = "Tombol toggle: " .. tostring(bind.Name), Lifetime = 3 })
-    end
-})
-
--- Welcome. Notifikasi dibuat singkat supaya tidak intrusive,
--- karena user tinggal melihat UI-nya untuk tahu fitur apa saja.
-Window:Notify({
-    Title = "Zypherax Hub siap",
-    Description = "Tekan RightControl untuk buka / tutup menu.",
-    Lifetime = 4
-})
-
--- Hanya muncul kalau ZYPHERAX_DEBUG = true
-log("Zypherax Hub (Ride A Pet - 5 Tabs) berhasil dijalankan")
-end -- [End TabConfig]
--- Ekspor ke environment executor supaya bisa diakses dari konsol.
--- Contoh: ZYPHERAX_DEBUG = true   -> nyalakan log detail
---         ZYPHERAX_DEBUG = false  -> matikan lagi
---         cetakLog()         -> tampilkan log yang tersimpan di clipboard
-pcall(function()
-    local env = (getgenv and getgenv()) or _G
-    env.ZYPHERAX_DEBUG = ZYPHERAX_DEBUG
-    env.ZYPHERAX_LOG_BUFFER = ZYPHERAX_LOG_BUFFER
-    env.ZYPHERAX = {
-        setDebug = function(v) ZYPHERAX_DEBUG = v end,
-        getLog   = function() return ZYPHERAX_LOG_BUFFER end,
-        clearLog = function() ZYPHERAX_LOG_BUFFER = "" end,
-    }
-end)
