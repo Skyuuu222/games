@@ -702,7 +702,7 @@ function ZypheraxUI:Notify(cfg)
     local track = U.New("Frame", {
         Size = UDim2.new(1, 0, 0, 2),
         BackgroundColor3 = T.Stroke,
-        BackgroundTransparency = 0.5,
+        BackgroundTransparency = 0.15,
         BorderSizePixel = 0,
         LayoutOrder = 3,
         Parent = body
@@ -919,7 +919,7 @@ function ZypheraxUI:CreateWindow(config)
         Name = "MainWindow",
         Size = UDim2.fromScale(1, 1),
         BackgroundColor3 = T.Background,
-        BackgroundTransparency = 0.12,
+        BackgroundTransparency = 0.06,
         ClipsDescendants = true,
         ZIndex = 1,
         Parent = shadow
@@ -1148,7 +1148,7 @@ function ZypheraxUI:CreateWindow(config)
         Size = UDim2.new(1, 0, 0, 54),
         Position = UDim2.new(0, 0, 1, -54),
         BackgroundColor3 = T.Surface,
-        BackgroundTransparency = 0.5,
+        BackgroundTransparency = 0.15,
         BorderSizePixel = 0,
         ZIndex = 4,
         Parent = sidebar
@@ -1523,7 +1523,7 @@ function ZypheraxUI:CreateWindow(config)
                 local base = U.New(cls, {
                     Size = UDim2.new(1, 0, 0, height or 38),
                     BackgroundColor3 = T.Surface2,
-                    BackgroundTransparency = 0.5,
+                    BackgroundTransparency = 0.15,
                     BorderSizePixel = 0,
                     ZIndex = 5,
                     Parent = secContainer
@@ -2062,7 +2062,7 @@ function ZypheraxUI:CreateWindow(config)
                     Size = UDim2.new(1, 0, 0, 0),
                     AutomaticSize = Enum.AutomaticSize.Y,
                     BackgroundColor3 = T.Surface,
-                    BackgroundTransparency = 0.35,
+                    BackgroundTransparency = 0.06,
                     ZIndex = 5,
                     Parent = secContainer
                 })
@@ -5027,11 +5027,22 @@ SecProg:Label({ Name = "Ride: Idle  Speed 0  Mounts 0" })
 -- ===== FARM: 2 GRUP (EGGS kiri | PETS kanan) =====
 local farmEggSecs, farmPetSecs = {}, {}
 local eggsHidden, petsHidden = false, false
-local function farmSetVisible(list, vis)
+local farmHiddenStore = {}
+local function farmSetVisible(list, vis, key)
     for _, s in ipairs(list) do
         pcall(function()
             local box = s._box or (s._zsec and s._zsec._box)
-            if box then box.Visible = vis end
+            if box then
+                if vis then
+                    -- kembalikan ke parent semula
+                    local back = farmHiddenStore[box]
+                    if back and back.Parent then box.Parent = back end
+                    box.Visible = true
+                else
+                    farmHiddenStore[box] = box.Parent
+                    box.Visible = false
+                end
+            end
         end)
     end
 end
@@ -5624,17 +5635,7 @@ do table.insert(farmPetSecs, SecFeeds) end
 
 
 SecFeeds:Label({ Name = "FEEDS" })
--- farmBlend: sub menyatu dgn grup (kotak hilang, watermark kelihatan)
-do pcall(function()
-    for _, s in ipairs(farmEggSecs) do
-        local box = s._box or (s._zsec and s._zsec._box)
-        if box then box.BackgroundTransparency = 1 for _, d in ipairs(box:GetDescendants()) do if d:IsA("UIStroke") then d.Transparency = 1 end end end
-    end
-    for _, s in ipairs(farmPetSecs) do
-        local box = s._box or (s._zsec and s._zsec._box)
-        if box then box.BackgroundTransparency = 1 for _, d in ipairs(box:GetDescendants()) do if d:IsA("UIStroke") then d.Transparency = 1 end end end
-    end
-end) end
+-- farmBlend: diganti farmNest (sub tetap berkotak tipis)
 
 SecFeeds:Toggle({
     Name = "Auto Feed Pets",
