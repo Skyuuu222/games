@@ -170,7 +170,7 @@ do
         { "Accent           = Color3.fromRGB(0, 170, 255),   -- primary accent",
           "Accent           = Color3.fromRGB(0, 170, 255),   -- primary accent" },
         { "AccentGradient   = Color3.fromRGB(30, 140, 220),  -- subtle gradient end",
-          "AccentGradient   = Color3.fromRGB(130, 120, 255), -- subtle gradient end" },
+          "AccentGradient   = Color3.fromRGB(0, 170, 255), -- subtle gradient end" },
         { "CornerLg         = UDim.new(0, 10),",
           "CornerLg         = UDim.new(0, 12)," },
         { "            local secHeader = U.New(\"Frame\", {\n                Size = UDim2.new(1, 0, 0, 26),",
@@ -282,7 +282,7 @@ local Themes = {
         Surface3         = Color3.fromRGB(34, 40, 56),
         Accent           = Color3.fromRGB(0, 170, 255),
         AccentDark       = Color3.fromRGB(0, 140, 230),
-        AccentGradient   = Color3.fromRGB(130, 120, 255),
+        AccentGradient   = Color3.fromRGB(0, 170, 255),
         Text             = Color3.fromRGB(242, 244, 250),
         TextMuted        = Color3.fromRGB(145, 152, 170),
         TextDim          = Color3.fromRGB(90, 96, 112),
@@ -304,7 +304,7 @@ local Themes = {
         Surface3         = Color3.fromRGB(224, 228, 238),
         Accent           = Color3.fromRGB(0, 170, 255),
         AccentDark       = Color3.fromRGB(0, 140, 230),
-        AccentGradient   = Color3.fromRGB(90, 110, 230),
+        AccentGradient   = Color3.fromRGB(0, 170, 255),
         Text             = Color3.fromRGB(25, 28, 36),
         TextMuted        = Color3.fromRGB(105, 112, 128),
         TextDim          = Color3.fromRGB(150, 155, 168),
@@ -1049,7 +1049,8 @@ function ZypheraxUI:CreateWindow(config)
         ZIndex = 5,
         Parent = sidebarHeader
     })
-    RegisterThemeColor(titleLbl, "TextColor3", "Accent")
+    titleLbl.TextColor3 = Color3.fromRGB(0, 170, 255) -- LOGOBLUE_TITLE: paksa biru logo
+    pcall(function() titleLbl.Font = Enum.Font.GothamBold end)
 
     local subLbl = U.New("TextLabel", {
         Text = sub,
@@ -1077,7 +1078,7 @@ function ZypheraxUI:CreateWindow(config)
     })
     RegisterThemeColor(hDiv, "BackgroundColor3", "Stroke")--]]
 
-    -- // SMOOTH UNINTERRUPTED GLOBAL DRAGGING \ --
+        -- // SMOOTH UNINTERRUPTED GLOBAL DRAGGING \ --
     local dragging = false
     local dragStart, startPos = nil, nil
     track(sidebarHeader.InputBegan:Connect(function(inp)
