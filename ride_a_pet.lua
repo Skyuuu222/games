@@ -3590,7 +3590,8 @@ end
 local rapRanchPos = nil rapPlotPos = nil
 local RANCH_PATTERNS = { "ranch", "pen", "nest", "home", "base" }
 
-local function rapIsMyPlot(inst)
+local rapIsMyPlotSafe = true
+    local function rapIsMyPlot(inst)
         if not inst then return false end
         local me = player.Name:lower()
         local ok, owned = pcall(function()
@@ -5027,29 +5028,19 @@ SecProg:Label({ Name = "Ride: Idle  Speed 0  Mounts 0" })
 -- ===== FARM: 2 GRUP (EGGS kiri | PETS kanan) =====
 local farmEggSecs, farmPetSecs = {}, {}
 local eggsHidden, petsHidden = false, false
-local farmHiddenStore = {}
-local function farmSetVisible(list, vis, key)
+local function farmSetVisible(list, vis)
     for _, s in ipairs(list) do
         pcall(function()
             local box = s._box or (s._zsec and s._zsec._box)
-            if box then
-                if vis then
-                    -- kembalikan ke parent semula
-                    local back = farmHiddenStore[box]
-                    if back and back.Parent then box.Parent = back end
-                    box.Visible = true
-                else
-                    farmHiddenStore[box] = box.Parent
-                    box.Visible = false
-                end
-            end
+            if box then box.Visible = vis end
         end)
     end
 end
 local SecEggs = TabFarmRAP:Section({ Name = "EGGS", Side = 1 })
 SecEggs:Header({ Name = ZypheraxLib:Gradient("Eggs", Color3.fromRGB(0, 170, 255), Color3.fromRGB(0, 140, 230)) })
 -- Panah v di kanan header Eggs (klik = hide/show sebaris ikut semua)
-do pcall(function()
+do -- farmArrowEggs
+    pcall(function()
     local box = SecEggs._box or (SecEggs._zsec and SecEggs._zsec._box)
     local hdr = box and box:FindFirstChild("Header")
     if not hdr then return end
