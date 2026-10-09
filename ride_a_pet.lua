@@ -4444,16 +4444,22 @@ local function rapStep()
     if rapFlag.pickup then rapPickupTick() end
     if rapFlag.hatch then rapPassBatch(function(a) return a == "Hatch" end, 3) end
     if rapFlag.grow then rapPassBatch(function(a) return a:find("Skip", 1, true) ~= nil end, 3) end
-    if rapFlag.feed then rapPassBatch(function(a) return a == "Feed" end, 3) end
+    if rapFlag.feed then rapPassBatch(function(a) return a == "Feed" end, 3) rapFire({ "Remotes", "Game", "FeedPet" }) end
     if rapFlag.skill then rapSpellTick() end
-    if rapFlag.ride then rapPassBatch(function(a) return a == "Ride" end, 1) end
+    if rapFlag.ride then rapPassBatch(function(a) return a == "Ride" end, 1) rapFire({ "Remotes", "Game", "Mounting" }) rapFire({ "Remotes", "Game", "PetRideMode" }) end
     if rapFlag.join then rapPassBatch(function(a) return a:find("Join", 1, true) ~= nil end, 1) end
     if rapFlag.claim then rapPassBatch(function(a) return a == "Claim" or a:find("Unlock", 1, true) ~= nil end, 2) end
     if rapFlag.remoteClaim then
         rapFire({ "Remotes", "Game", "ClaimEventReward" })
+        rapFire({ "Remotes", "Game", "ClaimIndexReward" })
+        rapFire({ "Remotes", "Game", "EggArrivalClaim" })
+        rapFire({ "Remotes", "Game", "OfflineEarnings" })
         rapFire({ "Remotes", "Reusable", "ClaimGroupReward" })
     end
     if rapFlag.placedEgg then rapPlaceEggs() end
+    if rapFlag.fuse then rapFire({ "Remotes", "Game", "FusionAction" }) rapFire({ "Remotes", "Game", "FusionPetPlace" }) end
+    if rapFlag.rebirth or rapPlanned.autoRebirth then rapFire({ "Remotes", "Game", "Rebirth" }) end
+    if rapFlag.shop then rapFire({ "Remotes", "Game", "Autobuy" }) end
     if rapFlag.autoSell then rapSellTick(false) end
     if rapBuyFood or rapBuyGear then rapBuyTick() end
     if rapFlag.autoTp then
@@ -5731,8 +5737,7 @@ SecFusion:Toggle({
     Name = "Auto Fuse",
     Default = false,
     Callback = function(enabled)
-        rapPlanned.autoFuse = enabled and true or false
-        Window:Notify({ Title = "Fusion", Description = enabled and "Auto fuse aktif (engine menyusul)." or "Auto fuse dimatikan.", Lifetime = 3 })
+        rapSet("fuse", enabled, "Fusion", "Auto fuse aktif.", "Auto fuse dimatikan.")
     end,
 })
 
@@ -5863,6 +5868,17 @@ SecFeeds:Dropdown({
 -- MENU: SHOP (AUTO BUY FOOD/GEARS + AUTO SELL / SELL ALL)
 -- ==============================================================================================
 local TabShop = tabGroup:Tab({ Name = "Shop", Image = "lucide/shopping-cart" })
+
+-- Auto Shop (Autobuy remote, terbukti OK via trigger)
+local SecAutoShop = TabShop:Section({ Name = "Auto Shop", Side = 1 })
+SecAutoShop:Header({ Name = ZypheraxLib:Gradient("Auto Shop", Color3.fromRGB(0, 170, 255), Color3.fromRGB(0, 140, 230)) })
+SecAutoShop:Toggle({
+    Name = "Auto Buy (Autobuy)",
+    Default = false,
+    Callback = function(enabled)
+        rapSet("shop", enabled, "Auto Shop", "Auto buy aktif.", "Auto buy dimatikan.")
+    end,
+})
 
 local SecBuyFood = TabShop:Section({ Name = "Auto Buy - Food", Side = 1 })
 SecBuyFood:Header({ Name = ZypheraxLib:Gradient("Auto Buy Food", Color3.fromRGB(120, 230, 140), Color3.fromRGB(72, 214, 200)) })
