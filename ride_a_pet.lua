@@ -608,7 +608,7 @@ function ZypheraxUI:Notify(cfg)
         Size = UDim2.new(1, 0, 0, 0),
         AutomaticSize = Enum.AutomaticSize.Y,
         BackgroundColor3 = T.Surface,
-        BackgroundTransparency = 0.02,
+        BackgroundTransparency = 0.05,
         BorderSizePixel = 0,
         ClipsDescendants = true,
         Parent = wrap
@@ -702,7 +702,7 @@ function ZypheraxUI:Notify(cfg)
     local track = U.New("Frame", {
         Size = UDim2.new(1, 0, 0, 2),
         BackgroundColor3 = T.Stroke,
-        BackgroundTransparency = 0.12,
+        BackgroundTransparency = 0.05,
         BorderSizePixel = 0,
         LayoutOrder = 3,
         Parent = body
@@ -719,7 +719,7 @@ function ZypheraxUI:Notify(cfg)
     card.Position = UDim2.new(0, 34, 0, 0)
     card.BackgroundTransparency = 1
     stroke.Transparency = 1
-    U.Tween(card, 0.34, { Position = UDim2.new(0, 0, 0, 0), BackgroundTransparency = 0.08 }, Enum.EasingStyle.Quart)
+    U.Tween(card, 0.34, { Position = UDim2.new(0, 0, 0, 0), BackgroundTransparency = 0.05 }, Enum.EasingStyle.Quart)
     U.Tween(stroke, 0.34, { Transparency = 0.35 })
     U.Tween(prog, life, { Size = UDim2.new(0, 0, 1, 0) }, Enum.EasingStyle.Linear)
 
@@ -786,7 +786,7 @@ local function EnsureFloatingButton(onToggleWindow)
         Size                   = UDim2.new(0, 56, 0, 56),
         Position               = UDim2.new(0, 20, 0, 20),
         BackgroundColor3       = Color3.fromRGB(0, 0, 0),
-        BackgroundTransparency = 0.12,
+        BackgroundTransparency = 0.05,
         Image                  = "",
         AutoButtonColor        = false,
         Visible                = false,
@@ -919,7 +919,7 @@ function ZypheraxUI:CreateWindow(config)
         Name = "MainWindow",
         Size = UDim2.fromScale(1, 1),
         BackgroundColor3 = T.Background,
-        BackgroundTransparency = 0.02,
+        BackgroundTransparency = 0.05,
         ClipsDescendants = true,
         ZIndex = 1,
         Parent = shadow
@@ -931,27 +931,14 @@ function ZypheraxUI:CreateWindow(config)
             Name = "BackgroundWatermark",
             Image = "rbxassetid://106764279090045",
             BackgroundTransparency = 1,
-            ImageTransparency = 0.55,
+            ImageTransparency = 0.87,
             ScaleType = Enum.ScaleType.Fit,
             AnchorPoint = Vector2.new(0.5, 0.5),
             Position = UDim2.new(0.60, 0, 0.55, 0),
             Size = UDim2.fromOffset(460, 460),
             ZIndex = 1,
             Parent = main
-        })
-
-        local bgwmGlow = U.New("ImageLabel", {
-            Name = "BackgroundWatermarkGlow",
-            Image = "rbxassetid://106764279090045",
-            BackgroundTransparency = 1,
-            ImageTransparency = 0.82,
-            ScaleType = Enum.ScaleType.Fit,
-            AnchorPoint = Vector2.new(0.5, 0.5),
-            Position = UDim2.new(0.60, 0, 0.55, 0),
-            Size = UDim2.fromOffset(560, 560),
-            ZIndex = 1,
-            Parent = main
-        })
+        })        })
     end)
 --     local mainStroke = U.Stroke(main, T.Stroke, 1.2, 0)
     RegisterThemeColor(main, "BackgroundColor3", "Background")
@@ -1161,7 +1148,7 @@ function ZypheraxUI:CreateWindow(config)
         Size = UDim2.new(1, 0, 0, 54),
         Position = UDim2.new(0, 0, 1, -54),
         BackgroundColor3 = T.Surface,
-        BackgroundTransparency = 0.12,
+        BackgroundTransparency = 0.05,
         BorderSizePixel = 0,
         ZIndex = 4,
         Parent = sidebar
@@ -1459,7 +1446,7 @@ function ZypheraxUI:CreateWindow(config)
                 Name = "SectionBox_" .. (displayName ~= "" and displayName or "Card"),
                 Size = UDim2.new(1, 0, 0, 0),
                 BackgroundColor3 = T.SectionBg,
-                BackgroundTransparency = 0.02,
+                BackgroundTransparency = 0.05,
                 AutomaticSize = Enum.AutomaticSize.Y,
                 ZIndex = 4,
                 Parent = targetCol
@@ -1537,7 +1524,7 @@ function ZypheraxUI:CreateWindow(config)
                 local base = U.New(cls, {
                     Size = UDim2.new(1, 0, 0, height or 38),
                     BackgroundColor3 = T.Surface2,
-                    BackgroundTransparency = 0.12,
+                    BackgroundTransparency = 0.05,
                     BorderSizePixel = 0,
                     ZIndex = 5,
                     Parent = secContainer
@@ -2079,7 +2066,7 @@ function ZypheraxUI:CreateWindow(config)
                     Size = UDim2.new(1, 0, 0, 0),
                     AutomaticSize = Enum.AutomaticSize.Y,
                     BackgroundColor3 = T.Surface,
-                    BackgroundTransparency = 0.02,
+                    BackgroundTransparency = 0.05,
                     ZIndex = 5,
                     Parent = secContainer
                 })
@@ -4871,7 +4858,7 @@ local function rapMultiSelect(cfg)
         Name = "Filter_" .. tostring(titleAttr),
         Size = UDim2.new(1, 0, 0, 36),
         BackgroundColor3 = COL.Bg,
-        BackgroundTransparency = 0.12,
+        BackgroundTransparency = 0.05,
         BorderSizePixel = 0,
         ClipsDescendants = true,
         ZIndex = 5,
