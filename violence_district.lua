@@ -4140,7 +4140,7 @@ function ZypheraxUI:Notify(cfg)
         Size = UDim2.new(1, 0, 0, 0),
         AutomaticSize = Enum.AutomaticSize.Y,
         BackgroundColor3 = T.Surface,
-        BackgroundTransparency = 0.02,
+        BackgroundTransparency = 0.05,
         BorderSizePixel = 0,
         ClipsDescendants = true,
         Parent = wrap
@@ -4248,10 +4248,10 @@ function ZypheraxUI:Notify(cfg)
     })
     U.Corner(prog, UDim.new(1, 0))
 
-    card.Position = UDim2.new(0, 34, 0, 0)
+    card.Position = UDim2.new(0, 12, 0, 0)
     card.BackgroundTransparency = 1
     stroke.Transparency = 1
-    U.Tween(card, 0.34, { Position = UDim2.new(0, 0, 0, 0), BackgroundTransparency = 0.08 }, Enum.EasingStyle.Quart)
+    U.Tween(card, 0.34, { Position = UDim2.new(0, 0, 0, 0), BackgroundTransparency = 0.05 }, Enum.EasingStyle.Quart)
     U.Tween(stroke, 0.34, { Transparency = 0.35 })
     U.Tween(prog, life, { Size = UDim2.new(0, 0, 1, 0) }, Enum.EasingStyle.Linear)
 
@@ -4451,7 +4451,7 @@ function ZypheraxUI:CreateWindow(config)
         Name = "MainWindow",
         Size = UDim2.fromScale(1, 1),
         BackgroundColor3 = T.Background,
-        BackgroundTransparency = 0.12,
+        BackgroundTransparency = 0.05,
         ClipsDescendants = true,
         ZIndex = 1,
         Parent = shadow
@@ -4469,7 +4469,7 @@ function ZypheraxUI:CreateWindow(config)
             Size = UDim2.fromOffset(460, 460),
             ZIndex = 1,
             Parent = main
-        })
+        })        })
     end)
     local mainStroke = U.Stroke(main, T.Stroke, 1.2, 0)
     RegisterThemeColor(main, "BackgroundColor3", "Background")
@@ -4577,7 +4577,7 @@ function ZypheraxUI:CreateWindow(config)
         BackgroundTransparency = 1,
         ScaleType = Enum.ScaleType.Fit,
         Position = UDim2.new(0, 14, 0, 30),
-        Size = UDim2.fromOffset(20, 20),
+        Size = UDim2.fromOffset(26, 26),
         ZIndex = 6,
         Parent = sidebarHeader
     })
@@ -4733,7 +4733,7 @@ function ZypheraxUI:CreateWindow(config)
         Size = UDim2.new(0, 240, 0, 32),
         Position = UDim2.new(0, 10, 0, 8),
         BackgroundColor3 = T.Surface2,
-        BackgroundTransparency = 0.2,
+        BackgroundTransparency = 0.05,
         ZIndex = 5,
         Parent = contentArea
     })
@@ -4741,31 +4741,17 @@ function ZypheraxUI:CreateWindow(config)
     local sbStroke = U.Stroke(searchBarFrame, T.Stroke, 1, 0.2)
     RegisterThemeColor(searchBarFrame, "BackgroundColor3", "Surface2")
     RegisterThemeColor(sbStroke, "Color", "Stroke")
-
-    local searchIcon = U.New("TextLabel", {
-        Text = "\xF0\x9F\x94\x8D",
-        Font = T.FontRegular,
-        TextSize = 13,
-        BackgroundTransparency = 1,
-        Position = UDim2.new(0, 10, 0, 0),
-        Size = UDim2.new(0, 20, 1, 0),
-        TextColor3 = T.TextMuted,
-        ZIndex = 6,
-        Parent = searchBarFrame
-    })
-    pcall(function() searchIcon.Visible = false end) -- ikon search dihapus
-
     local searchInput = U.New("TextBox", {
         Name = "SearchInput",
         Text = "",
-        PlaceholderText = "Cari fitur...",
+        PlaceholderText = "Search...",
         Font = T.FontRegular,
         TextSize = 11,
         TextColor3 = T.Text,
         PlaceholderColor3 = T.TextDim,
         BackgroundTransparency = 1,
-        Position = UDim2.new(0, 34, 0, 0),
-        Size = UDim2.new(1, -64, 1, 0),
+        Position = UDim2.new(0, 12, 0, 0),
+        Size = UDim2.new(1, -42, 1, 0),
         ClearTextOnFocus = false,
         TextXAlignment = Enum.TextXAlignment.Left,
         ZIndex = 6,
@@ -6249,6 +6235,7 @@ ZypheraxWindow = Window
 -- Frosted watermark (blur background, sharp text) ala executor Real
 -- Frosted watermark elegant (warna ikut logo, teks tajam)
 -- Frosted watermark elegant v4 (logo asli, biru logo, 2 label)
+-- Frosted watermark v5 (blur ala Real, warna biru logo)
 local function _zy_show_watermark(gameName)
     pcall(function()
         local core = (gethui and gethui()) or (cloneref and cloneref(game:GetService("CoreGui"))) or game:GetService("CoreGui")
@@ -6260,29 +6247,31 @@ local function _zy_show_watermark(gameName)
         sg.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
         sg.DisplayOrder = 9990
         sg.Parent = core
-        local shadow = Instance.new("ImageLabel")
-        shadow.BackgroundTransparency = 1
-        shadow.Image = "rbxassetid://1316045217"
-        shadow.ImageColor3 = Color3.new(0, 0, 0)
-        shadow.ImageTransparency = 0.55
-        shadow.ScaleType = Enum.ScaleType.Slice
-        shadow.SliceCenter = Rect.new(10, 10, 118, 118)
-        shadow.Position = UDim2.new(0, 8, 0, 10)
-        shadow.Size = UDim2.fromOffset(300, 42)
-        shadow.Parent = sg
+        -- lapisan blur luar (seperti frosted Real): 3 lapis transparan bertumpuk
+        -- pill utama: lebih transparan (0.5) biar blur latar kelihatan seperti Real
         local pill = Instance.new("Frame")
-        pill.Position = UDim2.new(0, 12, 0, 12)
+        pill.AnchorPoint = Vector2.new(0.5, 0)
+        pill.Position = UDim2.new(0.5, 0, 0, 12)
         pill.Size = UDim2.fromOffset(292, 32)
-        pill.BackgroundColor3 = Color3.fromRGB(10, 13, 20)
-        pill.BackgroundTransparency = 0.22
+        pill.BackgroundColor3 = Color3.fromRGB(16, 20, 30)
+        pill.BackgroundTransparency = 0.5
         pill.BorderSizePixel = 0
         pill.Active = true
         pill.Draggable = true
         pill.Parent = sg
         local cn = Instance.new("UICorner") cn.CornerRadius = UDim.new(0, 10) cn.Parent = pill
-        local sk = Instance.new("UIStroke") sk.Color = Color3.fromRGB(0, 170, 255) sk.Thickness = 1 sk.Transparency = 0.55 sk.ApplyStrokeMode = Enum.ApplyStrokeMode.Border sk.Parent = pill
+        -- lapisan kaca dalam: gradien terang-gelap biar kesan frosted
+        local glass = Instance.new("Frame")
+        glass.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+        glass.BackgroundTransparency = 0.9
+        glass.BorderSizePixel = 0
+        glass.Position = UDim2.new(0, 0, 0, 0) glass.Size = UDim2.new(1, 0, 0.5, 0)
+        glass.Parent = pill
+        local gcn = Instance.new("UICorner") gcn.CornerRadius = UDim.new(0, 10) gcn.Parent = glass
+        local gg = Instance.new("UIGradient") gg.Color = ColorSequence.new(Color3.fromRGB(255,255,255), Color3.fromRGB(0,170,255)) gg.Transparency = NumberSequence.new(0.85, 0.97) gg.Rotation = 90 gg.Parent = glass
+        local sk = Instance.new("UIStroke") sk.Color = Color3.fromRGB(0, 170, 255) sk.Thickness = 1 sk.Transparency = 0.6 sk.ApplyStrokeMode = Enum.ApplyStrokeMode.Border sk.Parent = pill
         local hi = Instance.new("Frame")
-        hi.BackgroundColor3 = Color3.fromRGB(255, 255, 255) hi.BackgroundTransparency = 0.88 hi.BorderSizePixel = 0
+        hi.BackgroundColor3 = Color3.fromRGB(255, 255, 255) hi.BackgroundTransparency = 0.8 hi.BorderSizePixel = 0
         hi.Position = UDim2.new(0, 12, 0, 1) hi.Size = UDim2.new(1, -24, 0, 1) hi.Parent = pill
         local lg = Instance.new("ImageLabel")
         lg.BackgroundTransparency = 1
@@ -6350,8 +6339,6 @@ local function _zy_show_watermark(gameName)
         end)
     end)
 end
-_zy_show_watermark("Violence District")
-
 
 
 -- ==============================================================================
@@ -9625,3 +9612,6 @@ pcall(function()
         clearLog = function() ZYPHERAX_LOG_BUFFER = "" end,
     }
 end)
+
+-- Watermark frosted tampil terakhir (tidak tertimpa loading/window)
+_zy_show_watermark("Violence District")
