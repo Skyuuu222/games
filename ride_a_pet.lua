@@ -1055,8 +1055,8 @@ function ZypheraxUI:CreateWindow(config)
     })
     RegisterThemeColor(subLbl, "TextColor3", "TextMuted")
 
-    -- Horizontal divider under sidebar header
-    local hDiv = U.New("Frame", {
+    -- Horizontal divider under sidebar header (DIHAPUS: garis panjang dihilangkan)
+    --[[local hDiv = U.New("Frame", {
         Size = UDim2.new(1, -24, 0, 1),
         Position = UDim2.new(0, 12, 1, -1),
         BackgroundColor3 = T.Stroke,
@@ -1064,7 +1064,7 @@ function ZypheraxUI:CreateWindow(config)
         ZIndex = 4,
         Parent = sidebarHeader
     })
-    RegisterThemeColor(hDiv, "BackgroundColor3", "Stroke")
+    RegisterThemeColor(hDiv, "BackgroundColor3", "Stroke")--]]
 
     -- // SMOOTH UNINTERRUPTED GLOBAL DRAGGING \ --
     local dragging = false
@@ -3443,9 +3443,35 @@ local function rapRarityOfName(nm)
     return nil
 end
 
-local function rapMatchFilter(name)
+local function rapFindMutation(inst)
+    if not inst then return "normal" end
+    local cur = inst
+    for _ = 1, 6 do
+        if not cur or not cur.Parent then break end
+        local nm = tostring(cur.Name or "")
+        local low = string.lower(nm)
+        for _, m in ipairs(RAP_MUTATIONS) do
+            if string.find(low, string.lower(tostring(m)), 1, true) then return m end
+        end
+        local ok, av = pcall(function() return cur:GetAttribute("Mutation") end)
+        if ok and type(av) == "string" and av ~= "" then
+            for _, m in ipairs(RAP_MUTATIONS) do
+                if string.lower(av) == string.lower(tostring(m)) then return m end
+            end
+            return av
+        end
+        cur = cur.Parent
+    end
+    return "normal"
+end
+
+local function rapMatchFilter(name, inst)
     if not rapInSet(rapEggFilterSet, name) then return false end
     if not rapInSet(rapRarityFilterSet, rapRarityOf(name)) then return false end
+    if rapSetCount(rapMutationFilterSet) > 0 then
+        local mut = rapFindMutation(inst or name)
+        if not rapInSet(rapMutationFilterSet, mut) then return false end
+    end
     return true
 end
 
@@ -3655,7 +3681,7 @@ local function rapPickupTick()
         for _, d in ipairs(rapTickList()) do
             if d:IsA("ProximityPrompt") and tostring(d.ActionText) == "Pick Up" then
                 local nm = rapFindEggName(d)
-                if nm and rapMatchFilter(nm) and not seen[tostring(d)] then
+                if nm and rapMatchFilter(nm, d) and not seen[tostring(d)] then
                     seen[tostring(d)] = true
                     local pos = rapEntityPos(d.Parent) or rapEntityPos(d)
                     if pos then
