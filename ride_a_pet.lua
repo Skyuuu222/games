@@ -4788,7 +4788,7 @@ local function rapMultiSelect(cfg)
                     Size = UDim2.new(1, 0, 0, 24),
                     BackgroundColor3 = on and COL.Accent or COL.Bg2,
                     BackgroundTransparency = on and 0.55 or 0,
-                    Text = (on and "[x] " or "[ ] ") .. s,
+                    Text = s,
                     Font = FONT,
                     TextSize = 11,
                     TextColor3 = on and COL.Accent or COL.Text,
@@ -4927,34 +4927,65 @@ local TabMainRAP = tabGroup:Tab({ Name = "Main", Image = "lucide/zap" })
 local SecAutoEgg = TabMainRAP:Section({ Name = "Auto Telur & Pet", Side = 1 })
 SecAutoEgg:Header({ Name = ZypheraxLib:Gradient("Auto Egg Collector", Color3.fromRGB(72, 214, 200), Color3.fromRGB(99, 130, 255)) })
 
-rapNewFilter(SecAutoEgg, "Filter Rarity", RARITY_LIST, {}, function(list)
-    rapRarityFilterSet = {}
-    for _, v in ipairs(list) do rapRarityFilterSet[v] = true end
-end)
-
-rapNewFilter(SecAutoEgg, "Filter Mutasi", RAP_MUTATIONS, {}, function(list)
-    rapMutationFilterSet = {}
-    for _, v in ipairs(list) do rapMutationFilterSet[v] = true end
-end)
-
--- Build egg list organized by rarity: "[Rarity] EggName"
-local rapEggByRarity = {}
-for _, eggName in ipairs(rapEggNames) do
-    local rarity = RAP_RARITY[eggName] or "Unknown"
-    table.insert(rapEggByRarity, "[" .. rarity .. "] " .. eggName)
+-- Dropdown ala foto: Rarity / Egg / Mutation (default "--" = semua)
+local RAP_ALL = "--"
+local function rapSetSingle(setName, val)
+    local set = (setName == "rarity") and rapRarityFilterSet
+        or (setName == "mutation") and rapMutationFilterSet
+        or rapEggFilterSet
+    for k in pairs(set) do set[k] = nil end
+    if val and val ~= RAP_ALL and val ~= "" then
+        set[val] = true
+    end
 end
 
-rapNewFilter(SecAutoEgg, "Filter Jenis Telur (by Rarity)", rapEggByRarity, {}, function(list)
-    rapEggFilterSet = {}
-    for _, v in ipairs(list) do
-        -- Extract actual egg name from "[Rarity] EggName" format
-        local eggName = v:match("%[.+%]%s+(.+)") or v
-        rapEggFilterSet[eggName] = true
-    end
-end)
+SecAutoEgg:Dropdown({
+    Name = "Rarity",
+    Items = (function()
+        local o = { RAP_ALL }
+        for _, r in ipairs(RARITY_LIST) do table.insert(o, r) end
+        return o
+    end)(),
+    Default = RAP_ALL,
+    Callback = function(v) rapSetSingle("rarity", v) end,
+})
 
-SecAutoEgg:Label({ Name = "Filter punya kotak search & bisa pilih banyak. Kosong = semua." })
-SecAutoEgg:Label({ Name = "Format: [Rarity] EggName -- pilih jenis telur spesifik per rarity." })
+-- Daftar telur urut rarity (nama polos, tanpa [Rarity] di depan)
+local rapEggSorted = {}
+do
+    local order = {}
+    for i, r in ipairs(RARITY_LIST) do order[r] = i end
+    for _, eggName in ipairs(rapEggNames) do table.insert(rapEggSorted, eggName) end
+    table.sort(rapEggSorted, function(a, b)
+        local ra, rb = RAP_RARITY[a] or "Unknown", RAP_RARITY[b] or "Unknown"
+        if (order[ra] or 99) ~= (order[rb] or 99) then
+            return (order[ra] or 99) < (order[rb] or 99)
+        end
+        return a < b
+    end)
+end
+
+SecAutoEgg:Dropdown({
+    Name = "Egg",
+    Items = (function()
+        local o = { RAP_ALL }
+        for _, e in ipairs(rapEggSorted) do table.insert(o, e) end
+        return o
+    end)(),
+    Default = RAP_ALL,
+    Callback = function(v) rapSetSingle("egg", v) end,
+})
+
+SecAutoEgg:Dropdown({
+    Name = "Mutation",
+    Items = (function()
+        local o = { RAP_ALL }
+        for _, m in ipairs(RAP_MUTATIONS) do table.insert(o, m) end
+        return o
+    end)(),
+    Default = RAP_ALL,
+    Callback = function(v) rapSetSingle("mutation", v) end,
+})
 
 SecAutoEgg:Dropdown({
     Name = "Mode Auto Pickup",
