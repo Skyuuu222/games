@@ -608,7 +608,7 @@ function ZypheraxUI:Notify(cfg)
         Size = UDim2.new(1, 0, 0, 0),
         AutomaticSize = Enum.AutomaticSize.Y,
         BackgroundColor3 = T.Surface,
-        BackgroundTransparency = 0.08,
+        BackgroundTransparency = 0.02,
         BorderSizePixel = 0,
         ClipsDescendants = true,
         Parent = wrap
@@ -702,7 +702,7 @@ function ZypheraxUI:Notify(cfg)
     local track = U.New("Frame", {
         Size = UDim2.new(1, 0, 0, 2),
         BackgroundColor3 = T.Stroke,
-        BackgroundTransparency = 0.25,
+        BackgroundTransparency = 0.12,
         BorderSizePixel = 0,
         LayoutOrder = 3,
         Parent = body
@@ -786,7 +786,7 @@ local function EnsureFloatingButton(onToggleWindow)
         Size                   = UDim2.new(0, 56, 0, 56),
         Position               = UDim2.new(0, 20, 0, 20),
         BackgroundColor3       = Color3.fromRGB(0, 0, 0),
-        BackgroundTransparency = 0.25,
+        BackgroundTransparency = 0.12,
         Image                  = "",
         AutoButtonColor        = false,
         Visible                = false,
@@ -919,7 +919,7 @@ function ZypheraxUI:CreateWindow(config)
         Name = "MainWindow",
         Size = UDim2.fromScale(1, 1),
         BackgroundColor3 = T.Background,
-        BackgroundTransparency = 0.08,
+        BackgroundTransparency = 0.02,
         ClipsDescendants = true,
         ZIndex = 1,
         Parent = shadow
@@ -1040,27 +1040,17 @@ function ZypheraxUI:CreateWindow(config)
     end)
 
     -- Window Title & Subtitle below traffic lights
-    local headLogo = U.New("Frame", {
+    local headLogo = U.New("ImageLabel", {
         Name = "SidebarLogo",
-        BackgroundColor3 = Color3.fromRGB(0, 170, 255),
-        BorderSizePixel = 0,
+        Image = "rbxassetid://106764279090045",
+        BackgroundTransparency = 1,
+        ScaleType = Enum.ScaleType.Fit,
         Position = UDim2.new(0, 14, 0, 30),
         Size = UDim2.fromOffset(20, 20),
         ZIndex = 6,
         Parent = sidebarHeader
     })
-    U.Corner(headLogo, UDim.new(0, 6))
-    U.Gradient(headLogo, Color3.fromRGB(0, 170, 255), Color3.fromRGB(0, 140, 230), 135)
-    local headLogoZ = U.New("TextLabel", {
-        Text = "Z",
-        Font = T.FontBold,
-        TextSize = 12,
-        TextColor3 = Color3.fromRGB(255, 255, 255),
-        BackgroundTransparency = 1,
-        Size = UDim2.fromScale(1, 1),
-        ZIndex = 7,
-        Parent = headLogo
-    })
+    U.Corner(headLogo, UDim.new(0, 5))
     local titleLbl = U.New("TextLabel", {
         Text = string.upper(title),
         Font = T.FontBold,
@@ -1158,7 +1148,7 @@ function ZypheraxUI:CreateWindow(config)
         Size = UDim2.new(1, 0, 0, 54),
         Position = UDim2.new(0, 0, 1, -54),
         BackgroundColor3 = T.Surface,
-        BackgroundTransparency = 0.25,
+        BackgroundTransparency = 0.12,
         BorderSizePixel = 0,
         ZIndex = 4,
         Parent = sidebar
@@ -1456,7 +1446,7 @@ function ZypheraxUI:CreateWindow(config)
                 Name = "SectionBox_" .. (displayName ~= "" and displayName or "Card"),
                 Size = UDim2.new(1, 0, 0, 0),
                 BackgroundColor3 = T.SectionBg,
-                BackgroundTransparency = 0.18, -- SectionBgTrans sedang
+                BackgroundTransparency = 0.02,
                 AutomaticSize = Enum.AutomaticSize.Y,
                 ZIndex = 4,
                 Parent = targetCol
@@ -1534,7 +1524,7 @@ function ZypheraxUI:CreateWindow(config)
                 local base = U.New(cls, {
                     Size = UDim2.new(1, 0, 0, height or 38),
                     BackgroundColor3 = T.Surface2,
-                    BackgroundTransparency = 0.25,
+                    BackgroundTransparency = 0.12,
                     BorderSizePixel = 0,
                     ZIndex = 5,
                     Parent = secContainer
@@ -2076,7 +2066,7 @@ function ZypheraxUI:CreateWindow(config)
                     Size = UDim2.new(1, 0, 0, 0),
                     AutomaticSize = Enum.AutomaticSize.Y,
                     BackgroundColor3 = T.Surface,
-                    BackgroundTransparency = 0.08,
+                    BackgroundTransparency = 0.02,
                     ZIndex = 5,
                     Parent = secContainer
                 })
@@ -4768,7 +4758,7 @@ local function rapMultiSelect(cfg)
         Name = "Filter_" .. tostring(titleAttr),
         Size = UDim2.new(1, 0, 0, 36),
         BackgroundColor3 = COL.Bg,
-        BackgroundTransparency = 0.25,
+        BackgroundTransparency = 0.12,
         BorderSizePixel = 0,
         ClipsDescendants = true,
         ZIndex = 5,
@@ -5674,19 +5664,7 @@ rapFusionStatus = SecFusion:Label({ Name = "Fusion: Idle | Fused 0" })
 local SecFeeds = TabFarmRAP:Section({ Name = "Feeds", Side = 2 })
 SecFeeds:Header({ Name = ZypheraxLib:Gradient("Feeds", Color3.fromRGB(0, 170, 255), Color3.fromRGB(0, 140, 230)) })
 do table.insert(farmPetSecs, SecFeeds) end
--- farmUnify: sub menyatu ke Eggs/Pets (kotak+stroke hilang, tanpa reparent)
-do pcall(function()
-    local function clearBox(s)
-        local box = s._box or (s._zsec and s._zsec._box)
-        if not box then return end
-        box.BackgroundTransparency = 1
-        for _, d in ipairs(box:GetDescendants()) do
-            if d:IsA("UIStroke") then d.Transparency = 1 end
-        end
-    end
-    for _, s in ipairs(farmEggSecs) do clearBox(s) end
-    for _, s in ipairs(farmPetSecs) do clearBox(s) end
-end) end
+-- farmUnify: DIHAPUS (kotak sub kembali normal)
 
 
 -- farmBlend: diganti farmNest (sub tetap berkotak tipis)
