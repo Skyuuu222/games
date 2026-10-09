@@ -5037,10 +5037,54 @@ local function farmSetVisible(list, vis)
 end
 local SecEggs = TabFarmRAP:Section({ Name = "EGGS", Side = 1 })
 SecEggs:Header({ Name = ZypheraxLib:Gradient("Eggs", Color3.fromRGB(0, 170, 255), Color3.fromRGB(0, 140, 230)) })
--- (panah collapse dipasang di header Eggs)
+-- Panah v di kanan header Eggs (klik = hide/show sebaris ikut semua)
+do pcall(function()
+    local box = SecEggs._box or (SecEggs._zsec and SecEggs._zsec._box)
+    local hdr = box and box:FindFirstChild("Header")
+    if not hdr then return end
+    local b = Instance.new("TextButton")
+    b.Name = "CollapseArrow"
+    b.Size = UDim2.fromOffset(30, 28)
+    b.Position = UDim2.new(1, -32, 0, 0)
+    b.BackgroundTransparency = 1
+    b.Text = "v"
+    b.Font = Enum.Font.GothamBold
+    b.TextSize = 15
+    b.TextColor3 = Color3.fromRGB(0, 170, 255)
+    b.ZIndex = 7
+    b.Parent = hdr
+    local hidden = false
+    b.MouseButton1Click:Connect(function()
+        hidden = not hidden
+        b.Text = hidden and "^" or "v"
+        farmSetVisible(farmEggSecs, not hidden)
+    end)
+end) end
 local SecPetsHead = TabFarmRAP:Section({ Name = "PETS", Side = 2 })
 SecPetsHead:Header({ Name = ZypheraxLib:Gradient("Pets", Color3.fromRGB(255, 170, 90), Color3.fromRGB(255, 110, 140)) })
--- (panah collapse dipasang di header Pets)
+-- Panah v di kanan header Pets (klik = hide/show sebaris ikut semua)
+do pcall(function()
+    local box = SecPetsHead._box or (SecPetsHead._zsec and SecPetsHead._zsec._box)
+    local hdr = box and box:FindFirstChild("Header")
+    if not hdr then return end
+    local b = Instance.new("TextButton")
+    b.Name = "CollapseArrow"
+    b.Size = UDim2.fromOffset(30, 28)
+    b.Position = UDim2.new(1, -32, 0, 0)
+    b.BackgroundTransparency = 1
+    b.Text = "v"
+    b.Font = Enum.Font.GothamBold
+    b.TextSize = 15
+    b.TextColor3 = Color3.fromRGB(255, 170, 90)
+    b.ZIndex = 7
+    b.Parent = hdr
+    local hidden = false
+    b.MouseButton1Click:Connect(function()
+        hidden = not hidden
+        b.Text = hidden and "^" or "v"
+        farmSetVisible(farmPetSecs, not hidden)
+    end)
+end) end
 local SecAutoEgg = TabFarmRAP:Section({ Name = "", Side = 1 })
 do table.insert(farmEggSecs, SecAutoEgg) end
 SecAutoEgg:Label({ Name = "auto egg collector" })
@@ -5577,36 +5621,6 @@ rapFusionStatus = SecFusion:Label({ Name = "Fusion: Idle | Fused 0" })
 
 local SecFeeds = TabFarmRAP:Section({ Name = "", Side = 2 })
 do table.insert(farmPetSecs, SecFeeds) end
--- Panah collapse Eggs/Pets di header (v = buka, ^ = tutup)
-local farmArrowEggs, farmArrowPets = nil, nil
-local function farmArrow(headSec, members, isEgg)
-    pcall(function()
-        local z = headSec._zsec or headSec
-        local box = headSec._box or (z and z._box)
-        local hdr = box and box:FindFirstChild("Header")
-        if not hdr then return end
-        local b = Instance.new("TextButton")
-        b.Name = "CollapseArrow"
-        b.Size = UDim2.fromOffset(28, 28)
-        b.Position = UDim2.new(1, -30, 0, 0)
-        b.BackgroundTransparency = 1
-        b.Text = "v"
-        b.Font = Enum.Font.GothamBold
-        b.TextSize = 14
-        b.TextColor3 = Color3.fromRGB(0, 170, 255)
-        b.ZIndex = 7
-        b.Parent = hdr
-        local hidden = false
-        b.MouseButton1Click:Connect(function()
-            hidden = not hidden
-            b.Text = hidden and "^" or "v"
-            farmSetVisible(members, not hidden)
-        end)
-        if isEgg then farmArrowEggs = b else farmArrowPets = b end
-    end)
-end
-farmArrow(SecEggs, farmEggSecs, true)
-farmArrow(SecPetsHead, farmPetSecs, false)
 
 SecFeeds:Label({ Name = "feeds" })
 
@@ -5931,6 +5945,29 @@ end -- [End Engine RIDE A PET]
 -- ==============================================================================
 tabGroup:Divider()
 do
+do
+local TabWebhook = tabGroup:Tab({ Name = "Webhook", Image = "lucide/bell" })
+local SecWh = TabWebhook:Section({ Name = "Discord Webhook", Side = 1 })
+SecWh:Header({ Name = ZypheraxLib:Gradient("Discord Webhook", Color3.fromRGB(0, 170, 255), Color3.fromRGB(0, 140, 230)) })
+rapPlanned = rapPlanned or {}
+SecWh:Input({ Name = "Webhook URL", Placeholder = "https://discord.com/api/webhooks/...", Default = "", Callback = function(v) rapPlanned.webhookUrl = tostring(v or "") end })
+SecWh:Toggle({ Name = "Aktifkan Webhook", Default = false, Callback = function(enabled) rapPlanned.webhookOn = enabled and true or false Window:Notify({ Title = "Webhook", Description = enabled and "Webhook aktif." or "Webhook dimatikan.", Lifetime = 3 }) end })
+SecWh:Toggle({ Name = "Notif Telur Legendary+", Default = true, Callback = function(enabled) rapPlanned.whLegend = enabled and true or false end })
+SecWh:Toggle({ Name = "Notif Rebirth", Default = true, Callback = function(enabled) rapPlanned.whRebirth = enabled and true or false end })
+SecWh:Toggle({ Name = "Notif Magma (Volcano)", Default = true, Callback = function(enabled) rapPlanned.whMagma = enabled and true or false end })
+SecWh:Button({ Name = "Test Webhook", Callback = function()
+    local url = rapPlanned.webhookUrl or ""
+    if url == "" then Window:Notify({ Title = "Webhook", Description = "Isi Webhook URL dulu.", Lifetime = 3 }) return end
+    pcall(function()
+        local http = game:GetService("HttpService")
+        local data = http:JSONEncode({ content = "ZypheraxHub test: webhook tersambung." })
+        if syn and syn.request then syn.request({ Url = url, Method = "POST", Headers = { ["Content-Type"] = "application/json" }, Body = data })
+        elseif http_request then http_request({ Url = url, Method = "POST", Headers = { ["Content-Type"] = "application/json" }, Body = data })
+        elseif request then request({ Url = url, Method = "POST", Headers = { ["Content-Type"] = "application/json" }, Body = data }) end
+    end)
+    Window:Notify({ Title = "Webhook", Description = "Test terkirim (cek Discord).", Lifetime = 3 })
+end })
+end
 local TabConfig = tabGroup:Tab({ Name = "Pengaturan", Image = "lucide/settings" })
 
 -- SEKSI 1: PENAMPILAN & TEMA
