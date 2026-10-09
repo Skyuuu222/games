@@ -1040,17 +1040,27 @@ function ZypheraxUI:CreateWindow(config)
     end)
 
     -- Window Title & Subtitle below traffic lights
-    local headLogo = U.New("ImageLabel", {
+    local headLogo = U.New("Frame", {
         Name = "SidebarLogo",
-        Image = "rbxassetid://106764279090045",
-        BackgroundTransparency = 1,
-        ScaleType = Enum.ScaleType.Fit,
+        BackgroundColor3 = Color3.fromRGB(0, 170, 255),
+        BorderSizePixel = 0,
         Position = UDim2.new(0, 14, 0, 30),
         Size = UDim2.fromOffset(20, 20),
         ZIndex = 6,
         Parent = sidebarHeader
     })
-    U.Corner(headLogo, UDim.new(0, 5))
+    U.Corner(headLogo, UDim.new(0, 6))
+    U.Gradient(headLogo, Color3.fromRGB(0, 170, 255), Color3.fromRGB(0, 140, 230), 135)
+    local headLogoZ = U.New("TextLabel", {
+        Text = "Z",
+        Font = T.FontBold,
+        TextSize = 12,
+        TextColor3 = Color3.fromRGB(255, 255, 255),
+        BackgroundTransparency = 1,
+        Size = UDim2.fromScale(1, 1),
+        ZIndex = 7,
+        Parent = headLogo
+    })
     local titleLbl = U.New("TextLabel", {
         Text = string.upper(title),
         Font = T.FontBold,
@@ -1200,7 +1210,7 @@ function ZypheraxUI:CreateWindow(config)
     -- // ELEGANT TOP SEARCH ENGINE \ --
     local searchBarFrame = U.New("Frame", {
         Name = "TopSearchBar",
-        Size = UDim2.new(0, 320, 0, 32),
+        Size = UDim2.new(0, 240, 0, 32),
         Position = UDim2.new(0, 10, 0, 8),
         BackgroundColor3 = T.Surface2,
         BackgroundTransparency = 0.2,
@@ -2827,13 +2837,16 @@ do
             logo.ZIndex = 6
             logo.Parent = card
 
-            local logoImg = Instance.new("ImageLabel")
+            local logoImg = Instance.new("TextLabel")
             logoImg.AnchorPoint = Vector2.new(0.5, 0.5) -- logoPureOK
             logoImg.Position = UDim2.fromScale(0.5, 0.5)
             logoImg.Size = UDim2.fromScale(1, 1)
             logoImg.BackgroundTransparency = 1
-            logoImg.Image = "rbxassetid://106764279090045"
-            logoImg.ScaleType = Enum.ScaleType.Fit
+            logoImg.Text = "Z"
+            logoImg.Font = Enum.Font.GothamBlack
+            logoImg.TextSize = 52
+            logoImg.TextColor3 = Color3.fromRGB(0, 170, 255)
+            -- monogram: tanpa ScaleType
             logoImg.ZIndex = 7
             logoImg.Parent = logo
             local logoCorn = Instance.new("UICorner")
