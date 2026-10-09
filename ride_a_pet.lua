@@ -1025,14 +1025,25 @@ function ZypheraxUI:CreateWindow(config)
     end)
 
     -- Window Title & Subtitle below traffic lights
+    local headLogo = U.New("ImageLabel", {
+        Name = "SidebarLogo",
+        Image = "rbxassetid://106764279090045",
+        BackgroundTransparency = 1,
+        ScaleType = Enum.ScaleType.Fit,
+        Position = UDim2.new(0, 14, 0, 30),
+        Size = UDim2.fromOffset(20, 20),
+        ZIndex = 6,
+        Parent = sidebarHeader
+    })
+    U.Corner(headLogo, UDim.new(0, 5))
     local titleLbl = U.New("TextLabel", {
         Text = string.upper(title),
         Font = T.FontBold,
         TextSize = 13,
         TextColor3 = T.Accent,
         BackgroundTransparency = 1,
-        Position = UDim2.new(0, 14, 0, 32),
-        Size = UDim2.new(1, -24, 0, 16),
+        Position = UDim2.new(0, 40, 0, 30),
+        Size = UDim2.new(1, -50, 0, 16),
         TextXAlignment = Enum.TextXAlignment.Left,
         TextTruncate = Enum.TextTruncate.AtEnd,
         ZIndex = 5,
@@ -1046,8 +1057,8 @@ function ZypheraxUI:CreateWindow(config)
         TextSize = 10,
         TextColor3 = T.TextMuted,
         BackgroundTransparency = 1,
-        Position = UDim2.new(0, 14, 0, 48),
-        Size = UDim2.new(1, -24, 0, 14),
+        Position = UDim2.new(0, 40, 0, 46),
+        Size = UDim2.new(1, -50, 0, 14),
         TextXAlignment = Enum.TextXAlignment.Left,
         TextTruncate = Enum.TextTruncate.AtEnd,
         ZIndex = 5,
@@ -2799,15 +2810,16 @@ do
             _round(logo, 14)
             _grad(logo, P.accentA, P.accentC, 135)
 
-            local logoText = Instance.new("TextLabel")
-            logoText.Size = UDim2.fromScale(1, 1)
-            logoText.BackgroundTransparency = 1
-            logoText.Text = "Z"
-            logoText.Font = Enum.Font.GothamBold
-            logoText.TextSize = 30
-            logoText.TextColor3 = Color3.new(1, 1, 1)
-            logoText.ZIndex = 7
-            logoText.Parent = logo
+            local logoImg = Instance.new("ImageLabel")
+            logoImg.Size = UDim2.fromScale(1, 1)
+            logoImg.BackgroundTransparency = 1
+            logoImg.Image = "rbxassetid://106764279090045"
+            logoImg.ScaleType = Enum.ScaleType.Fit
+            logoImg.ZIndex = 7
+            logoImg.Parent = logo
+            local logoCorn = Instance.new("UICorner")
+            logoCorn.CornerRadius = UDim.new(0, 14)
+            logoCorn.Parent = logoImg
 
             -- Judul + subjudul.
             local title = Instance.new("TextLabel")
@@ -2836,7 +2848,7 @@ do
             sub.Parent = card
 
             -- Chip fitur.
-            local chips = { "Auto Egg", "Shop", "Auto Sell", "ESP", "Ranch" }
+            local chips = { "Auto Egg", "Shop", "Auto Sell", "ESP", "Plot" }
             local row = Instance.new("Frame")
             row.AnchorPoint = Vector2.new(0.5, 0)
             row.Position = UDim2.new(0.5, 0, 0, 154)
@@ -3560,10 +3572,31 @@ local function rapTeleportTo(pos, label)
 end
 
 -- ============================== RANCH (AUTO DETECT) ==============================
-local rapRanchPos = nil
+local rapRanchPos = nil rapPlotPos = nil
 local RANCH_PATTERNS = { "ranch", "pen", "nest", "home", "base" }
 
-local function rapRefreshRanch()
+local function rapIsMyPlot(inst)
+        if not inst then return false end
+        local me = player.Name:lower()
+        local ok, owned = pcall(function()
+            for _, k in ipairs({ "Owner", "OwnerName", "PlotOwner" }) do
+                local v = inst.GetAttribute and inst:GetAttribute(k)
+                if v and tostring(v):lower():find(me:sub(1,4), 1, true) then return true end
+            end
+            if inst.GetAttribute and inst:GetAttribute("UserId") == player.UserId then return true end
+            return false
+        end)
+        if ok and owned then return true end
+        for _, d in ipairs(inst:GetDescendants()) do
+            if d:IsA("StringValue") and tostring(d.Value) == player.Name then return true end
+            if d:IsA("ObjectValue") and d.Value == player then return true end
+            if (d:IsA("TextLabel") or d:IsA("TextButton")) and tostring(d.Text or ""):lower():find(me, 1, true) then return true end
+        end
+        local nm = (tostring(inst.Name or "") .. " " .. tostring(inst:GetFullName())):lower()
+        if nm:find("my plot",1,true) or nm:find("myplot",1,true) then return true end
+        return false
+    end
+    local function rapRefreshRanch()
     local found = nil
     -- Satu pemindaian saja; dulu tiap pola memicu GetDescendants() sendiri (5x).
     for _, d in ipairs(rapTickList()) do
@@ -3586,17 +3619,17 @@ local function rapRefreshRanch()
     return rapRanchPos
 end
 
-local function rapGoRanch(notify)
-    local pos = rapRanchPos or rapRefreshRanch()
+local function rapGoPlot(notify)
+    local pos = rapPlotPos or rapRanchPos or rapRefreshRanch()
     if not pos then
         if notify then
-            Window:Notify({ Title = "Ranch", Description = "Ranch tidak terdeteksi otomatis.", Lifetime = 3 })
+            Window:Notify({ Title = "Plot", Description = "My Plot tidak terdeteksi otomatis. Coba Deteksi Ulang My Plot.", Lifetime = 3 })
         end
         return false
     end
-    rapTeleportTo(pos, "Ranch")
+    rapTeleportTo(pos, "Plot")
     if notify then
-        Window:Notify({ Title = "Ranch", Description = "Kembali ke ranch.", Lifetime = 2 })
+        Window:Notify({ Title = "Plot", Description = "Kembali ke My Plot.", Lifetime = 2 })
     end
     return true
 end
@@ -3613,7 +3646,7 @@ end)
 local function rapPlaceEggs()
     local root = rapGetRoot()
     if not root then return 0 end
-    rapGoRanch(false)
+    rapGoPlot(false)
     task.wait(0.4)
     root = rapGetRoot()
     if not root then return 0 end
@@ -3703,7 +3736,7 @@ local function rapPickupTick()
     -- Tidak ada telur lagi: kalau masih bawa telur, balik ke ranch
     if #candidates == 0 then
         if rapEggsCarried > 0 then
-            rapGoRanch(false)
+            rapGoPlot(false)
             rapEggsCarried = 0
         end
         return 0
@@ -3817,10 +3850,10 @@ local function rapPickupTick()
     -- Balik ke ranch SETELAH pengiriman benar-benar selesai.
     if rapReturnRanch and rapEggsCarried >= rapEggCapacity then
         task.wait(0.8)
-        rapGoRanch(false)
+        rapGoPlot(false)
         rapEggsCarried = 0
         Window:Notify({
-            Title = "Ranch",
+            Title = "Plot",
             Description = ("Balik ke ranch setelah %d telur (total %d)."):format(rapEggCapacity, rapPickedCount),
             Lifetime = 3,
         })
@@ -4322,7 +4355,7 @@ end
 -- ============================== ESP ENGINE ==============================
 local ESP_NAME = "RAP_ESP_FOLDER"
 local espHost = nil
-local espMode = { egg = false, zone = false, player = false, npc = false, ranch = false }
+local espMode = { egg = false, zone = false, player = false, npc = false, ranch = false, plot = false }
 local espRunning = false
 local rapEggCount, rapZoneCount, rapNpcCount, rapPlayerCount = 0, 0, 0, 0
 
@@ -4550,7 +4583,7 @@ local function rapRanchMark(mark)
         if found then break end
     end
     if found then
-        espMark(found, "RANCH", Color3.fromRGB(255, 255, 255))
+        espMark(found, "MY PLOT", Color3.fromRGB(255, 255, 255))
         return 1
     end
     return 0
@@ -4563,7 +4596,7 @@ local function espRefresh()
     rapZoneCount   = rapZones(espMode.zone)
     rapNpcCount    = rapNpcs(espMode.npc)
     rapPlayerCount = rapPlayers(espMode.player)
-    if espMode.ranch then rapRanchMark(true) end
+    if espMode.ranch or espMode.plot then rapRanchMark(true) end
     espSweep()
     rapDescCache = nil  -- jangan tahan daftar besar di memori
 end
@@ -4575,7 +4608,7 @@ local function espLoopStart()
     espRunning = true
     task.spawn(function()
         while true do
-            local any = espMode.egg or espMode.zone or espMode.player or espMode.npc or espMode.ranch
+            local any = espMode.egg or espMode.zone or espMode.player or espMode.npc or espMode.ranch or espMode.plot
             if any then
                 pcall(espRefresh)
                 task.wait(0.45)
@@ -5069,7 +5102,7 @@ SecPlace:Toggle({
     Default = false,
     Callback = function(enabled)
         rapSet("placedEgg", enabled, "Placed Egg",
-            "Telur otomatis ditaruh di ranch.",
+            "Telur otomatis ditaruh di My Plot.",
             "Auto place eggs dimatikan.")
     end,
 })
@@ -5168,7 +5201,7 @@ SecAutoEgg:Dropdown({
 })
 
 SecAutoEgg:Toggle({
-    Name = "Balik ke Ranch Setelah Ambil Telur",
+    Name = "Balik ke Plot Setelah Ambil Telur",
     Default = true,
     Callback = function(enabled)
         rapReturnRanch = enabled and true or false
@@ -5190,35 +5223,35 @@ SecAutoEgg:Toggle({
         rapSet("feed", enabled, "Auto Feed", "Memberi makan pet otomatis.", "Auto feed dimatikan.")
     end,
 })
-local SecRanch = TabMainRAP:Section({ Name = "Ranch & Auto Placed Egg", Side = 1 })
-SecRanch:Header({ Name = ZypheraxLib:Gradient("Ranch & Penaruhan", Color3.fromRGB(255, 170, 90), Color3.fromRGB(255, 110, 140)) })
+local SecRanch = TabMainRAP:Section({ Name = "My Plot", Side = 1 })
+SecRanch:Header({ Name = ZypheraxLib:Gradient("My Plot Milikmu", Color3.fromRGB(255, 170, 90), Color3.fromRGB(255, 110, 140)) })
 
-SecRanch:Label({ Name = "Ranch dideteksi otomatis (nama objek mengandung 'ranch/pen/nest/home/base'), cadangan dari SpawnLocation." })
+SecRanch:Label({ Name = "My Plot dideteksi otomatis (nama objek mengandung 'ranch/pen/nest/home/base'), cadangan dari SpawnLocation." })
 
 SecRanch:Button({
-    Name = "Balik ke Ranch Sekarang",
-    Callback = function() rapGoRanch(true) end,
+    Name = "Balik ke My Plot Sekarang",
+    Callback = function() rapGoPlot(true) end,
 })
 
 SecRanch:Button({
-    Name = "Deteksi Ulang Ranch",
+    Name = "Deteksi Ulang My Plot",
     Callback = function()
-        rapRanchPos = nil
+        rapRanchPos = nil rapPlotPos = nil
         local p = rapRefreshRanch()
         Window:Notify({
-            Title = "Ranch",
-            Description = p and ("Ranch ditemukan: " .. tostring(math.floor(p.X)) .. ", " .. tostring(math.floor(p.Z))) or "Ranch tidak ditemukan.",
+            Title = "Plot",
+            Description = p and ("My Plot ditemukan: " .. tostring(math.floor(p.X)) .. ", " .. tostring(math.floor(p.Z))) or "My Plot tidak ditemukan.",
             Lifetime = 4,
         })
     end,
 })
 
 SecRanch:Toggle({
-    Name = "Auto Placed Egg (Taruh Telur di Ranch)",
+    Name = "Auto Placed Egg (Taruh Telur di Plot)",
     Default = false,
     Callback = function(enabled)
         rapSet("placedEgg", enabled, "Placed Egg",
-            "Telur otomatis ditaruh di ranch.",
+            "Telur otomatis ditaruh di My Plot.",
             "Auto placed egg dimatikan.")
     end,
 })
@@ -5229,7 +5262,7 @@ SecRanch:Button({
         local n = rapPlaceEggs()
         Window:Notify({
             Title = "Placed Egg",
-            Description = (n > 0) and ("Menaruh telur (%d prompt)."):format(n) or "Tidak ada prompt taruh telur ditemukan di ranch.",
+            Description = (n > 0) and ("Menaruh telur (%d prompt)."):format(n) or "Tidak ada prompt taruh telur ditemukan di plot.",
             Lifetime = 4,
         })
     end,
@@ -5755,7 +5788,7 @@ SecEggESP:Toggle({
 })
 
 SecEggESP:Toggle({
-    Name = "ESP Ranch (Lokasi Base)",
+    Name = "ESP Plot (Lokasi My Plot)",
     Default = false,
     Callback = function(enabled)
         espSet("ranch", enabled, "ESP Ranch", "Lokasi ranch di-mark putih.", "ESP ranch dimatikan.")
