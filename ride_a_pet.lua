@@ -716,7 +716,7 @@ function ZypheraxUI:Notify(cfg)
     })
     U.Corner(prog, UDim.new(1, 0))
 
-    card.Position = UDim2.new(0, 34, 0, 0)
+    card.Position = UDim2.new(0, 12, 0, 0)
     card.BackgroundTransparency = 1
     stroke.Transparency = 1
     U.Tween(card, 0.34, { Position = UDim2.new(0, 0, 0, 0), BackgroundTransparency = 0.05 }, Enum.EasingStyle.Quart)
@@ -1046,7 +1046,7 @@ function ZypheraxUI:CreateWindow(config)
         BackgroundTransparency = 1,
         ScaleType = Enum.ScaleType.Fit,
         Position = UDim2.new(0, 14, 0, 30),
-        Size = UDim2.fromOffset(20, 20),
+        Size = UDim2.fromOffset(26, 26),
         ZIndex = 6,
         Parent = sidebarHeader
     })
@@ -1203,7 +1203,7 @@ function ZypheraxUI:CreateWindow(config)
         Size = UDim2.new(0, 240, 0, 32),
         Position = UDim2.new(0, 10, 0, 8),
         BackgroundColor3 = T.Surface2,
-        BackgroundTransparency = 0.2,
+        BackgroundTransparency = 0.05,
         ZIndex = 5,
         Parent = contentArea
     })
@@ -1211,30 +1211,19 @@ function ZypheraxUI:CreateWindow(config)
     local sbStroke = U.Stroke(searchBarFrame, T.Stroke, 1, 0.2)
     RegisterThemeColor(searchBarFrame, "BackgroundColor3", "Surface2")
     RegisterThemeColor(sbStroke, "Color", "Stroke")
-
-    local searchIcon = U.New("TextLabel", {
-        Text = "\xF0\x9F\x94\x8D",
-        Font = T.FontRegular,
-        TextSize = 13,
-        BackgroundTransparency = 1,
-        Position = UDim2.new(0, 10, 0, 0),
-        Size = UDim2.new(0, 20, 1, 0),
-        TextColor3 = T.TextMuted,
-        ZIndex = 6,
-        Parent = searchBarFrame
     })
 
     local searchInput = U.New("TextBox", {
         Name = "SearchInput",
         Text = "",
-        PlaceholderText = "Cari fitur...",
+        PlaceholderText = "Search...",
         Font = T.FontRegular,
         TextSize = 11,
         TextColor3 = T.Text,
         PlaceholderColor3 = T.TextDim,
         BackgroundTransparency = 1,
-        Position = UDim2.new(0, 34, 0, 0),
-        Size = UDim2.new(1, -64, 1, 0),
+        Position = UDim2.new(0, 12, 0, 0),
+        Size = UDim2.new(1, -42, 1, 0),
         ClearTextOnFocus = false,
         TextXAlignment = Enum.TextXAlignment.Left,
         ZIndex = 6,
