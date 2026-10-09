@@ -931,11 +931,11 @@ function ZypheraxUI:CreateWindow(config)
             Name = "BackgroundWatermark",
             Image = "rbxassetid://106764279090045",
             BackgroundTransparency = 1,
-            ImageTransparency = 0.94,
+            ImageTransparency = 0.87,
             ScaleType = Enum.ScaleType.Fit,
             AnchorPoint = Vector2.new(0.5, 0.5),
-            Position = UDim2.new(0.62, 0, 0.55, 0),
-            Size = UDim2.fromOffset(380, 380),
+            Position = UDim2.new(0.60, 0, 0.55, 0),
+            Size = UDim2.fromOffset(460, 460),
             ZIndex = 1,
             Parent = main
         })
@@ -1452,7 +1452,6 @@ function ZypheraxUI:CreateWindow(config)
             })
             U.Corner(sectionBox, T.CornerMd)
             local sStroke = U.Stroke(sectionBox, T.Stroke, 1, 0.4)
-            RegisterThemeColor(sectionBox, "BackgroundColor3", "SectionBg")
             RegisterThemeColor(sStroke, "Color", "Stroke")
 
             -- Section Header Frame (Only visible if real name exists)
@@ -1524,7 +1523,7 @@ function ZypheraxUI:CreateWindow(config)
                 local base = U.New(cls, {
                     Size = UDim2.new(1, 0, 0, height or 38),
                     BackgroundColor3 = T.Surface2,
-                    BackgroundTransparency = 0.45,
+                    BackgroundTransparency = 0.5,
                     BorderSizePixel = 0,
                     ZIndex = 5,
                     Parent = secContainer
@@ -2063,7 +2062,7 @@ function ZypheraxUI:CreateWindow(config)
                     Size = UDim2.new(1, 0, 0, 0),
                     AutomaticSize = Enum.AutomaticSize.Y,
                     BackgroundColor3 = T.Surface,
-                    BackgroundTransparency = 0.3,
+                    BackgroundTransparency = 0.35,
                     ZIndex = 5,
                     Parent = secContainer
                 })
@@ -5087,7 +5086,7 @@ do pcall(function()
 end) end
 local SecAutoEgg = TabFarmRAP:Section({ Name = "", Side = 1 })
 do table.insert(farmEggSecs, SecAutoEgg) end
-SecAutoEgg:Label({ Name = "auto egg collector" })
+SecAutoEgg:Label({ Name = "AUTO EGG COLLECTOR" })
 
 -- Grup Auto Farm ala foto (pakai UI Zypherax sendiri)
 local RAP_ALL = "--"
@@ -5196,7 +5195,7 @@ SecAutoEgg:Slider({
 
 local SecPlace = TabFarmRAP:Section({ Name = "", Side = 1 })
 do table.insert(farmEggSecs, SecPlace) end
-SecPlace:Label({ Name = "auto place eggs" })
+SecPlace:Label({ Name = "PLACE EGGS" })
 
 SecPlace:Toggle({
     Name = "Auto Place Eggs",
@@ -5464,7 +5463,7 @@ SecEvent:Toggle({
 -- Grup tambahan ala foto (UI Zypherax sendiri, engine menyusul)
 local SecVolcano = TabFarmRAP:Section({ Name = "", Side = 1 })
 do table.insert(farmEggSecs, SecVolcano) end
-SecVolcano:Label({ Name = "volcano" })
+SecVolcano:Label({ Name = "VOLCANO" })
 
 SecVolcano:Toggle({
     Name = "Auto Volcano Dip",
@@ -5506,7 +5505,7 @@ SecPets:Toggle({ Name = "Auto Place Pets (Taruh Pet)", Default = false, Callback
     rapPlanned.placePets = enabled and true or false
     Window:Notify({ Title = "Pets", Description = enabled and "Auto place pets aktif." or "Auto place pets dimatikan.", Lifetime = 3 })
 end })
-SecPets:Label({ Name = "pets untuk auto place pets" })
+SecPets:Label({ Name = "PLACE PETS" })
 
 SecPets:Toggle({
     Name = "Auto Place Best Pets",
@@ -5571,7 +5570,7 @@ SecPets:Dropdown({
 
 local SecFusion = TabFarmRAP:Section({ Name = "", Side = 2 })
 do table.insert(farmPetSecs, SecFusion) end
-SecFusion:Label({ Name = "fusion" })
+SecFusion:Label({ Name = "FUSION" })
 
 SecFusion:Toggle({
     Name = "Auto Fuse",
@@ -5621,8 +5620,15 @@ rapFusionStatus = SecFusion:Label({ Name = "Fusion: Idle | Fused 0" })
 
 local SecFeeds = TabFarmRAP:Section({ Name = "", Side = 2 })
 do table.insert(farmPetSecs, SecFeeds) end
+-- farmBlend: sub menyatu dgn grup (kotak hilang, watermark kelihatan)
+do pcall(function()
+    for _, s in ipairs(farmEggSecs) do
+        local box = s._box or (s._zsec and s._zsec._box)
+        if box then box.BackgroundTransparency = 1 end
+    end
+end) end
 
-SecFeeds:Label({ Name = "feeds" })
+SecFeeds:Label({ Name = "FEEDS" })
 
 SecFeeds:Toggle({
     Name = "Auto Feed Pets",
