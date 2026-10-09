@@ -2647,10 +2647,10 @@ end)()
             elseif type(secCfg) == "string" then
                 secName = secCfg
             end
-            -- UI lama hanya 1 kolom; UI baru punya 2 kolom.
-            -- Sebar section bergantian (kiri/kanan) supaya tidak ada kolom kosong.
+            -- Hormati Side eksplisit (1=kiri, 2=kanan); hanya alternate bila tanpa Side.
             Tab._secIdx = Tab._secIdx + 1
-            if side == 1 then side = (Tab._secIdx % 2 == 1) and 1 or 2 end
+            local hasExplicit = (type(secCfg) == "table" and secCfg.Side ~= nil)
+            if not hasExplicit then side = (Tab._secIdx % 2 == 1) and 1 or 2 end
             local zsec = ztab:CreateSection({ Name = _zy_pretty(secName), Side = side })
             return _zy_make_section(zsec)
         end
@@ -3757,9 +3757,23 @@ local function rapPickupTick()
         task.wait(0.15)
     end
 
+    -- Wajib dekat dulu (server menolak delivery dari jauh -> "Egg Was Returned")
+    do
+        local pp = rapEntityPos(prompt.Parent) or rapEntityPos(prompt)
+        local rr = rapGetRoot()
+        if pp and rr and (pp - rr.Position).Magnitude > 12 then
+            if rapPickupMode == "Instant" then
+                rapTeleportTo(pp, "Egg")
+                task.wait(0.35)
+            else
+                if not rapMoveTo(pp, 5) then return 0 end
+                task.wait(0.2)
+            end
+        end
+    end
     pcall(function()
         prompt.HoldDuration = 0
-        prompt.MaxActivationDistance = 500
+        prompt.MaxActivationDistance = 12
         prompt.RequiresLineOfSight = false
     end)
 
@@ -3779,11 +3793,12 @@ local function rapPickupTick()
     local delivered = gone or moved > 20
 
     if delivered then
-        if eggPart then pcall(function() eggPart:Destroy() end) end
-        pcall(function() prompt:Destroy() end)
+        -- JANGAN hancurkan telur/prompt client-side: biarkan server yang hapus.
+        -- Menghancurkan sendiri bikin server balas "Egg Delivery Failed".
+        rapHandled[prompt] = true
         rapPickedCount = rapPickedCount + 1
         rapEggsCarried = rapEggsCarried + 1
-        rapPickupCD = os.clock() + 0.9
+        rapPickupCD = os.clock() + 1.5
         local rar = rapRarityOf(eggName)
         if rar == "Epic" or rar == "Legendary" or rar == "Mythic"
             or rapEggsCarried >= rapEggCapacity then
@@ -3794,9 +3809,9 @@ local function rapPickupTick()
             })
         end
     else
-        -- Gagal terkirim: lepas tanda + beri jeda, jangan spam ulang.
+        -- Gagal terkirim (server return): lepas tanda + jeda lebih lama, jangan spam.
         rapHandled[prompt] = nil
-        rapPickupCD = os.clock() + 1.6
+        rapPickupCD = os.clock() + 3
     end
 
     -- Balik ke ranch SETELAH pengiriman benar-benar selesai.
@@ -4407,15 +4422,15 @@ local function espMark(inst, label, color, key)
             local bb = Instance.new("BillboardGui")
             bb.Name = ESP_NAME
             bb.Adornee = part
-            bb.Size = UDim2.new(0, 220, 0, 34)
-            bb.StudsOffset = Vector3.new(0, 3.5, 0)
-            bb.AlwaysOnTop = true
-            bb.MaxDistance = 4000
+            bb.Size = UDim2.new(0, 140, 0, 20)
+            bb.StudsOffset = Vector3.new(0, 2, 0)
+            bb.AlwaysOnTop = false
+            bb.MaxDistance = 600
             local tl = Instance.new("TextLabel")
             tl.Size = UDim2.new(1, 0, 1, 0)
             tl.BackgroundTransparency = 1
-            tl.Font = Enum.Font.GothamBlack
-            tl.TextSize = 15
+            tl.Font = Enum.Font.GothamBold
+            tl.TextSize = 11
             tl.TextColor3 = color
             tl.TextStrokeColor3 = Color3.new(0, 0, 0)
             tl.TextStrokeTransparency = 0
@@ -4446,18 +4461,32 @@ end
 
 local function rapCountEggs(mark)
     local c = 0
+    local myPos = rapGetRoot() and rapGetRoot().Position
+    local found = {}
     for _, d in ipairs(rapDescList()) do
         if d:IsA("Model") or d:IsA("BasePart") then
             for _, n in ipairs(rapEggNames) do
                 if d.Name == n then
                     c = c + 1
                     if mark then
-                        local rar = rapRarityOf(d.Name)
-                        espMark(d, "[" .. rar .. "] " .. d.Name, RARITY_COLOR[rar] or Color3.fromRGB(255, 255, 255))
+                        local pp = rapEntityPos(d)
+                        local dist = (myPos and pp) and (pp - myPos).Magnitude or 1e9
+                        if dist <= 600 then
+                            table.insert(found, { inst = d, dist = dist })
+                        end
                     end
                     break
                 end
             end
+        end
+    end
+    -- Hanya 40 terdekat yang diberi label (anti menumpuk seperti di foto)
+    if mark and #found > 0 then
+        table.sort(found, function(a, b) return a.dist < b.dist end)
+        for i = 1, math.min(#found, 40) do
+            local e = found[i]
+            local rar = rapRarityOf(e.inst.Name)
+            espMark(e.inst, "[" .. rar .. "] " .. e.inst.Name, RARITY_COLOR[rar] or Color3.fromRGB(255, 255, 255))
         end
     end
     return c
@@ -5032,7 +5061,10 @@ SecAutoEgg:Slider({
     end,
 })
 
-SecAutoEgg:Toggle({
+local SecPlace = TabMainRAP:Section({ Name = "Auto Place Eggs", Side = 2 })
+SecPlace:Header({ Name = ZypheraxLib:Gradient("Auto Place Eggs", Color3.fromRGB(255, 190, 90), Color3.fromRGB(255, 130, 120)) })
+
+SecPlace:Toggle({
     Name = "Auto Place Eggs",
     Default = false,
     Callback = function(enabled)
@@ -5042,14 +5074,14 @@ SecAutoEgg:Toggle({
     end,
 })
 
-SecAutoEgg:Dropdown({
+SecPlace:Dropdown({
     Name = "Place",
     Items = { "All", "Best", "Filtered" },
     Default = "All",
     Callback = function(v) rapPlanned.placeMode = v or "All" end,
 })
 
-SecAutoEgg:Slider({
+SecPlace:Slider({
     Name = "Max Planted",
     Default = 5,
     Minimum = 1,
@@ -5059,7 +5091,7 @@ SecAutoEgg:Slider({
     Callback = function(value) rapEggCapacity = value end,
 })
 
-SecAutoEgg:Dropdown({
+SecPlace:Dropdown({
     Name = "Place Rarity",
     Items = (function()
         local o = { RAP_ALL }
@@ -5072,7 +5104,7 @@ SecAutoEgg:Dropdown({
     end,
 })
 
-SecAutoEgg:Dropdown({
+SecPlace:Dropdown({
     Name = "Place Egg",
     Items = (function()
         local o = { RAP_ALL }
@@ -5085,7 +5117,7 @@ SecAutoEgg:Dropdown({
     end,
 })
 
-SecAutoEgg:Dropdown({
+SecPlace:Dropdown({
     Name = "Place Mutation",
     Items = (function()
         local o = { RAP_ALL }
@@ -5098,28 +5130,28 @@ SecAutoEgg:Dropdown({
     end,
 })
 
-SecAutoEgg:Input({
+SecPlace:Input({
     Name = "Place Min Size (KG)",
     Default = "0",
     Placeholder = "0",
     Callback = function(text) rapPlanned.placeMinSize = tonumber(text) or 0 end,
 })
 
-SecAutoEgg:Input({
+SecPlace:Input({
     Name = "Place Only Below KG",
     Default = "0",
     Placeholder = "0",
     Callback = function(text) rapPlanned.placeBelowKG = tonumber(text) or 0 end,
 })
 
-SecAutoEgg:Dropdown({
+SecPlace:Dropdown({
     Name = "Place Order",
     Items = { "Rarity then Size", "Size then Rarity", "Rarity Only" },
     Default = "Rarity then Size",
     Callback = function(v) rapPlanned.placeOrder = v or "Rarity then Size" end,
 })
 
-SecAutoEgg:Toggle({
+SecPlace:Toggle({
     Name = "Auto Hatch Eggs",
     Default = false,
     Callback = function(enabled)
@@ -5158,7 +5190,7 @@ SecAutoEgg:Toggle({
         rapSet("feed", enabled, "Auto Feed", "Memberi makan pet otomatis.", "Auto feed dimatikan.")
     end,
 })
-local SecRanch = TabMainRAP:Section({ Name = "Ranch & Auto Placed Egg", Side = 2 })
+local SecRanch = TabMainRAP:Section({ Name = "Ranch & Auto Placed Egg", Side = 1 })
 SecRanch:Header({ Name = ZypheraxLib:Gradient("Ranch & Penaruhan", Color3.fromRGB(255, 170, 90), Color3.fromRGB(255, 110, 140)) })
 
 SecRanch:Label({ Name = "Ranch dideteksi otomatis (nama objek mengandung 'ranch/pen/nest/home/base'), cadangan dari SpawnLocation." })
@@ -5203,7 +5235,7 @@ SecRanch:Button({
     end,
 })
 
-local SecTele = TabMainRAP:Section({ Name = "Teleport", Side = 1 })
+local SecTele = TabMainRAP:Section({ Name = "Teleport", Side = 2 })
 SecTele:Header({ Name = ZypheraxLib:Gradient("Teleport Cepat", Color3.fromRGB(240, 190, 100), Color3.fromRGB(255, 160, 120)) })
 
 SecTele:Dropdown({
@@ -5251,7 +5283,7 @@ SecTele:Toggle({
     end,
 })
 
-local SecEvent = TabMainRAP:Section({ Name = "Event & Klaim", Side = 2 })
+local SecEvent = TabMainRAP:Section({ Name = "Event & Klaim", Side = 1 })
 SecEvent:Header({ Name = ZypheraxLib:Gradient("Event & Reward", Color3.fromRGB(99, 130, 255), Color3.fromRGB(168, 120, 255)) })
 
 SecEvent:Toggle({
