@@ -1953,6 +1953,7 @@ function ZypheraxUI:CreateWindow(config)
             -- // LABEL \ --
             function SectionObj:CreateLabel(textOrCfg)
                 local txt = type(textOrCfg) == "table" and (textOrCfg.Name or textOrCfg.Text or textOrCfg[1]) or tostring(textOrCfg)
+                local _isGrp2 = type(txt)=="string" and txt==txt:upper() and #txt>=4
                 local lbl = U.New("TextLabel", {
                     Text = txt,
                     Font = T.FontRegular,
@@ -3479,7 +3480,9 @@ local function rapRarityOfName(nm)
     return nil
 end
 
-local function rapFindMutation(inst)
+local function rapFindMutation(inst) -- rapFindMutationStrOk
+    if type(inst)=="string" then local s=inst:lower() for _, m in ipairs(RAP_MUTATIONS) do if s:find(m:lower(),1,true) then return m end end return "normal" end
+    if type(inst)=="string" then local s=inst:lower() for _, m in ipairs(RAP_MUTATIONS) do if s:find(m:lower(),1,true) then return m end end return "normal" end
     if not inst then return "normal" end
     local cur = inst
     for _ = 1, 6 do
@@ -3651,6 +3654,32 @@ local function rapGoPlot(notify)
     return true
 end
 
+-- ================= WEBHOOK SENDER (logo + nama Zypherax Hub) =================
+local ZYPH_LOGO_URL = "https://tr.rbxcdn.com/180DAY-38bd5cad6dff8c3aa7afb010264d3081/420/420/Image/Png/noFilter"
+local function rapWHRank(rarity)
+    local order = {}
+    for i, r in ipairs((typeof(RARITY_LIST)=="table" and RARITY_LIST) or {"Common","Rare","Epic","Legendary","Mythic"}) do order[r] = i end
+    return order[rarity] or 0
+end
+local function rapSendWH(title, desc, colorHex)
+    local url = rapPlanned and rapPlanned.webhookUrl or ""
+    if not (rapPlanned and rapPlanned.webhookOn) then return end
+    if url == "" or not url:find("discord.com/api/webhooks") then return end
+    pcall(function()
+        local http = game:GetService("HttpService")
+        local payload = { username = "Zypherax Hub", avatar_url = ZYPH_LOGO_URL, embeds = { { title = title or "Zypherax Hub - Ride A Pet", description = desc or "", color = tonumber(colorHex or "57F287", 16) or 5763719, fields = { { name = "Player", value = tostring(player.DisplayName).." (@"..tostring(player.Name)..")", inline = true }, { name = "Game", value = "Ride A Pet", inline = true } }, timestamp = os.date("!%Y-%m-%dT%H:%M:%SZ") } } }
+        local body = http:JSONEncode(payload)
+        if syn and syn.request then syn.request({ Url = url, Method = "POST", Headers = { ["Content-Type"] = "application/json" }, Body = body })
+        elseif http_request then http_request({ Url = url, Method = "POST", Headers = { ["Content-Type"] = "application/json" }, Body = body })
+        elseif request then request({ Url = url, Method = "POST", Headers = { ["Content-Type"] = "application/json" }, Body = body }) end
+    end)
+end
+local function rapWHEgg(rarity, eggName, mutation)
+    if not (rapPlanned and rapPlanned.whEgg) then return end
+    local minR = (rapPlanned and rapPlanned.whMinRarity) or "Legendary"
+    if rapWHRank(rarity) < rapWHRank(minR) then return end
+    rapSendWH("Egg Langka Didapat", ("**%s** Rarity: %s Mutation: %s"):format(tostring(eggName), tostring(rarity), tostring(mutation or "-")), "57F287")
+end
 -- Simpan posisi awal sebagai cadangan ranch (setelah karakter siap).
 task.spawn(function()
     task.wait(3)
@@ -5969,13 +5998,6 @@ SecWh:Toggle({ Name = "Notif Magma (Volcano)", Default = true, Callback = functi
 SecWh:Button({ Name = "Test Webhook", Callback = function()
     local url = rapPlanned.webhookUrl or ""
     if url == "" then Window:Notify({ Title = "Webhook", Description = "Isi Webhook URL dulu.", Lifetime = 3 }) return end
-    pcall(function()
-        local http = game:GetService("HttpService")
-        local data = http:JSONEncode({ content = "ZypheraxHub test: webhook tersambung." })
-        if syn and syn.request then syn.request({ Url = url, Method = "POST", Headers = { ["Content-Type"] = "application/json" }, Body = data })
-        elseif http_request then http_request({ Url = url, Method = "POST", Headers = { ["Content-Type"] = "application/json" }, Body = data })
-        elseif request then request({ Url = url, Method = "POST", Headers = { ["Content-Type"] = "application/json" }, Body = data }) end
-    end)
     rapSendWH("Zypherax Hub - Test", "Webhook tersambung. Game: Ride A Pet.", "57F287")
     Window:Notify({ Title = "Webhook", Description = "Test terkirim (cek Discord).", Lifetime = 3 })
 end })
