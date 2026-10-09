@@ -967,7 +967,7 @@ function ZypheraxUI:CreateWindow(config)
         Parent = sidebar
     })
 
-    -- MacOS Traffic Light Buttons (ðŸ”´ Red, ðŸŸ¡ Yellow, ðŸŸ¢ Green - Compact)
+    -- MacOS Traffic Light Buttons (Ã°Å¸â€Â´ Red, Ã°Å¸Å¸Â¡ Yellow, Ã°Å¸Å¸Â¢ Green - Compact)
     local trafficContainer = U.New("Frame", {
         Name = "MacOSTrafficLights",
         Size = UDim2.new(0, 48, 0, 12),
@@ -1006,17 +1006,17 @@ function ZypheraxUI:CreateWindow(config)
         return dot
     end
 
-    -- ðŸ”´ Close: smoothly closes window
+    -- Ã°Å¸â€Â´ Close: smoothly closes window
     makeTrafficDot(Color3.fromRGB(255, 95, 86), Color3.fromRGB(255, 120, 110), function()
         Win:ToggleVisibility(false)
     end)
 
-    -- ðŸŸ¡ Minimize: minimizes window
+    -- Ã°Å¸Å¸Â¡ Minimize: minimizes window
     makeTrafficDot(Color3.fromRGB(255, 189, 46), Color3.fromRGB(255, 210, 80), function()
         Win:ToggleVisibility(false)
     end)
 
-    -- ðŸŸ¢ Maximize: toggles size
+    -- Ã°Å¸Å¸Â¢ Maximize: toggles size
     local isMaximized = false
     makeTrafficDot(Color3.fromRGB(39, 201, 63), Color3.fromRGB(60, 225, 90), function()
         isMaximized = not isMaximized
@@ -1736,7 +1736,7 @@ function ZypheraxUI:CreateWindow(config)
                 })
 
                 local chevron = U.New("TextLabel", {
-                    Text = "â–¼",
+                    Text = "Ã¢â€“Â¼",
                     Font = T.FontBold,
                     TextSize = 10,
                     TextColor3 = T.TextMuted,
@@ -1782,7 +1782,7 @@ function ZypheraxUI:CreateWindow(config)
                             isOpen = false
                             listFrame.Visible = false
                             U.Tween(base, 0.2, { Size = UDim2.new(1, 0, 0, 36) })
-                            chevron.Text = "â–¼"
+                            chevron.Text = "Ã¢â€“Â¼"
                             pcall(cb, selected)
                             rebuild()
                         end))
@@ -1798,13 +1798,13 @@ function ZypheraxUI:CreateWindow(config)
                         local h = #items * 28 + 4
                         U.Tween(base, 0.2, { Size = UDim2.new(1, 0, 0, 42 + h) })
                         U.Tween(listFrame, 0.2, { Size = UDim2.new(1, -16, 0, h) })
-                        chevron.Text = "â–²"
+                        chevron.Text = "Ã¢â€“Â²"
                     else
                         U.Tween(base, 0.2, { Size = UDim2.new(1, 0, 0, 36) })
                         U.Tween(listFrame, 0.2, { Size = UDim2.new(1, -16, 0, 0) }).Completed:Connect(function()
                             listFrame.Visible = false
                         end)
-                        chevron.Text = "â–¼"
+                        chevron.Text = "Ã¢â€“Â¼"
                     end
                 end))
 
@@ -2054,7 +2054,7 @@ function ZypheraxUI:CreateWindow(config)
                 -- Title
                 local topRow = U.New("Frame", { Size = UDim2.new(1, 0, 0, 20), BackgroundTransparency = 1, Parent = confBox })
                 U.New("TextLabel", {
-                    Text = "âš™  Config Manager",
+                    Text = "Ã¢Å¡â„¢  Config Manager",
                     Font = T.FontBold,
                     TextSize = 13,
                     TextColor3 = T.Accent,
@@ -5415,4 +5415,5 @@ SecTheme:Toggle({
         Window:Notify({ Title = "Pengaturan", Description = (bool and "Mengaktifkan" or "Mematikan") .. " Blur", Lifetime = 3 })
     end
 })
+
 
