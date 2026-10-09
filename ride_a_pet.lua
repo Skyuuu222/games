@@ -2737,30 +2737,10 @@ local function _zy_show_watermark(gameName)
         sg.DisplayOrder = 9990
         sg.Parent = core
         -- lapisan blur luar (seperti frosted Real): 3 lapis transparan bertumpuk
-        local blur1 = Instance.new("ImageLabel")
-        blur1.BackgroundTransparency = 1
-        blur1.Image = "rbxassetid://1316045217"
-        blur1.ImageColor3 = Color3.fromRGB(20, 24, 34)
-        blur1.ImageTransparency = 0.55
-        blur1.ScaleType = Enum.ScaleType.Slice
-        blur1.SliceCenter = Rect.new(10, 10, 118, 118)
-        blur1.Position = UDim2.new(0, 6, 0, 6)
-        blur1.Size = UDim2.fromOffset(304, 44)
-        blur1.Parent = sg
-        local blurc = Instance.new("UICorner") blurc.CornerRadius = UDim.new(0, 14) blurc.Parent = blur1
-        local shadow = Instance.new("ImageLabel")
-        shadow.BackgroundTransparency = 1
-        shadow.Image = "rbxassetid://1316045217"
-        shadow.ImageColor3 = Color3.new(0, 0, 0)
-        shadow.ImageTransparency = 0.7
-        shadow.ScaleType = Enum.ScaleType.Slice
-        shadow.SliceCenter = Rect.new(10, 10, 118, 118)
-        shadow.Position = UDim2.new(0, 8, 0, 10)
-        shadow.Size = UDim2.fromOffset(300, 42)
-        shadow.Parent = sg
         -- pill utama: lebih transparan (0.5) biar blur latar kelihatan seperti Real
         local pill = Instance.new("Frame")
-        pill.Position = UDim2.new(0, 12, 0, 12)
+        pill.AnchorPoint = Vector2.new(0.5, 0)
+        pill.Position = UDim2.new(0.5, 0, 0, 12)
         pill.Size = UDim2.fromOffset(292, 32)
         pill.BackgroundColor3 = Color3.fromRGB(16, 20, 30)
         pill.BackgroundTransparency = 0.5
