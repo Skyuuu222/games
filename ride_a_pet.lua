@@ -925,9 +925,9 @@ function ZypheraxUI:CreateWindow(config)
         Parent = shadow
     })
     U.Corner(main, T.CornerLg)
-    local mainStroke = U.Stroke(main, T.Stroke, 1.2, 0)
+--     local mainStroke = U.Stroke(main, T.Stroke, 1.2, 0)
     RegisterThemeColor(main, "BackgroundColor3", "Background")
-    RegisterThemeColor(mainStroke, "Color", "Stroke")
+--     RegisterThemeColor(mainStroke, "Color", "Stroke")
 
     -- Window Object
     local Win = { Tabs = {}, Pages = {}, _currentTab = nil, _connections = connections, _gui = gui }
@@ -947,7 +947,7 @@ function ZypheraxUI:CreateWindow(config)
     U.Corner(sidebar, T.CornerLg)
     RegisterThemeColor(sidebar, "BackgroundColor3", "SidebarBg")
 
-    -- Right border separator of sidebar (DISABLED - user requested removal)
+    -- Right border separator of sidebar
 --     local sideDiv = U.New("Frame", {
 --         Size = UDim2.new(0, 1, 1, 0),
 --         Position = UDim2.new(1, 0, 0, 0),
@@ -958,7 +958,7 @@ function ZypheraxUI:CreateWindow(config)
 --     })
 --     RegisterThemeColor(sideDiv, "BackgroundColor3", "Stroke")
 -- 
---     -- // SIDEBAR HEADER (MacOS Traffic Lights + Titles) \ --
+    -- // SIDEBAR HEADER (MacOS Traffic Lights + Titles) \ --
     local sidebarHeader = U.New("Frame", {
         Name = "SidebarHeader",
         Size = UDim2.new(1, 0, 0, 78),
@@ -4898,6 +4898,11 @@ rapNewFilter(SecAutoEgg, "Filter Rarity", RARITY_LIST, {}, function(list)
     for _, v in ipairs(list) do rapRarityFilterSet[v] = true end
 end)
 
+rapNewFilter(SecAutoEgg, "Filter Rarity", RARITY_LIST, {}, function(list)
+    rapRarityFilterSet = {}
+    for _, v in ipairs(list) do rapRarityFilterSet[v] = true end
+end)
+
 rapNewFilter(SecAutoEgg, "Filter Mutasi", RAP_MUTATIONS, {}, function(list)
     rapMutationFilterSet = {}
     for _, v in ipairs(list) do rapMutationFilterSet[v] = true end
@@ -5415,16 +5420,4 @@ SecTheme:Toggle({
         Window:Notify({ Title = "Pengaturan", Description = (bool and "Mengaktifkan" or "Mematikan") .. " Blur", Lifetime = 3 })
     end
 })
-
-
-
-
-
-
-
-
-
-
-
-
 
