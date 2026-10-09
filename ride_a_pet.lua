@@ -5002,20 +5002,14 @@ end
 -- ==============================================================================================
 local TabMainRAP = tabGroup:Tab({ Name = "Main", Image = "lucide/zap" })
 local TabFarmRAP = tabGroup:Tab({ Name = "Farm", Image = "lucide/sprout" })
--- Main hanya info (semua fitur pindah ke Farm)
-do
-    local SecMainInfo = TabMainRAP:Section({ Name = "Info", Side = 1 })
-    SecMainInfo:Label({ Name = "Semua fitur Main sudah pindah ke tab Farm." })
-    SecMainInfo:Label({ Name = "Buka tab Farm untuk Auto Farm, Place, Plot, Teleport, Event, Volcano, Pets, Fusion, Feeds." })
-end
 -- ===== FARM: PROGRESSION ala foto (pakai UI Zypherax) =====
-local SecProg = TabFarmRAP:Section({ Name = "Progression", Side = 1 })
-SecProg:Header({ Name = ZypheraxLib:Gradient("Progression", Color3.fromRGB(0, 170, 255), Color3.fromRGB(0, 140, 230)) })
+local SecProg = TabMainRAP:Section({ Name = "Main", Side = 1 })
+SecProg:Header({ Name = ZypheraxLib:Gradient("Main", Color3.fromRGB(0, 170, 255), Color3.fromRGB(0, 140, 230)) })
 rapPlanned = rapPlanned or {}
 local function rapProgToggle(name, key, onMsg, offMsg)
     SecProg:Toggle({ Name = name, Default = false, Callback = function(enabled)
         rapPlanned[key] = enabled and true or false
-        Window:Notify({ Title = "Progression", Description = enabled and onMsg or offMsg, Lifetime = 3 })
+        Window:Notify({ Title = "Main", Description = enabled and onMsg or offMsg, Lifetime = 3 })
     end })
 end
 rapProgToggle("Auto Buy Hatch Luck", "buyLuck", "Auto buy hatch luck aktif.", "Auto buy hatch luck dimatikan.")
@@ -5025,35 +5019,38 @@ rapProgToggle("Auto Rebirth", "autoRebirth", "Auto rebirth aktif.", "Auto rebirt
 rapProgToggle("Auto Ride Best Pet", "rideBest", "Auto ride best pet aktif.", "Auto ride best pet dimatikan.")
 rapProgToggle("Auto Claim Index Rewards", "claimIndex", "Auto claim index rewards aktif.", "Auto claim index rewards dimatikan.")
 rapProgToggle("Auto Claim Offline Earnings", "claimOffline", "Auto claim offline earnings aktif.", "Auto claim offline earnings dimatikan.")
-SecProg:Label({ Name = "Luck 1.0x  Next $5  Bought 0" })
+SecProg:Label({ Name = "Luck 1.0x | Next $5 | Bought 0" })
 SecProg:Label({ Name = "Planted 0 / 10" })
 SecProg:Label({ Name = "Idle  Rebirth $49.23K / $1M" })
 SecProg:Label({ Name = "Ride: Idle  Speed 0  Mounts 0" })
 
--- ===== GRUP FARM (EGGS / PETS bisa di-hide) =====
+-- ===== FARM: 2 GRUP (EGGS kiri | PETS kanan) =====
 local farmEggSecs, farmPetSecs = {}, {}
 local eggsHidden, petsHidden = false, false
 local function farmSetVisible(list, vis)
     for _, s in ipairs(list) do
         pcall(function()
-            if s._container then s._container.Visible = vis end
-            if s._box then s._box.Visible = vis end
+            local box = s._box or (s._zsec and s._zsec._box)
+            if box then box.Visible = vis end
         end)
     end
 end
-local SecFarmGroup = TabFarmRAP:Section({ Name = "Grup Farm", Side = 2 })
-SecFarmGroup:Header({ Name = ZypheraxLib:Gradient("Grup Farm", Color3.fromRGB(0, 170, 255), Color3.fromRGB(0, 140, 230)) })
-SecFarmGroup:Button({ Name = "Hide / Show Eggs", Callback = function()
+local SecEggs = TabFarmRAP:Section({ Name = "EGGS", Side = 1 })
+SecEggs:Header({ Name = ZypheraxLib:Gradient("EGGS - Grup Telur", Color3.fromRGB(0, 170, 255), Color3.fromRGB(0, 140, 230)) })
+SecEggs:Button({ Name = "Hide / Show Eggs", Callback = function()
     eggsHidden = not eggsHidden
     farmSetVisible(farmEggSecs, not eggsHidden)
-    Window:Notify({ Title = "Grup Farm", Description = eggsHidden and "Grup Eggs disembunyikan." or "Grup Eggs ditampilkan.", Lifetime = 2 })
+    Window:Notify({ Title = "EGGS", Description = eggsHidden and "Grup Eggs disembunyikan." or "Grup Eggs ditampilkan.", Lifetime = 2 })
 end })
-SecFarmGroup:Button({ Name = "Hide / Show Pets", Callback = function()
+local SecPetsHead = TabFarmRAP:Section({ Name = "PETS", Side = 2 })
+SecPetsHead:Header({ Name = ZypheraxLib:Gradient("PETS - Grup Pet", Color3.fromRGB(255, 170, 90), Color3.fromRGB(255, 110, 140)) })
+SecPetsHead:Button({ Name = "Hide / Show Pets", Callback = function()
     petsHidden = not petsHidden
     farmSetVisible(farmPetSecs, not petsHidden)
-    Window:Notify({ Title = "Grup Farm", Description = petsHidden and "Grup Pets disembunyikan." or "Grup Pets ditampilkan.", Lifetime = 2 })
+    Window:Notify({ Title = "PETS", Description = petsHidden and "Grup Pets disembunyikan." or "Grup Pets ditampilkan.", Lifetime = 2 })
 end })
-local SecAutoEgg = TabFarmRAP:Section({ Name = "Auto Telur & Pet", Side = 1 })
+local SecAutoEgg = TabFarmRAP:Section({ Name = "Auto Egg Collector", Side = 1 })
+do table.insert(farmEggSecs, SecAutoEgg) end
 do table.insert(farmEggSecs, SecAutoEgg) end
 SecAutoEgg:Header({ Name = ZypheraxLib:Gradient("Auto Egg Collector", Color3.fromRGB(72, 214, 200), Color3.fromRGB(99, 130, 255)) })
 
@@ -5162,7 +5159,8 @@ SecAutoEgg:Slider({
     end,
 })
 
-local SecPlace = TabFarmRAP:Section({ Name = "Auto Place Eggs", Side = 2 })
+local SecPlace = TabFarmRAP:Section({ Name = "Auto Place Eggs", Side = 1 })
+do table.insert(farmEggSecs, SecPlace) end
 do table.insert(farmEggSecs, SecPlace) end
 SecPlace:Header({ Name = ZypheraxLib:Gradient("Auto Place Eggs", Color3.fromRGB(255, 190, 90), Color3.fromRGB(255, 130, 120)) })
 
