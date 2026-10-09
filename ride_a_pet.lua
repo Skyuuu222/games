@@ -4898,11 +4898,6 @@ rapNewFilter(SecAutoEgg, "Filter Rarity", RARITY_LIST, {}, function(list)
     for _, v in ipairs(list) do rapRarityFilterSet[v] = true end
 end)
 
-rapNewFilter(SecAutoEgg, "Filter Rarity", RARITY_LIST, {}, function(list)
-    rapRarityFilterSet = {}
-    for _, v in ipairs(list) do rapRarityFilterSet[v] = true end
-end)
-
 rapNewFilter(SecAutoEgg, "Filter Mutasi", RAP_MUTATIONS, {}, function(list)
     rapMutationFilterSet = {}
     for _, v in ipairs(list) do rapMutationFilterSet[v] = true end
