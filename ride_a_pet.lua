@@ -2724,6 +2724,7 @@ ZypheraxWindow = Window
 -- Frosted watermark (blur background, sharp text) ala executor Real
 -- Frosted watermark elegant (warna ikut logo, teks tajam)
 -- Frosted watermark elegant v4 (logo asli, biru logo, 2 label)
+-- Frosted watermark v5 (blur ala Real, warna biru logo)
 local function _zy_show_watermark(gameName)
     pcall(function()
         local core = (gethui and gethui()) or (cloneref and cloneref(game:GetService("CoreGui"))) or game:GetService("CoreGui")
@@ -2735,29 +2736,51 @@ local function _zy_show_watermark(gameName)
         sg.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
         sg.DisplayOrder = 9990
         sg.Parent = core
+        -- lapisan blur luar (seperti frosted Real): 3 lapis transparan bertumpuk
+        local blur1 = Instance.new("ImageLabel")
+        blur1.BackgroundTransparency = 1
+        blur1.Image = "rbxassetid://1316045217"
+        blur1.ImageColor3 = Color3.fromRGB(20, 24, 34)
+        blur1.ImageTransparency = 0.55
+        blur1.ScaleType = Enum.ScaleType.Slice
+        blur1.SliceCenter = Rect.new(10, 10, 118, 118)
+        blur1.Position = UDim2.new(0, 6, 0, 6)
+        blur1.Size = UDim2.fromOffset(304, 44)
+        blur1.Parent = sg
+        local blurc = Instance.new("UICorner") blurc.CornerRadius = UDim.new(0, 14) blurc.Parent = blur1
         local shadow = Instance.new("ImageLabel")
         shadow.BackgroundTransparency = 1
         shadow.Image = "rbxassetid://1316045217"
         shadow.ImageColor3 = Color3.new(0, 0, 0)
-        shadow.ImageTransparency = 0.55
+        shadow.ImageTransparency = 0.7
         shadow.ScaleType = Enum.ScaleType.Slice
         shadow.SliceCenter = Rect.new(10, 10, 118, 118)
         shadow.Position = UDim2.new(0, 8, 0, 10)
         shadow.Size = UDim2.fromOffset(300, 42)
         shadow.Parent = sg
+        -- pill utama: lebih transparan (0.5) biar blur latar kelihatan seperti Real
         local pill = Instance.new("Frame")
         pill.Position = UDim2.new(0, 12, 0, 12)
         pill.Size = UDim2.fromOffset(292, 32)
-        pill.BackgroundColor3 = Color3.fromRGB(10, 13, 20)
-        pill.BackgroundTransparency = 0.22
+        pill.BackgroundColor3 = Color3.fromRGB(16, 20, 30)
+        pill.BackgroundTransparency = 0.5
         pill.BorderSizePixel = 0
         pill.Active = true
         pill.Draggable = true
         pill.Parent = sg
         local cn = Instance.new("UICorner") cn.CornerRadius = UDim.new(0, 10) cn.Parent = pill
-        local sk = Instance.new("UIStroke") sk.Color = Color3.fromRGB(0, 170, 255) sk.Thickness = 1 sk.Transparency = 0.55 sk.ApplyStrokeMode = Enum.ApplyStrokeMode.Border sk.Parent = pill
+        -- lapisan kaca dalam: gradien terang-gelap biar kesan frosted
+        local glass = Instance.new("Frame")
+        glass.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+        glass.BackgroundTransparency = 0.9
+        glass.BorderSizePixel = 0
+        glass.Position = UDim2.new(0, 0, 0, 0) glass.Size = UDim2.new(1, 0, 0.5, 0)
+        glass.Parent = pill
+        local gcn = Instance.new("UICorner") gcn.CornerRadius = UDim.new(0, 10) gcn.Parent = glass
+        local gg = Instance.new("UIGradient") gg.Color = ColorSequence.new(Color3.fromRGB(255,255,255), Color3.fromRGB(0,170,255)) gg.Transparency = NumberSequence.new(0.85, 0.97) gg.Rotation = 90 gg.Parent = glass
+        local sk = Instance.new("UIStroke") sk.Color = Color3.fromRGB(0, 170, 255) sk.Thickness = 1 sk.Transparency = 0.6 sk.ApplyStrokeMode = Enum.ApplyStrokeMode.Border sk.Parent = pill
         local hi = Instance.new("Frame")
-        hi.BackgroundColor3 = Color3.fromRGB(255, 255, 255) hi.BackgroundTransparency = 0.88 hi.BorderSizePixel = 0
+        hi.BackgroundColor3 = Color3.fromRGB(255, 255, 255) hi.BackgroundTransparency = 0.8 hi.BorderSizePixel = 0
         hi.Position = UDim2.new(0, 12, 0, 1) hi.Size = UDim2.new(1, -24, 0, 1) hi.Parent = pill
         local lg = Instance.new("ImageLabel")
         lg.BackgroundTransparency = 1
