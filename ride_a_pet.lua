@@ -1211,7 +1211,6 @@ function ZypheraxUI:CreateWindow(config)
     local sbStroke = U.Stroke(searchBarFrame, T.Stroke, 1, 0.2)
     RegisterThemeColor(searchBarFrame, "BackgroundColor3", "Surface2")
     RegisterThemeColor(sbStroke, "Color", "Stroke")
-    })
 
     local searchInput = U.New("TextBox", {
         Name = "SearchInput",
