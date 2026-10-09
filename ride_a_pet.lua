@@ -1736,7 +1736,7 @@ function ZypheraxUI:CreateWindow(config)
                 })
 
                 local chevron = U.New("TextLabel", {
-                    Text = "â–¼",
+                    Text = "v",
                     Font = T.FontBold,
                     TextSize = 10,
                     TextColor3 = T.TextMuted,
@@ -1782,7 +1782,7 @@ function ZypheraxUI:CreateWindow(config)
                             isOpen = false
                             listFrame.Visible = false
                             U.Tween(base, 0.2, { Size = UDim2.new(1, 0, 0, 36) })
-                            chevron.Text = "â–¼"
+                            chevron.Text = "v"
                             pcall(cb, selected)
                             rebuild()
                         end))
@@ -1798,13 +1798,13 @@ function ZypheraxUI:CreateWindow(config)
                         local h = #items * 28 + 4
                         U.Tween(base, 0.2, { Size = UDim2.new(1, 0, 0, 42 + h) })
                         U.Tween(listFrame, 0.2, { Size = UDim2.new(1, -16, 0, h) })
-                        chevron.Text = "â–²"
+                        chevron.Text = "^"
                     else
                         U.Tween(base, 0.2, { Size = UDim2.new(1, 0, 0, 36) })
                         U.Tween(listFrame, 0.2, { Size = UDim2.new(1, -16, 0, 0) }).Completed:Connect(function()
                             listFrame.Visible = false
                         end)
-                        chevron.Text = "â–¼"
+                        chevron.Text = "v"
                     end
                 end))
 
@@ -4927,7 +4927,7 @@ local TabMainRAP = tabGroup:Tab({ Name = "Main", Image = "lucide/zap" })
 local SecAutoEgg = TabMainRAP:Section({ Name = "Auto Telur & Pet", Side = 1 })
 SecAutoEgg:Header({ Name = ZypheraxLib:Gradient("Auto Egg Collector", Color3.fromRGB(72, 214, 200), Color3.fromRGB(99, 130, 255)) })
 
--- Dropdown ala foto: Rarity / Egg / Mutation (default "--" = semua)
+-- Grup Auto Farm ala foto (pakai UI Zypherax sendiri)
 local RAP_ALL = "--"
 local function rapSetSingle(setName, val)
     local set = (setName == "rarity") and rapRarityFilterSet
@@ -4938,6 +4938,29 @@ local function rapSetSingle(setName, val)
         set[val] = true
     end
 end
+rapPlanned = rapPlanned or {}
+
+SecAutoEgg:Toggle({
+    Name = "Auto Farm Eggs",
+    Default = false,
+    Callback = function(enabled)
+        rapSet("pickup", enabled, "Auto Farm Eggs",
+            ("Farming telur (rarity: %s, egg: %s, mutation: %s)."):format(
+                rapFilterText(rapRarityFilterSet, "Semua"),
+                rapFilterText(rapEggFilterSet, "Semua"),
+                rapFilterText(rapMutationFilterSet, "Semua")),
+            "Auto farm eggs dimatikan.")
+    end,
+})
+
+SecAutoEgg:Toggle({
+    Name = "Auto Farm Rebirth Egg",
+    Default = false,
+    Callback = function(enabled)
+        rapPlanned.rebirthEgg = enabled and true or false
+        Window:Notify({ Title = "Rebirth Egg", Description = enabled and "Auto farm rebirth egg aktif (engine menyusul)." or "Auto farm rebirth egg dimatikan.", Lifetime = 3 })
+    end,
+})
 
 SecAutoEgg:Dropdown({
     Name = "Rarity",
@@ -4950,7 +4973,7 @@ SecAutoEgg:Dropdown({
     Callback = function(v) rapSetSingle("rarity", v) end,
 })
 
--- Daftar telur urut rarity (nama polos, tanpa [Rarity] di depan)
+-- Daftar telur urut rarity (nama polos, tanpa tanda kurung)
 local rapEggSorted = {}
 do
     local order = {}
@@ -4987,30 +5010,47 @@ SecAutoEgg:Dropdown({
     Callback = function(v) rapSetSingle("mutation", v) end,
 })
 
-SecAutoEgg:Dropdown({
-    Name = "Mode Auto Pickup",
-    Items = { "Biasa", "Instant" },
-    Default = "Biasa",
-    Callback = function(v) rapPickupMode = v or "Biasa" end,
-})
-
-SecAutoEgg:Label({ Name = "Biasa: jalan ke telur. Instant: teleport langsung ke telur." })
-
-SecAutoEgg:Toggle({
-    Name = "Balik ke Ranch Setelah Ambil Telur",
-    Default = true,
-    Callback = function(enabled)
-        rapReturnRanch = enabled and true or false
-        Window:Notify({
-            Title = "Ranch",
-            Description = enabled and "Setelah ambil telur, otomatis balik ke ranch." or "Auto balik ke ranch dimatikan.",
-            Lifetime = 3,
-        })
-    end,
+SecAutoEgg:Slider({
+    Name = "Glide Speed (st/s)",
+    Default = 1000,
+    Minimum = 100,
+    Maximum = 5000,
+    DisplayMethod = "Round",
+    Precision = 0,
+    Callback = function(value) rapPlanned.glideSpeed = value end,
 })
 
 SecAutoEgg:Slider({
-    Name = "Kapasitas Telur Sebelum Balik",
+    Name = "Claim Delay (0.1s)",
+    Default = 5,
+    Minimum = 1,
+    Maximum = 30,
+    DisplayMethod = "Round",
+    Precision = 0,
+    Callback = function(value)
+        RAP_DELAY = math.max(0.25, (tonumber(value) or 5) / 10)
+    end,
+})
+
+SecAutoEgg:Toggle({
+    Name = "Auto Place Eggs",
+    Default = false,
+    Callback = function(enabled)
+        rapSet("placedEgg", enabled, "Placed Egg",
+            "Telur otomatis ditaruh di ranch.",
+            "Auto place eggs dimatikan.")
+    end,
+})
+
+SecAutoEgg:Dropdown({
+    Name = "Place",
+    Items = { "All", "Best", "Filtered" },
+    Default = "All",
+    Callback = function(v) rapPlanned.placeMode = v or "All" end,
+})
+
+SecAutoEgg:Slider({
+    Name = "Max Planted",
     Default = 5,
     Minimum = 1,
     Maximum = 30,
@@ -5019,24 +5059,87 @@ SecAutoEgg:Slider({
     Callback = function(value) rapEggCapacity = value end,
 })
 
-SecAutoEgg:Toggle({
-    Name = "Auto Pickup Telur",
-    Default = false,
-    Callback = function(enabled)
-        rapSet("pickup", enabled, "Auto Pickup",
-            ("Mengambil telur (rarity: %s, jenis: %s, mode: %s)."):format(
-                rapFilterText(rapRarityFilterSet, "Semua Rarity"),
-                rapFilterText(rapEggFilterSet, "Semua Jenis"),
-                rapPickupMode),
-            "Auto pickup dimatikan.")
+SecAutoEgg:Dropdown({
+    Name = "Place Rarity",
+    Items = (function()
+        local o = { RAP_ALL }
+        for _, r in ipairs(RARITY_LIST) do table.insert(o, r) end
+        return o
+    end)(),
+    Default = RAP_ALL,
+    Callback = function(v)
+        rapPlanned.placeRarity = v
     end,
 })
 
+SecAutoEgg:Dropdown({
+    Name = "Place Egg",
+    Items = (function()
+        local o = { RAP_ALL }
+        for _, e in ipairs(rapEggSorted) do table.insert(o, e) end
+        return o
+    end)(),
+    Default = RAP_ALL,
+    Callback = function(v)
+        rapPlanned.placeEgg = v
+    end,
+})
+
+SecAutoEgg:Dropdown({
+    Name = "Place Mutation",
+    Items = (function()
+        local o = { RAP_ALL }
+        for _, m in ipairs(RAP_MUTATIONS) do table.insert(o, m) end
+        return o
+    end)(),
+    Default = RAP_ALL,
+    Callback = function(v)
+        rapPlanned.placeMutation = v
+    end,
+})
+
+SecAutoEgg:Input({
+    Name = "Place Min Size (KG)",
+    Default = "0",
+    Placeholder = "0",
+    Callback = function(text) rapPlanned.placeMinSize = tonumber(text) or 0 end,
+})
+
+SecAutoEgg:Input({
+    Name = "Place Only Below KG",
+    Default = "0",
+    Placeholder = "0",
+    Callback = function(text) rapPlanned.placeBelowKG = tonumber(text) or 0 end,
+})
+
+SecAutoEgg:Dropdown({
+    Name = "Place Order",
+    Items = { "Rarity then Size", "Size then Rarity", "Rarity Only" },
+    Default = "Rarity then Size",
+    Callback = function(v) rapPlanned.placeOrder = v or "Rarity then Size" end,
+})
+
 SecAutoEgg:Toggle({
-    Name = "Auto Hatch Telur",
+    Name = "Auto Hatch Eggs",
     Default = false,
     Callback = function(enabled)
-        rapSet("hatch", enabled, "Auto Hatch", "Menetaskan telur (Hatch) otomatis.", "Auto hatch dimatikan.")
+        rapSet("hatch", enabled, "Auto Hatch", "Menetaskan telur otomatis.", "Auto hatch dimatikan.")
+    end,
+})
+
+-- Engine lama yang dipertahankan
+SecAutoEgg:Dropdown({
+    Name = "Mode Auto Pickup",
+    Items = { "Biasa", "Instant" },
+    Default = "Biasa",
+    Callback = function(v) rapPickupMode = v or "Biasa" end,
+})
+
+SecAutoEgg:Toggle({
+    Name = "Balik ke Ranch Setelah Ambil Telur",
+    Default = true,
+    Callback = function(enabled)
+        rapReturnRanch = enabled and true or false
     end,
 })
 
@@ -5055,21 +5158,6 @@ SecAutoEgg:Toggle({
         rapSet("feed", enabled, "Auto Feed", "Memberi makan pet otomatis.", "Auto feed dimatikan.")
     end,
 })
-
-SecAutoEgg:Slider({
-    Name = "Kecepatan Loop (detik x0.1)",
-    Default = 5,
-    Minimum = 1,
-    Maximum = 30,
-    DisplayMethod = "Round",
-    Precision = 0,
-    Callback = function(value)
-        -- batas bawah 0.25s: di bawah itu loop keburu memindai workspace
-        -- berulang-ulang dan bikin frame drop / memori naik.
-        RAP_DELAY = math.max(0.25, (tonumber(value) or 5) / 10)
-    end,
-})
-
 local SecRanch = TabMainRAP:Section({ Name = "Ranch & Auto Placed Egg", Side = 2 })
 SecRanch:Header({ Name = ZypheraxLib:Gradient("Ranch & Penaruhan", Color3.fromRGB(255, 170, 90), Color3.fromRGB(255, 110, 140)) })
 
@@ -5207,6 +5295,239 @@ SecEvent:Toggle({
 })
 
 -- ==============================================================================================
+-- Grup tambahan ala foto (UI Zypherax sendiri, engine menyusul)
+local SecVolcano = TabMainRAP:Section({ Name = "Volcano", Side = 2 })
+SecVolcano:Header({ Name = ZypheraxLib:Gradient("Volcano", Color3.fromRGB(255, 120, 60), Color3.fromRGB(255, 60, 90)) })
+
+SecVolcano:Toggle({
+    Name = "Auto Volcano Dip",
+    Default = false,
+    Callback = function(enabled)
+        rapPlanned.volcanoDip = enabled and true or false
+        Window:Notify({ Title = "Volcano", Description = enabled and "Auto volcano dip aktif (engine menyusul)." or "Auto volcano dip dimatikan.", Lifetime = 3 })
+    end,
+})
+
+SecVolcano:Dropdown({
+    Name = "Dip Rarity",
+    Items = (function()
+        local o = { RAP_ALL }
+        for _, r in ipairs(RARITY_LIST) do table.insert(o, r) end
+        return o
+    end)(),
+    Default = RAP_ALL,
+    Callback = function(v) rapPlanned.dipRarity = v end,
+})
+
+SecVolcano:Dropdown({
+    Name = "Dip Egg",
+    Items = (function()
+        local o = { RAP_ALL }
+        for _, e in ipairs(rapEggSorted) do table.insert(o, e) end
+        return o
+    end)(),
+    Default = RAP_ALL,
+    Callback = function(v) rapPlanned.dipEgg = v end,
+})
+
+SecVolcano:Label({ Name = "Skips eggs whose mutation already beats Magma (10x)" })
+rapVolcanoStatus = SecVolcano:Label({ Name = "Volcano: Idle | 0 Dipped | 0 Magma" })
+
+local SecPets = TabMainRAP:Section({ Name = "Pets", Side = 1 })
+SecPets:Header({ Name = ZypheraxLib:Gradient("Pets", Color3.fromRGB(99, 130, 255), Color3.fromRGB(72, 214, 200)) })
+
+SecPets:Toggle({
+    Name = "Auto Place Best Pets",
+    Default = false,
+    Callback = function(enabled)
+        rapPlanned.placeBest = enabled and true or false
+        Window:Notify({ Title = "Pets", Description = enabled and "Auto place best pets aktif (engine menyusul)." or "Auto place best pets dimatikan.", Lifetime = 3 })
+    end,
+})
+
+SecPets:Slider({
+    Name = "Place Best Delay (s)",
+    Default = 10,
+    Minimum = 1,
+    Maximum = 60,
+    DisplayMethod = "Round",
+    Precision = 0,
+    Callback = function(value) rapPlanned.placeBestDelay = value end,
+})
+
+SecPets:Toggle({
+    Name = "Auto Sell Pets",
+    Default = false,
+    Callback = function(enabled)
+        rapSet("autoSell", enabled, "Auto Sell Pets",
+            "Menjual pet otomatis sesuai filter.",
+            "Auto sell pets dimatikan.")
+    end,
+})
+
+SecPets:Input({
+    Name = "Below $/s",
+    Default = "0",
+    Placeholder = "0",
+    Callback = function(text) rapPlanned.sellBelow = tonumber(text) or 0 end,
+})
+
+SecPets:Dropdown({
+    Name = "Rarity",
+    Items = (function()
+        local o = { RAP_ALL }
+        for _, r in ipairs(RARITY_LIST) do table.insert(o, r) end
+        return o
+    end)(),
+    Default = RAP_ALL,
+    Callback = function(v)
+        for k in pairs(rapSellRaritySet) do rapSellRaritySet[k] = nil end
+        if v and v ~= RAP_ALL and v ~= "" then rapSellRaritySet[v] = true end
+    end,
+})
+
+SecPets:Dropdown({
+    Name = "Mutation",
+    Items = (function()
+        local o = { RAP_ALL }
+        for _, m in ipairs(RAP_MUTATIONS) do table.insert(o, m) end
+        return o
+    end)(),
+    Default = RAP_ALL,
+    Callback = function(v) rapPlanned.sellMutation = v end,
+})
+
+local SecFusion = TabMainRAP:Section({ Name = "Fusion", Side = 2 })
+SecFusion:Header({ Name = ZypheraxLib:Gradient("Fusion", Color3.fromRGB(168, 120, 255), Color3.fromRGB(99, 130, 255)) })
+
+SecFusion:Toggle({
+    Name = "Auto Fuse",
+    Default = false,
+    Callback = function(enabled)
+        rapPlanned.autoFuse = enabled and true or false
+        Window:Notify({ Title = "Fusion", Description = enabled and "Auto fuse aktif (engine menyusul)." or "Auto fuse dimatikan.", Lifetime = 3 })
+    end,
+})
+
+SecFusion:Toggle({
+    Name = "Auto Claim Fuse",
+    Default = false,
+    Callback = function(enabled)
+        rapPlanned.autoClaimFuse = enabled and true or false
+        Window:Notify({ Title = "Fusion", Description = enabled and "Auto claim fuse aktif (engine menyusul)." or "Auto claim fuse dimatikan.", Lifetime = 3 })
+    end,
+})
+
+SecFusion:Dropdown({
+    Name = "Fuse Rarity",
+    Items = (function()
+        local o = { RAP_ALL }
+        for _, r in ipairs(RARITY_LIST) do table.insert(o, r) end
+        return o
+    end)(),
+    Default = RAP_ALL,
+    Callback = function(v) rapPlanned.fuseRarity = v end,
+})
+
+SecFusion:Dropdown({
+    Name = "Fuse Pet",
+    Items = { RAP_ALL },
+    Default = RAP_ALL,
+    Callback = function(v) rapPlanned.fusePet = v end,
+})
+
+SecFusion:Input({
+    Name = "Below $/s",
+    Default = "0",
+    Placeholder = "0",
+    Callback = function(text) rapPlanned.fuseBelow = tonumber(text) or 0 end,
+})
+
+SecFusion:Label({ Name = "Never fuses favourites" })
+rapFusionStatus = SecFusion:Label({ Name = "Fusion: Idle | Fused 0" })
+
+local SecFeeds = TabMainRAP:Section({ Name = "Feeds", Side = 1 })
+SecFeeds:Header({ Name = ZypheraxLib:Gradient("Feeds", Color3.fromRGB(72, 160, 255), Color3.fromRGB(99, 130, 255)) })
+
+SecFeeds:Toggle({
+    Name = "Auto Feed Pets",
+    Default = false,
+    Callback = function(enabled)
+        rapSet("feed", enabled, "Auto Feed", "Memberi makan pet otomatis.", "Auto feed dimatikan.")
+    end,
+})
+
+SecFeeds:Dropdown({
+    Name = "Food",
+    Items = (function()
+        local o = { RAP_ALL }
+        for _, f in ipairs(rapFoodItems) do table.insert(o, f) end
+        return o
+    end)(),
+    Default = RAP_ALL,
+    Callback = function(v) rapPlanned.feedFood = v end,
+})
+
+SecFeeds:Toggle({
+    Name = "Auto Feed Best Pet",
+    Default = false,
+    Callback = function(enabled)
+        rapPlanned.feedBest = enabled and true or false
+        Window:Notify({ Title = "Feeds", Description = enabled and "Auto feed best pet aktif (engine menyusul)." or "Auto feed best pet dimatikan.", Lifetime = 3 })
+    end,
+})
+
+SecFeeds:Toggle({
+    Name = "Auto Feed Above $/s",
+    Default = false,
+    Callback = function(enabled)
+        rapPlanned.feedAboveMoney = enabled and true or false
+    end,
+})
+
+SecFeeds:Input({
+    Name = "Min $/s",
+    Default = "0",
+    Placeholder = "0",
+    Callback = function(text) rapPlanned.feedMinMoney = tonumber(text) or 0 end,
+})
+
+SecFeeds:Toggle({
+    Name = "Auto Feed Above Age",
+    Default = false,
+    Callback = function(enabled)
+        rapPlanned.feedAboveAge = enabled and true or false
+    end,
+})
+
+SecFeeds:Slider({
+    Name = "Min Age",
+    Default = 1,
+    Minimum = 1,
+    Maximum = 100,
+    DisplayMethod = "Round",
+    Precision = 0,
+    Callback = function(value) rapPlanned.feedMinAge = value end,
+})
+
+SecFeeds:Toggle({
+    Name = "Auto Feed By Rarity",
+    Default = false,
+    Callback = function(enabled)
+        rapPlanned.feedByRarity = enabled and true or false
+    end,
+})
+
+SecFeeds:Dropdown({
+    Name = "Rarity",
+    Items = (function()
+        local o = { RAP_ALL }
+        for _, r in ipairs(RARITY_LIST) do table.insert(o, r) end
+        return o
+    end)(),
+    Default = RAP_ALL,
+    Callback = function(v) rapPlanned.feedRarity = v end,
+})
 -- MENU: SHOP (AUTO BUY FOOD/GEARS + AUTO SELL / SELL ALL)
 -- ==============================================================================================
 local TabShop = tabGroup:Tab({ Name = "Shop", Image = "lucide/shopping-cart" })
