@@ -925,6 +925,21 @@ function ZypheraxUI:CreateWindow(config)
         Parent = shadow
     })
     U.Corner(main, T.CornerLg)
+    -- // BACKGROUND WATERMARK (logo samar elegant) \
+    pcall(function()
+        local bgwm = U.New("ImageLabel", {
+            Name = "BackgroundWatermark",
+            Image = "rbxassetid://106764279090045",
+            BackgroundTransparency = 1,
+            ImageTransparency = 0.94,
+            ScaleType = Enum.ScaleType.Fit,
+            AnchorPoint = Vector2.new(0.5, 0.5),
+            Position = UDim2.new(0.62, 0, 0.55, 0),
+            Size = UDim2.fromOffset(380, 380),
+            ZIndex = 1,
+            Parent = main
+        })
+    end)
 --     local mainStroke = U.Stroke(main, T.Stroke, 1.2, 0)
     RegisterThemeColor(main, "BackgroundColor3", "Background")
 --     RegisterThemeColor(mainStroke, "Color", "Stroke")
