@@ -167,8 +167,8 @@ do
 
     -- Penyempurnaan tampilan (dipakai untuk jalur GitHub maupun salinan lokal).
     local TWEAKS = {
-        { "Accent           = Color3.fromRGB(0, 180, 255),   -- primary accent",
-          "Accent           = Color3.fromRGB(0, 200, 255),   -- primary accent" },
+        { "Accent           = Color3.fromRGB(0, 170, 255),   -- primary accent",
+          "Accent           = Color3.fromRGB(0, 170, 255),   -- primary accent" },
         { "AccentGradient   = Color3.fromRGB(30, 140, 220),  -- subtle gradient end",
           "AccentGradient   = Color3.fromRGB(130, 120, 255), -- subtle gradient end" },
         { "CornerLg         = UDim.new(0, 10),",
@@ -280,15 +280,15 @@ local Themes = {
         Surface          = Color3.fromRGB(20, 23, 31),
         Surface2         = Color3.fromRGB(26, 30, 42),
         Surface3         = Color3.fromRGB(34, 40, 56),
-        Accent           = Color3.fromRGB(0, 200, 255),
-        AccentDark       = Color3.fromRGB(0, 120, 190),
+        Accent           = Color3.fromRGB(0, 170, 255),
+        AccentDark       = Color3.fromRGB(0, 140, 230),
         AccentGradient   = Color3.fromRGB(130, 120, 255),
         Text             = Color3.fromRGB(242, 244, 250),
         TextMuted        = Color3.fromRGB(145, 152, 170),
         TextDim          = Color3.fromRGB(90, 96, 112),
         Stroke           = Color3.fromRGB(38, 43, 58),
         StrokeHover      = Color3.fromRGB(55, 62, 84),
-        StrokeActive     = Color3.fromRGB(0, 200, 255),
+        StrokeActive     = Color3.fromRGB(0, 170, 255),
         Success          = Color3.fromRGB(60, 215, 120),
         Warning          = Color3.fromRGB(255, 189, 46),
         Error            = Color3.fromRGB(255, 95, 86),
@@ -302,15 +302,15 @@ local Themes = {
         Surface          = Color3.fromRGB(255, 255, 255),
         Surface2         = Color3.fromRGB(238, 241, 248),
         Surface3         = Color3.fromRGB(224, 228, 238),
-        Accent           = Color3.fromRGB(0, 150, 240),
-        AccentDark       = Color3.fromRGB(0, 110, 180),
+        Accent           = Color3.fromRGB(0, 170, 255),
+        AccentDark       = Color3.fromRGB(0, 140, 230),
         AccentGradient   = Color3.fromRGB(90, 110, 230),
         Text             = Color3.fromRGB(25, 28, 36),
         TextMuted        = Color3.fromRGB(105, 112, 128),
         TextDim          = Color3.fromRGB(150, 155, 168),
         Stroke           = Color3.fromRGB(216, 222, 234),
         StrokeHover      = Color3.fromRGB(190, 198, 214),
-        StrokeActive     = Color3.fromRGB(0, 150, 240),
+        StrokeActive     = Color3.fromRGB(0, 170, 255),
         Success          = Color3.fromRGB(40, 180, 100),
         Warning          = Color3.fromRGB(240, 160, 30),
         Error            = Color3.fromRGB(240, 70, 70),
@@ -2735,9 +2735,9 @@ do
         border    = Color3.fromRGB(45, 50, 66),
         textMain  = Color3.fromRGB(240, 242, 248),
         textMuted = Color3.fromRGB(150, 156, 172),
-        accentA   = Color3.fromRGB(0, 180, 255),
-        accentB   = Color3.fromRGB(30, 140, 220),
-        accentC   = Color3.fromRGB(140, 120, 255),
+        accentA   = Color3.fromRGB(0, 170, 255),
+        accentB   = Color3.fromRGB(0, 140, 230),
+        accentC   = Color3.fromRGB(0, 170, 255),
     }
 
     local function _round(p, r)
@@ -2801,16 +2801,16 @@ do
 
             -- Logo kotak gradien.
             local logo = Instance.new("Frame")
-            logo.Size = UDim2.fromOffset(56, 56)
-            logo.Position = UDim2.new(0.5, -28, 0, 26)
-            logo.BackgroundColor3 = Color3.new(1, 1, 1)
+            logo.Size = UDim2.fromOffset(84, 84)
+            logo.Position = UDim2.new(0.5, -42, 0, 14)
+            logo.BackgroundTransparency = 1 -- logoPure: tanpa kotak, tanpa Z
             logo.BorderSizePixel = 0
             logo.ZIndex = 6
             logo.Parent = card
-            _round(logo, 14)
-            _grad(logo, P.accentA, P.accentC, 135)
 
             local logoImg = Instance.new("ImageLabel")
+            logoImg.AnchorPoint = Vector2.new(0.5, 0.5) -- logoPureOK
+            logoImg.Position = UDim2.fromScale(0.5, 0.5)
             logoImg.Size = UDim2.fromScale(1, 1)
             logoImg.BackgroundTransparency = 1
             logoImg.Image = "rbxassetid://106764279090045"
@@ -2833,7 +2833,7 @@ do
             title.TextColor3 = Color3.new(1, 1, 1)
             title.ZIndex = 6
             title.Parent = card
-            _grad(title, P.accentA, P.accentC, 20)
+            _grad(title, P.accentA, P.accentB, 20)
 
             local sub = Instance.new("TextLabel")
             sub.AnchorPoint = Vector2.new(0.5, 0)
@@ -4645,7 +4645,7 @@ local function rapMultiSelect(cfg)
     local COL = {
         Bg     = Color3.fromRGB(26, 30, 42),
         Bg2    = Color3.fromRGB(34, 40, 56),
-        Accent = Color3.fromRGB(0, 200, 255),
+        Accent = Color3.fromRGB(0, 170, 255),
         Text   = Color3.fromRGB(242, 244, 250),
         Muted  = Color3.fromRGB(145, 152, 170),
         Dim    = Color3.fromRGB(90, 96, 112),
