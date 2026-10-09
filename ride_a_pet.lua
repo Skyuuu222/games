@@ -931,11 +931,24 @@ function ZypheraxUI:CreateWindow(config)
             Name = "BackgroundWatermark",
             Image = "rbxassetid://106764279090045",
             BackgroundTransparency = 1,
-            ImageTransparency = 0.87,
+            ImageTransparency = 0.55,
             ScaleType = Enum.ScaleType.Fit,
             AnchorPoint = Vector2.new(0.5, 0.5),
             Position = UDim2.new(0.60, 0, 0.55, 0),
             Size = UDim2.fromOffset(460, 460),
+            ZIndex = 1,
+            Parent = main
+        })
+
+        local bgwmGlow = U.New("ImageLabel", {
+            Name = "BackgroundWatermarkGlow",
+            Image = "rbxassetid://106764279090045",
+            BackgroundTransparency = 1,
+            ImageTransparency = 0.82,
+            ScaleType = Enum.ScaleType.Fit,
+            AnchorPoint = Vector2.new(0.5, 0.5),
+            Position = UDim2.new(0.60, 0, 0.55, 0),
+            Size = UDim2.fromOffset(560, 560),
             ZIndex = 1,
             Parent = main
         })
@@ -2828,8 +2841,6 @@ local function _zy_show_watermark(gameName)
         end)
     end)
 end
-_zy_show_watermark("Ride A Pet")
-
 
 
 -- ==============================================================================
@@ -5174,6 +5185,18 @@ local function farmSetVisible(list, vis)
     end
 end
 local SecEggs = TabFarmRAP:Section({ Name = "EGGS", Side = 1 })
+-- hideEmptyEggs: strip header saja, box kosong disembunyikan (tanpa padding)
+do pcall(function()
+    local hb = SecEggs._box or (SecEggs._zsec and SecEggs._zsec._box)
+    if hb then
+        for _, ch in ipairs(hb:GetChildren()) do
+            if ch:IsA("Frame") and ch.Name ~= "Header" then ch.Visible = false end
+        end
+        hb.AutomaticSize = Enum.AutomaticSize.Y
+        local pad = hb:FindFirstChildOfClass("UIPadding")
+        if pad then pad:Destroy() end
+    end
+end) end
 SecEggs:Header({ Name = ZypheraxLib:Gradient("Eggs", Color3.fromRGB(0, 170, 255), Color3.fromRGB(0, 140, 230)) })
 -- Panah v di kanan header Eggs (klik = hide/show sebaris ikut semua)
 do -- farmArrowEggs
@@ -5200,6 +5223,18 @@ do -- farmArrowEggs
     end)
 end) end
 local SecPetsHead = TabFarmRAP:Section({ Name = "PETS", Side = 2 })
+-- hideEmptyPets: strip header saja, box kosong disembunyikan (tanpa padding)
+do pcall(function()
+    local hb = SecPetsHead._box or (SecPetsHead._zsec and SecPetsHead._zsec._box)
+    if hb then
+        for _, ch in ipairs(hb:GetChildren()) do
+            if ch:IsA("Frame") and ch.Name ~= "Header" then ch.Visible = false end
+        end
+        hb.AutomaticSize = Enum.AutomaticSize.Y
+        local pad = hb:FindFirstChildOfClass("UIPadding")
+        if pad then pad:Destroy() end
+    end
+end) end
 SecPetsHead:Header({ Name = ZypheraxLib:Gradient("Pets", Color3.fromRGB(255, 170, 90), Color3.fromRGB(255, 110, 140)) })
 -- Panah v di kanan header Pets (klik = hide/show sebaris ikut semua)
 do pcall(function()
@@ -6142,3 +6177,6 @@ SecTheme:Toggle({
     end
 })
 end
+
+-- Watermark frosted tampil terakhir (tidak tertimpa loading/window)
+_zy_show_watermark("Ride A Pet")
