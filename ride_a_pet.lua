@@ -5139,7 +5139,7 @@ SecAutoEgg:Dropdown({
 local rapEggSorted = {}
 do
     local order = {}
-    for i, r in ipairs(RARITY_LIST) do order[r] = i end
+    for i, r in ipairs((typeof(RARITY_LIST)=="table" and RARITY_LIST) or {"Common","Rare","Epic","Legendary","Mythic"}) do order[r] = i end
     for _, eggName in ipairs(rapEggNames) do table.insert(rapEggSorted, eggName) end
     table.sort(rapEggSorted, function(a, b)
         local ra, rb = RAP_RARITY[a] or "Unknown", RAP_RARITY[b] or "Unknown"
@@ -5621,15 +5621,20 @@ rapFusionStatus = SecFusion:Label({ Name = "Fusion: Idle | Fused 0" })
 
 local SecFeeds = TabFarmRAP:Section({ Name = "", Side = 2 })
 do table.insert(farmPetSecs, SecFeeds) end
+
+
+SecFeeds:Label({ Name = "FEEDS" })
 -- farmBlend: sub menyatu dgn grup (kotak hilang, watermark kelihatan)
 do pcall(function()
     for _, s in ipairs(farmEggSecs) do
         local box = s._box or (s._zsec and s._zsec._box)
-        if box then box.BackgroundTransparency = 1 end
+        if box then box.BackgroundTransparency = 1 for _, d in ipairs(box:GetDescendants()) do if d:IsA("UIStroke") then d.Transparency = 1 end end end
+    end
+    for _, s in ipairs(farmPetSecs) do
+        local box = s._box or (s._zsec and s._zsec._box)
+        if box then box.BackgroundTransparency = 1 for _, d in ipairs(box:GetDescendants()) do if d:IsA("UIStroke") then d.Transparency = 1 end end end
     end
 end) end
-
-SecFeeds:Label({ Name = "FEEDS" })
 
 SecFeeds:Toggle({
     Name = "Auto Feed Pets",
@@ -5960,7 +5965,7 @@ rapPlanned = rapPlanned or {}
 SecWh:Input({ Name = "Webhook URL", Placeholder = "https://discord.com/api/webhooks/...", Default = "", Callback = function(v) rapPlanned.webhookUrl = tostring(v or "") end })
 SecWh:Toggle({ Name = "Aktifkan Webhook", Default = false, Callback = function(enabled) rapPlanned.webhookOn = enabled and true or false Window:Notify({ Title = "Webhook", Description = enabled and "Webhook aktif." or "Webhook dimatikan.", Lifetime = 3 }) end })
 SecWh:Toggle({ Name = "Notif Telur Langka", Default = true, Callback = function(enabled) rapPlanned.whEgg = enabled and true or false end })
-SecWh:Dropdown({ Name = "Filter Egg Webhook (min rarity)", Items = (function() local o={} for _, r in ipairs(RARITY_LIST) do table.insert(o, r) end return o end)(), Default = "Legendary", Callback = function(v) rapPlanned.whMinRarity = v end })
+SecWh:Dropdown({ Name = "Filter Egg Webhook (min rarity)", Items = (function() local o={} local src = (typeof(RARITY_LIST)=="table" and RARITY_LIST) or {"Common","Rare","Epic","Legendary","Mythic"} for _, r in ipairs(src) do table.insert(o, r) end return o end)(), Default = "Legendary", Callback = function(v) rapPlanned.whMinRarity = v end })
 SecWh:Toggle({ Name = "Notif Rebirth", Default = true, Callback = function(enabled) rapPlanned.whRebirth = enabled and true or false end })
 SecWh:Toggle({ Name = "Notif Magma (Volcano)", Default = true, Callback = function(enabled) rapPlanned.whMagma = enabled and true or false end })
 SecWh:Button({ Name = "Test Webhook", Callback = function()
