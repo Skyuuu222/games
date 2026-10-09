@@ -5415,4 +5415,4 @@ SecTheme:Toggle({
         Window:Notify({ Title = "Pengaturan", Description = (bool and "Mengaktifkan" or "Mematikan") .. " Blur", Lifetime = 3 })
     end
 })
-
+end
