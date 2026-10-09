@@ -1952,13 +1952,15 @@ function ZypheraxUI:CreateWindow(config)
 
             -- // LABEL \ --
             function SectionObj:CreateLabel(textOrCfg)
+                local _isGrp = false
                 local txt = type(textOrCfg) == "table" and (textOrCfg.Name or textOrCfg.Text or textOrCfg[1]) or tostring(textOrCfg)
+                local _isGrp = type(txt)=="string" and txt==txt:upper() and #txt>=4
                 local _isGrp2 = type(txt)=="string" and txt==txt:upper() and #txt>=4
                 local lbl = U.New("TextLabel", {
                     Text = txt,
-                    Font = T.FontRegular,
-                    TextSize = 11,
-                    TextColor3 = T.TextMuted,
+                    Font = (_isGrp and T.FontBold or T.FontRegular),
+                    TextSize = (_isGrp and 12 or 11),
+                    TextColor3 = (_isGrp and T.Text or T.TextMuted),
                     BackgroundTransparency = 1,
                     Size = UDim2.new(1, 0, 0, 0),
                     AutomaticSize = Enum.AutomaticSize.Y,
@@ -5659,6 +5661,19 @@ rapFusionStatus = SecFusion:Label({ Name = "Fusion: Idle | Fused 0" })
 local SecFeeds = TabFarmRAP:Section({ Name = "Feeds", Side = 2 })
 SecFeeds:Header({ Name = ZypheraxLib:Gradient("Feeds", Color3.fromRGB(0, 170, 255), Color3.fromRGB(0, 140, 230)) })
 do table.insert(farmPetSecs, SecFeeds) end
+-- farmUnify: sub menyatu ke Eggs/Pets (kotak+stroke hilang, tanpa reparent)
+do pcall(function()
+    local function clearBox(s)
+        local box = s._box or (s._zsec and s._zsec._box)
+        if not box then return end
+        box.BackgroundTransparency = 1
+        for _, d in ipairs(box:GetDescendants()) do
+            if d:IsA("UIStroke") then d.Transparency = 1 end
+        end
+    end
+    for _, s in ipairs(farmEggSecs) do clearBox(s) end
+    for _, s in ipairs(farmPetSecs) do clearBox(s) end
+end) end
 
 
 -- farmBlend: diganti farmNest (sub tetap berkotak tipis)
