@@ -5036,23 +5036,14 @@ local function farmSetVisible(list, vis)
     end
 end
 local SecEggs = TabFarmRAP:Section({ Name = "EGGS", Side = 1 })
-SecEggs:Header({ Name = ZypheraxLib:Gradient("EGGS - Grup Telur", Color3.fromRGB(0, 170, 255), Color3.fromRGB(0, 140, 230)) })
-SecEggs:Button({ Name = "Hide / Show Eggs", Callback = function()
-    eggsHidden = not eggsHidden
-    farmSetVisible(farmEggSecs, not eggsHidden)
-    Window:Notify({ Title = "EGGS", Description = eggsHidden and "Grup Eggs disembunyikan." or "Grup Eggs ditampilkan.", Lifetime = 2 })
-end })
+SecEggs:Header({ Name = ZypheraxLib:Gradient("Eggs", Color3.fromRGB(0, 170, 255), Color3.fromRGB(0, 140, 230)) })
+-- (panah collapse dipasang di header Eggs)
 local SecPetsHead = TabFarmRAP:Section({ Name = "PETS", Side = 2 })
-SecPetsHead:Header({ Name = ZypheraxLib:Gradient("PETS - Grup Pet", Color3.fromRGB(255, 170, 90), Color3.fromRGB(255, 110, 140)) })
-SecPetsHead:Button({ Name = "Hide / Show Pets", Callback = function()
-    petsHidden = not petsHidden
-    farmSetVisible(farmPetSecs, not petsHidden)
-    Window:Notify({ Title = "PETS", Description = petsHidden and "Grup Pets disembunyikan." or "Grup Pets ditampilkan.", Lifetime = 2 })
-end })
-local SecAutoEgg = TabFarmRAP:Section({ Name = "Auto Egg Collector", Side = 1 })
+SecPetsHead:Header({ Name = ZypheraxLib:Gradient("Pets", Color3.fromRGB(255, 170, 90), Color3.fromRGB(255, 110, 140)) })
+-- (panah collapse dipasang di header Pets)
+local SecAutoEgg = TabFarmRAP:Section({ Name = "", Side = 1 })
 do table.insert(farmEggSecs, SecAutoEgg) end
-do table.insert(farmEggSecs, SecAutoEgg) end
-SecAutoEgg:Header({ Name = ZypheraxLib:Gradient("Auto Egg Collector", Color3.fromRGB(72, 214, 200), Color3.fromRGB(99, 130, 255)) })
+SecAutoEgg:Label({ Name = "auto egg collector" })
 
 -- Grup Auto Farm ala foto (pakai UI Zypherax sendiri)
 local RAP_ALL = "--"
@@ -5159,10 +5150,9 @@ SecAutoEgg:Slider({
     end,
 })
 
-local SecPlace = TabFarmRAP:Section({ Name = "Auto Place Eggs", Side = 1 })
+local SecPlace = TabFarmRAP:Section({ Name = "", Side = 1 })
 do table.insert(farmEggSecs, SecPlace) end
-do table.insert(farmEggSecs, SecPlace) end
-SecPlace:Header({ Name = ZypheraxLib:Gradient("Auto Place Eggs", Color3.fromRGB(255, 190, 90), Color3.fromRGB(255, 130, 120)) })
+SecPlace:Label({ Name = "auto place eggs" })
 
 SecPlace:Toggle({
     Name = "Auto Place Eggs",
@@ -5428,9 +5418,9 @@ SecEvent:Toggle({
 
 -- ==============================================================================================
 -- Grup tambahan ala foto (UI Zypherax sendiri, engine menyusul)
-local SecVolcano = TabFarmRAP:Section({ Name = "Volcano", Side = 1 })
+local SecVolcano = TabFarmRAP:Section({ Name = "", Side = 1 })
 do table.insert(farmEggSecs, SecVolcano) end
-SecVolcano:Header({ Name = ZypheraxLib:Gradient("Volcano", Color3.fromRGB(255, 120, 60), Color3.fromRGB(255, 60, 90)) })
+SecVolcano:Label({ Name = "volcano" })
 
 SecVolcano:Toggle({
     Name = "Auto Volcano Dip",
@@ -5466,13 +5456,13 @@ SecVolcano:Dropdown({
 SecVolcano:Label({ Name = "Skips eggs whose mutation already beats Magma (10x)" })
 rapVolcanoStatus = SecVolcano:Label({ Name = "Volcano: Idle | 0 Dipped | 0 Magma" })
 
-local SecPets = TabFarmRAP:Section({ Name = "Pets + Auto Place Pets", Side = 2 })
+local SecPets = TabFarmRAP:Section({ Name = "", Side = 2 })
 do table.insert(farmPetSecs, SecPets) end
 SecPets:Toggle({ Name = "Auto Place Pets (Taruh Pet)", Default = false, Callback = function(enabled)
     rapPlanned.placePets = enabled and true or false
     Window:Notify({ Title = "Pets", Description = enabled and "Auto place pets aktif." or "Auto place pets dimatikan.", Lifetime = 3 })
 end })
-SecPets:Header({ Name = ZypheraxLib:Gradient("Pets", Color3.fromRGB(99, 130, 255), Color3.fromRGB(72, 214, 200)) })
+SecPets:Label({ Name = "pets untuk auto place pets" })
 
 SecPets:Toggle({
     Name = "Auto Place Best Pets",
@@ -5535,9 +5525,9 @@ SecPets:Dropdown({
     Callback = function(v) rapPlanned.sellMutation = v end,
 })
 
-local SecFusion = TabFarmRAP:Section({ Name = "Fusion", Side = 1 })
+local SecFusion = TabFarmRAP:Section({ Name = "", Side = 2 })
 do table.insert(farmPetSecs, SecFusion) end
-SecFusion:Header({ Name = ZypheraxLib:Gradient("Fusion", Color3.fromRGB(168, 120, 255), Color3.fromRGB(99, 130, 255)) })
+SecFusion:Label({ Name = "fusion" })
 
 SecFusion:Toggle({
     Name = "Auto Fuse",
@@ -5585,9 +5575,40 @@ SecFusion:Input({
 SecFusion:Label({ Name = "Never fuses favourites" })
 rapFusionStatus = SecFusion:Label({ Name = "Fusion: Idle | Fused 0" })
 
-local SecFeeds = TabFarmRAP:Section({ Name = "Feeds", Side = 2 })
+local SecFeeds = TabFarmRAP:Section({ Name = "", Side = 2 })
 do table.insert(farmPetSecs, SecFeeds) end
-SecFeeds:Header({ Name = ZypheraxLib:Gradient("Feeds", Color3.fromRGB(72, 160, 255), Color3.fromRGB(99, 130, 255)) })
+-- Panah collapse Eggs/Pets di header (v = buka, ^ = tutup)
+local farmArrowEggs, farmArrowPets = nil, nil
+local function farmArrow(headSec, members, isEgg)
+    pcall(function()
+        local z = headSec._zsec or headSec
+        local box = headSec._box or (z and z._box)
+        local hdr = box and box:FindFirstChild("Header")
+        if not hdr then return end
+        local b = Instance.new("TextButton")
+        b.Name = "CollapseArrow"
+        b.Size = UDim2.fromOffset(28, 28)
+        b.Position = UDim2.new(1, -30, 0, 0)
+        b.BackgroundTransparency = 1
+        b.Text = "v"
+        b.Font = Enum.Font.GothamBold
+        b.TextSize = 14
+        b.TextColor3 = Color3.fromRGB(0, 170, 255)
+        b.ZIndex = 7
+        b.Parent = hdr
+        local hidden = false
+        b.MouseButton1Click:Connect(function()
+            hidden = not hidden
+            b.Text = hidden and "^" or "v"
+            farmSetVisible(members, not hidden)
+        end)
+        if isEgg then farmArrowEggs = b else farmArrowPets = b end
+    end)
+end
+farmArrow(SecEggs, farmEggSecs, true)
+farmArrow(SecPetsHead, farmPetSecs, false)
+
+SecFeeds:Label({ Name = "feeds" })
 
 SecFeeds:Toggle({
     Name = "Auto Feed Pets",
