@@ -2475,10 +2475,7 @@ end)()
     -- --------------------------------------------------------------------------
     -- Watermark: objek tiruan dengan method Set / SetVisible.
     -- --------------------------------------------------------------------------
-    local BridgeWatermark = {
-        Set = function() end,
-        SetVisible = function() end,
-    }
+    local BridgeWatermark = nil
 
     -- --------------------------------------------------------------------------
     -- Window tiruan: semua method lama tetap aman dipanggil.
@@ -2702,9 +2699,7 @@ end)()
             if _zwin and _zwin.SetTheme then _zwin:SetTheme(name) end
         end)
     end
-    function BridgeLib:Watermark(_)
-        return BridgeWatermark
-    end
+    function BridgeLib:Watermark(cfg) pcall(function() BridgeWatermark = ZypheraxUI:Watermark(cfg or { Title = "ZYPHERAX HUB" }) end) return BridgeWatermark end
     -- Dipakai Loading Screen untuk membuka jendela setelah selesai memuat.
     function BridgeLib:_Reveal()
         pcall(function()
@@ -2725,6 +2720,67 @@ end
 
 -- Modul2 yang ditulis sebelum UI memakai global 'ZypheraxWindow' untuk Notify.
 ZypheraxWindow = Window
+
+-- Frosted watermark (blur background, sharp text) ala executor Real
+local function _zy_show_watermark(title)
+    pcall(function()
+        local core = (gethui and gethui()) or (cloneref and cloneref(game:GetService("CoreGui"))) or game:GetService("CoreGui")
+        local old = core:FindFirstChild("ZypheraxWatermarkGui")
+        if old then old:Destroy() end
+        local sg = Instance.new("ScreenGui")
+        sg.Name = "ZypheraxWatermarkGui"
+        sg.ResetOnSpawn = false
+        sg.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+        sg.DisplayOrder = 9990
+        sg.Parent = core
+        local pill = Instance.new("Frame")
+        pill.Name = "WMPill"
+        pill.Position = UDim2.new(0, 12, 0, 12)
+        pill.Size = UDim2.fromOffset(250, 30)
+        pill.BackgroundColor3 = Color3.fromRGB(12, 14, 20)
+        pill.BackgroundTransparency = 0.35
+        pill.BorderSizePixel = 0
+        pill.Active = true
+        pill.Draggable = true
+        pill.Parent = sg
+        local cn = Instance.new("UICorner") cn.CornerRadius = UDim.new(0, 8) cn.Parent = pill
+        local sk = Instance.new("UIStroke") sk.Color = Color3.fromRGB(0, 170, 255) sk.Thickness = 1 sk.Transparency = 0.35 sk.Parent = pill
+        local lg = Instance.new("ImageLabel")
+        lg.Name = "WMLogo" lg.BackgroundTransparency = 1
+        lg.Image = "rbxassetid://106764279090045" lg.ScaleType = Enum.ScaleType.Fit
+        lg.Size = UDim2.fromOffset(18, 18) lg.Position = UDim2.new(0, 8, 0.5, -9)
+        lg.Parent = pill
+        local lb = Instance.new("TextLabel")
+        lb.Name = "WMLabel" lb.BackgroundTransparency = 1
+        lb.Position = UDim2.new(0, 32, 0, 0) lb.Size = UDim2.new(1, -40, 1, 0)
+        lb.Font = Enum.Font.GothamBold lb.TextSize = 12
+        lb.TextColor3 = Color3.fromRGB(240, 242, 248)
+        lb.TextXAlignment = Enum.TextXAlignment.Left
+        lb.TextTruncate = Enum.TextTruncate.AtEnd
+        lb.Text = title
+        lb.Parent = pill
+        task.spawn(function()
+            local fps = 60
+            pcall(function()
+                local last = os.clock() local n = 0
+                game:GetService("RunService").RenderStepped:Connect(function()
+                    n = n + 1 local now = os.clock()
+                    if now - last >= 0.5 then fps = math.floor(n / (now - last) + 0.5) n = 0 last = now end
+                end)
+            end)
+            while pill.Parent do
+                task.wait(0.5)
+                pcall(function()
+                    local ms = 0
+                    pcall(function() ms = math.floor(game:GetService("Stats").Network.ServerStatsItem["Data Ping"]:GetValue() + 0.5) end)
+                    lb.Text = title .. "  |  " .. tostring(fps) .. " FPS  |  " .. tostring(ms) .. " ms"
+                end)
+            end
+        end)
+    end)
+end
+_zy_show_watermark("ZYPHERAX HUB  |  Ride A Pet")
+
 
 
 -- ==============================================================================
@@ -2827,16 +2883,13 @@ do
             logo.ZIndex = 6
             logo.Parent = card
 
-            local logoImg = Instance.new("TextLabel")
-            logoImg.AnchorPoint = Vector2.new(0.5, 0.5) -- logoPureOK
+            local logoImg = Instance.new("ImageLabel")
+            logoImg.AnchorPoint = Vector2.new(0.5, 0.5)
             logoImg.Position = UDim2.fromScale(0.5, 0.5)
             logoImg.Size = UDim2.fromScale(1, 1)
             logoImg.BackgroundTransparency = 1
-            logoImg.Text = "Z"
-            logoImg.Font = Enum.Font.GothamBlack
-            logoImg.TextSize = 52
-            logoImg.TextColor3 = Color3.fromRGB(0, 170, 255)
-            -- monogram: tanpa ScaleType
+            logoImg.Image = "rbxassetid://106764279090045"
+            logoImg.ScaleType = Enum.ScaleType.Fit
             logoImg.ZIndex = 7
             logoImg.Parent = logo
             local logoCorn = Instance.new("UICorner")
