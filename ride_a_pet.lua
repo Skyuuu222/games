@@ -4406,26 +4406,44 @@ function rapPickupTick()
     local mode = rapPickupMode or "Tween"
     local prompt = cand.prompt
     if not prompt or not prompt.Parent then return done(0) end
-    -- 1. NAIK BEST (tas + plot) via prompt. Skor: Weight -> Speed.
+    -- 1. NAIK BEST (tas + plot). Skor: SPEED dulu, Weight seri.
     local bestPetRef = nil
-    if rapPetScore == nil then
-        function rapPetScore(pet)
-            local wt, sp = 0, 0
-            pcall(function()
-                wt = tonumber(pet:GetAttribute("Weight")) or tonumber(pet:GetAttribute("weight")) or 0
-            end)
-            pcall(function()
-                local a = pet:GetAttribute("Speed") or pet:GetAttribute("speed")
-                if tonumber(a) then sp = tonumber(a) end
-            end)
-            if sp <= 0 then pcall(function()
-                for _, d in ipairs(pet:GetDescendants()) do
-                    if d:IsA("ValueBase") and tostring(d.Name):lower() == "speed" then sp = tonumber(d.Value) or 0 break end
+    -- SKOR SPEED-KERAS (10-Okt): pindai SEMUA attr + ValueBase yg namanya mengandung speed/spd/vel/walk.
+    -- Biang lama: cuma attr persis "Speed" + ValueBase persis "speed" -> semua 0 -> menang yg duluan (pet jelek).
+    function rapPetScore(pet)
+        local wt, sp = 0, 0
+        pcall(function()
+            for k, v in pairs(pet:GetAttributes()) do
+                local lk = tostring(k):lower()
+                local n = tonumber(v)
+                if n then
+                    if lk:find("speed", 1, true) or lk == "spd" or lk:find("vel", 1, true) or lk:find("walk", 1, true) then
+                        if n > sp then sp = n end
+                    elseif lk:find("weight", 1, true) or lk == "wt" then
+                        if n > wt then wt = n end
+                    end
                 end
-            end) end
-            return wt, sp, (sp or 0) * 1000000 + (wt or 0)
-        end
+            end
+        end)
+        pcall(function()
+            for _, d in ipairs(pet:GetDescendants()) do
+                local okV, val = pcall(function() return d.Value end)
+                if okV then
+                    local ln = tostring(d.Name or ""):lower()
+                    local n = tonumber(val)
+                    if n then
+                        if ln:find("speed", 1, true) or ln == "spd" or ln:find("vel", 1, true) then
+                            if n > sp then sp = n end
+                        elseif ln:find("weight", 1, true) then
+                            if n > wt then wt = n end
+                        end
+                    end
+                end
+            end
+        end)
+        return wt, sp, (sp or 0) * 1000000 + (wt or 0)
     end
+    rapBestLockKey = nil -- kunci lama dibuang: dulu dikunci saat skor masih 0 semua (pet jelek).
         -- SELALU bandingkan (10-Okt): kalau sudah duduk di pet JELEK, turun + pindah ke best. Tanpa ini best tak pernah dipakai.
         local rapNeedRide = true
         pcall(function()
@@ -5348,7 +5366,7 @@ function rapRideBest()
             end
         end
     end)
-    pcall(function() rapPassBatch(function(a) return a == "Ride" end, 1) end)
+    -- remote saja (tanpa prompt E).
     task.wait(0.5)
     -- verifikasi: Sit=true ATAU SeatPart terisi = sudah naik. Kalau belum, coba sekali lagi.
     pcall(function()
@@ -5359,7 +5377,7 @@ function rapRideBest()
             Window:Notify({Title="Ride",Description="Belum naik, coba lagi...",Lifetime=2})
             rapFire({ "Remotes", "Game", "RideBestPet" })
             rapFire({ "Remotes", "Game", "Mounting" })
-            pcall(function() rapPassBatch(function(a) return a == "Ride" end, 1) end)
+            -- remote saja (tanpa prompt E).
             task.wait(0.8)
         else
             Window:Notify({Title="Ride",Description="Sudah naik pet!",Lifetime=2})
@@ -5378,7 +5396,7 @@ function rapRideInstant()
         rapFire({ "Remotes", "Game", "Mounting" })
         rapFire({ "Remotes", "Game", "Mount" })
         rapFire({ "Remotes", "Game", "PetRideMode" })
-        pcall(function() rapPassBatch(function(a) return a == "Ride" end, 1) end)
+        -- remote saja (tanpa prompt E).
         task.wait(0.4)
         local seated = false
         pcall(function()
@@ -5525,7 +5543,7 @@ function rapStep()
     if rapFlag.grow then rapPassBatch(function(a) return a:find("Skip", 1, true) ~= nil end, 3) end
     if rapFlag.feed then rapPassBatch(function(a) return a == "Feed" end, 3) rapFire({ "Remotes", "Game", "FeedPet" }) rapFeedFilteredTick() end
     if rapFlag.skill then rapSpellTick() end
-    if rapFlag.ride then rapPassBatch(function(a) return a == "Ride" end, 1) rapFire({ "Remotes", "Game", "Mounting" }) rapFire({ "Remotes", "Game", "PetRideMode" }) end
+    if rapFlag.ride then rapFire({ "Remotes", "Game", "Mounting" }) rapFire({ "Remotes", "Game", "PetRideMode" }) rapFire({ "Remotes", "Game", "Mount" }) end
     if rapFlag.join then rapPassBatch(function(a) return a:find("Join", 1, true) ~= nil end, 1) end
     if rapFlag.claim then rapPassBatch(function(a) return a == "Claim" or a:find("Unlock", 1, true) ~= nil end, 2) end
     if rapFlag.remoteClaim then
@@ -6385,46 +6403,6 @@ SecAutoEgg:Toggle({
     end,
 })
 
-SecAutoEgg:Button({
-    Name = "Deteksi Best Pet (Lihat Kandidat)",
-    Callback = function()
-        -- DETEKSI LENGKAP: plot + tas + char, urut skor Weight -> Speed. Tanpa naik/tanpa ganggu farm.
-        task.spawn(function()
-            local rows = {}
-            pcall(function()
-                local myPlot = rapMyPlotModel
-                if not myPlot then pcall(function() rapFindMyPlot() end) myPlot = rapMyPlotModel end
-                local function scoreOf(pet)
-                    local wt, sp = 0, 0
-                    pcall(function() wt = tonumber(pet:GetAttribute("Weight")) or 0 end)
-                    pcall(function()
-                        for _, d in ipairs(pet:GetDescendants()) do
-                            if d:IsA("ValueBase") and tostring(d.Name):lower() == "speed" then sp = tonumber(d.Value) or 0 break end
-                        end
-                    end)
-                    return wt, sp, sp * 1000000 + wt
-                end
-                local function push(pet, loc)
-                    local wt, sp, sc = scoreOf(pet)
-                    local mut = "" pcall(function() mut = tostring(pet:GetAttribute("Mutation") or "") end)
-                    table.insert(rows, {sc=sc, txt=tostring(pet.Name).."@"..loc.." W="..tostring(wt).." S="..tostring(sp).." "..mut})
-                end
-                local pets = myPlot and myPlot:FindFirstChild("Pets")
-                if pets then for _, pet in ipairs(pets:GetChildren()) do push(pet, "plot") end end
-                local bp = LocalPlayer:FindFirstChild("Backpack")
-                if bp then for _, t in ipairs(bp:GetChildren()) do
-                    if t and (tonumber(t:GetAttribute("Weight")) or tostring(t.Name):lower():find("unicorn") or tostring(t.Name):lower():find("pet")) then push(t, "tas") end
-                end end
-                table.sort(rows, function(a,b) return a.sc > b.sc end)
-            end)
-            local lines = {}
-            for i, r in ipairs(rows) do if i <= 6 then table.insert(lines, i.."."..r.txt) end end
-            local msg = (#lines > 0 and table.concat(lines, "\n"):sub(1, 450) or "pet tak ketemu")
-            Window:Notify({Title="Best Pet (urut skor)",Description=msg,Lifetime=10})
-        end)
-    end,
-})
-
 -- Tombol Pindai DIHAPUS (10-Okt): pemicu asli sudah ketemu, tak perlu lagi.
 
 -- Mode Aman UI DIHAPUS (10-Okt): sistem baru butuh teleport langsung. Paksa bebas.
@@ -6465,7 +6443,6 @@ end
 local rapFarmRarityF = rapNewFilter(SecAutoEgg, "Rarity", RARITY_LIST, {}, function(list) rapSetList("rarity", list) end)
 local rapFarmEggF = rapNewFilter(SecAutoEgg, "Egg", rapEggSorted, {}, function(list) rapSetList("egg", list) end)
 local rapFarmMutF = rapNewFilter(SecAutoEgg, "Mutation", RAP_MUTATIONS, {}, function(list) rapSetList("mutation", list) end)
-SecAutoEgg:Button({ Name = "Reset Filter", Callback = function() for _, s in ipairs({rapRarityFilterSet, rapEggFilterSet, rapMutationFilterSet}) do for k in pairs(s) do s[k] = nil end end pcall(function() rapFarmRarityF:Set({}) rapFarmEggF:Set({}) rapFarmMutF:Set({}) end) Window:Notify({Title="Filter",Description="Filter di-reset: semua telur.",Lifetime=2}) end })
 
 SecAutoEgg:Slider({
     Name = "Tween Speed (st/s)",
@@ -7259,6 +7236,26 @@ SecTheme:Toggle({
         Window:SetAcrylicBlurState(bool)
         Window:Notify({ Title = "Pengaturan", Description = (bool and "Mengaktifkan" or "Mematikan") .. " Blur", Lifetime = 3 })
     end
+})
+
+-- SEKSI 2: SERVER (samping kanan)
+local SecServer = TabConfig:Section({ Name = "Server", Side = 2 })
+SecServer:Header({ Name = "Server" })
+SecServer:Button({
+    Name = "Rejoin Server",
+    Callback = function()
+        Window:Notify({ Title = "Server", Description = "Rejoin...", Lifetime = 2 })
+        task.wait(0.5)
+        pcall(function()
+            local ts = game:GetService("TeleportService")
+            local plr = game:GetService("Players").LocalPlayer
+            if #game:GetService("Players"):GetPlayers() <= 1 then
+                plr:Kick("\nRejoining...")
+                task.wait(0.5)
+            end
+            ts:TeleportToPlaceInstance(game.PlaceId, game.JobId, plr)
+        end)
+    end,
 })
 end
 
