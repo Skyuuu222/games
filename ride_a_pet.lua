@@ -4487,14 +4487,22 @@ function rapPickupTick()
                         bestPet = curSeat0 bestLoc = "seat"
                         pcall(function() local _, _, sc = rapPetScore(curSeat0) bestScore = sc end)
                         if rapRideName == nil then pcall(function() rapRideName = tostring(curSeat0.Name) end) end
-                        -- upgrade: cuma pindah kalau ada yg skornya >5% di atas tunggangan (tanpa gerak, tanpa prompt).
+                        -- upgrade: cuma pindah kalau ada yg skornya >5% di atas tunggangan (PLOT + TAS, tanpa gerak, tanpa prompt).
                         pcall(function()
                             for _, pet in ipairs(pets:GetChildren()) do
                                 local rp = pet:FindFirstChild("RidePrompt", true)
                                 if rp and rp:IsA("ProximityPrompt") and rp.Parent then
                                     local _, _, sc = rapPetScore(pet)
-                                    if sc > bestScore * 1.05 + 1 then bestScore = sc bestPet = pet bestLoc = "plot" end
+                                    if sc > bestScore * 1.05 + 1 then bestScore = sc bestPet = pet bestLoc = "plot" bestTool = nil end
                                 end
+                            end
+                            for _, par in ipairs({ LocalPlayer.Character, LocalPlayer:FindFirstChild("Backpack") }) do
+                                if par then for _, t in ipairs(par:GetChildren()) do
+                                    if t and t:IsA("Tool") and not tostring(t.Name):lower():find("egg", 1, true) then
+                                        local _, _, sc = rapPetScore(t)
+                                        if sc > bestScore * 1.05 + 1 then bestScore = sc bestTool = t bestLoc = "tas" bestToolKey = tostring(t.Name) bestPet = nil end
+                                    end
+                                end end
                             end
                         end)
                     elseif rapRideName ~= nil then
@@ -4530,7 +4538,7 @@ function rapPickupTick()
                         if bestPet == nil and bestTool == nil then rapRideName = nil end -- kunci hilang total, scan fresh di bawah
                     end
                     if bestPet == nil and bestTool == nil then
-                    -- BEST = speed tertinggi (cuma jalan kalau belum ada kunci di mana pun).
+                    -- BEST = speed tertinggi PLOT + TAS dibanding bersama (10-Okt): tas tak lagi ketutup plot.
                     for _, pet in ipairs(pets:GetChildren()) do
                         local rp = pet:FindFirstChild("RidePrompt", true)
                         if rp and rp:IsA("ProximityPrompt") and rp.Parent then
@@ -4538,27 +4546,30 @@ function rapPickupTick()
                             if sc > bestScore or (sc == bestScore and curSeat0 ~= nil and pet == curSeat0) then bestScore = sc bestPet = pet bestLoc = "plot" end
                         end
                     end
+                    -- TAS: nilai Tool pet (bukan telur) bareng, skor tertinggi menang dari mana pun.
+                    pcall(function()
+                        for _, par in ipairs({ LocalPlayer.Character, LocalPlayer:FindFirstChild("Backpack") }) do
+                            if par then for _, t in ipairs(par:GetChildren()) do
+                                if t and t:IsA("Tool") and not tostring(t.Name):lower():find("egg", 1, true) then
+                                    local _, _, sc = rapPetScore(t)
+                                    if sc > 0 and sc > bestScore then bestScore = sc bestTool = t bestLoc = "tas" bestToolKey = tostring(t.Name) bestPet = nil end
+                                end
+                            end end
+                        end
+                    end)
                     -- DARURAT SCAN (10-Okt): tak ada prompt Ride ketemu = ambil model APAPUN di Pets (ride via remote tetap bisa).
-                    if bestPet == nil then
+                    if bestPet == nil and bestTool == nil then
                         for _, pet in ipairs(pets:GetChildren()) do
                             if pet and pet:IsA("Model") then bestPet = pet bestLoc = "plot" break end
                         end
                     end
                     end -- tutup if bestPet == nil (scan fresh)
-                    if bestPet and rapRideName == nil then pcall(function() rapRideName = tostring(bestPet.Name) end) end
-                    -- tas: lewati kalau sudah duduk ATAU kunci nama sudah ketemu (10-Okt): anti pindah pet.
-                    -- tas: nilai Tool pet (bukan telur). Tanpa equip/place dulu, cuma baca atribut.
-                    if curSeat0 == nil and bestPet == nil and bestTool == nil then
-                    pcall(function()
-                        local bp = LocalPlayer:FindFirstChild("Backpack")
-                        if bp then for _, t in ipairs(bp:GetChildren()) do
-                            if t and t:IsA("Tool") and not tostring(t.Name):lower():find("egg", 1, true) then
-                                local _, _, sc = rapPetScore(t)
-                                if sc > 0 and sc > bestScore then bestScore = sc bestTool = t bestLoc = "tas" bestToolKey = tostring(t.Name) end
-                            end
-                        end end
-                    end)
-                    end -- tutup if curSeat0 == nil
+                    if rapRideName == nil then
+                        pcall(function()
+                            if bestPet then rapRideName = tostring(bestPet.Name)
+                            elseif bestTool then rapRideName = tostring(bestTool.Name) end
+                        end)
+                    end
                     -- best ada di TAS: equip tool itu -> place ke plot -> cari lagi modelnya di plot.
                     if bestLoc == "tas" and bestTool and bestTool.Parent then
                         pcall(function()
