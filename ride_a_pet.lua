@@ -4406,9 +4406,8 @@ function rapPickupTick()
     local mode = rapPickupMode or "Tween"
     local prompt = cand.prompt
     if not prompt or not prompt.Parent then return done(0) end
-    -- URUTAN FINAL (10-Okt): NAIK BEST PET DULU, langsung teleport telur, TURUN SEBENTAR buat ambil, naik lagi.
-    -- Kenapa telur kadang tak keambil: server tolak prompt Pick Up selagi duduk (Sit). Jadi turun dulu baru ambil.
-    -- 1. kalau belum duduk: 1 best pet saja (bounding box terbesar), maks 2x coba cepat.
+    -- 1. BEST PET via SERVER (10-Okt): remote RideBestPet/EquipBestPet yang tahu best beneran.
+    -- Prompt fallback tetap ke 1 pet terbesar bila remote belum weld.
     local bestPetRef = nil
     do
         local seated0 = false
@@ -4418,6 +4417,21 @@ function rapPickupTick()
             seated0 = hum and (hum.Sit or hum.SeatPart ~= nil) or false
         end)
         if not seated0 then
+            -- a. server-side best dulu (tanpa teleport, tanpa tebak ukuran)
+            pcall(function()
+                rapFire({ "Remotes", "Game", "RideBestPet" })
+                rapFire({ "Remotes", "Game", "EquipBestPet" })
+                rapFire({ "Remotes", "Game", "PetRideMode" })
+                rapFire({ "Remotes", "Game", "Mounting" })
+            end)
+            task.wait(0.5)
+            pcall(function()
+                local ch = LocalPlayer.Character
+                local hum = ch and ch:FindFirstChildOfClass("Humanoid")
+                seated0 = hum and (hum.Sit or hum.SeatPart ~= nil) or false
+            end)
+            -- b. fallback prompt: 1 pet terbesar di plot sendiri
+            if not seated0 then
             pcall(function()
                 local myPlot = rapMyPlotModel
                 if not myPlot then pcall(function() rapFindMyPlot() end) myPlot = rapMyPlotModel end
@@ -4437,11 +4451,11 @@ function rapPickupTick()
                                     sc = p0 and 1 or 0
                                 end
                             end)
-                            if sc >= bestScore then bestScore = sc bestPet = pet end
+                            if sc > bestScore then bestScore = sc bestPet = pet end
                         end
                     end
                     bestPetRef = bestPet
-                    for try = 1, 3 do
+                    for try = 1, 2 do
                         if not bestPet then break end
                         local rp = bestPet:FindFirstChild("RidePrompt", true)
                         local pp = rp and rp.Parent and rapEntityPos(rp.Parent)
@@ -4463,6 +4477,7 @@ function rapPickupTick()
                     end
                 end
             end)
+            end
         end
     end
     -- GERBANG LUNAK (10-Okt): cek duduk 2x (jeda 0.4 dtk, seat butuh waktu weld). Gagal tetap LANJUT
