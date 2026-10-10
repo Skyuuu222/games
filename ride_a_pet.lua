@@ -4232,7 +4232,7 @@ local function rapPickupTick()
                 local function hasEggIn(par)
                     if not par then return false end
                     for _, t in ipairs(par:GetChildren()) do
-                        if (t:IsA("Tool")) and tostring(t.Name):find("Egg", 1, true) then return true end
+                        if (t:IsA("Tool")) and cand.name ~= nil and tostring(t.Name) == tostring(cand.name) then return true end
                     end
                     return false
                 end
@@ -4249,13 +4249,13 @@ local function rapPickupTick()
         local bpW2 = LocalPlayer:FindFirstChild("Backpack")
         for _, par in ipairs({ chW2, bpW2 }) do
             if par then for _, t in ipairs(par:GetChildren()) do
-                if t:IsA("Tool") and tostring(t.Name):find("Egg", 1, true) then hasEggTool = true break end
+                if t:IsA("Tool") and cand.name ~= nil and tostring(t.Name) == tostring(cand.name) then hasEggTool = true break end
             end end
             if hasEggTool then break end
         end
     end)
-    local delivered = gone or hasEggTool
-    if delivered then
+    local gotEgg = hasEggTool
+    local delivered = gotEgg
         rapPickedCount = rapPickedCount + 1
         rapEggsCarried = rapEggsCarried + 1
         rapPickupCD = os.clock() + 1.2
@@ -4286,9 +4286,18 @@ local function rapPickupTick()
         else
             -- JANGAN pulang dulu: telur mungkin sudah virtual di server walau prompt masih ada.
             -- Lanjut ke edge + walk, verifikasi akhir yg mutuskan done(1)/done(0).
+            Window:Notify({ Title = "Gagal Ambil", Description = tostring(cand.name) .. " belum di tangan - coba lagi...", Lifetime = 3 })
+            pcall(function() print("[RAP-EGG] GAGAL-AMBIL target="..tostring(cand.name).." tas-cek-gagal") end)
             Window:Notify({ Title = "Pick Up", Description = tostring(cand.name) .. " prompt blm hilang, tetap bawa ke plot...", Lifetime = 2 })
             rapHandled[prompt] = nil
         end
+    end
+    -- GATE: telur belum di tangan/tas = JANGAN ke plot (drop pasti gagal). Stop, coba lagi next tick.
+    if not hasEggTool then
+        Window:Notify({ Title = "Belum Dapat", Description = tostring(cand.name).." belum di tangan, tidak ke plot.", Lifetime = 3 })
+        pcall(function() print("[RAP-EGG] BELUM-DAPAT target="..tostring(cand.name).." -> diam di telur, tidak drop") end)
+        rapPickupCD = os.clock() + 2
+        return done(0)
     end
         -- 3. delivery: WAJIB ke plot SENDIRI (ukur ulang tiap telur), edge luar -> WALK tengah.
     --    return 1 HANYA kalau telur benar2 hilang/masuk tas. Kalau tidak -> done(0), telur lain nunggu.
