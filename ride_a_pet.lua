@@ -3774,7 +3774,8 @@ end
 
 -- ============================== RANCH (AUTO DETECT) ==============================
 local rapRanchPos = nil rapPlotPos = nil
-local RANCH_PATTERNS = { "ranch", "pen", "nest", "home", "base" }
+local RANCH_PATTERNS = { "ranch", "myplot", "my plot", "plot", "paddock", "pasture" }
+local rapHomePos = nil
 
 local rapIsMyPlotSafe = true
 local function rapIsMyPlot(inst)
@@ -3821,7 +3822,7 @@ local function rapIsMyPlot(inst)
     return rapRanchPos
 end
 
-local rapEdgeMargin = 25
+local rapEdgeMargin = 18
 local function rapIsMine(inst)
     if not inst then return false end
     local me = player.Name:lower()
@@ -3896,13 +3897,23 @@ local function rapPlotHalf()
     return half
 end
 local function rapPlotCenter()
-    return rapPlotPos or rapRanchPos or rapRefreshRanch()
+    if rapPlotPos then return rapPlotPos end
+    if rapHomePos then return rapHomePos end
+    return rapRanchPos or rapRefreshRanch()
+end
+local function rapSetHomeHere()
+    local r = rapGetRoot()
+    if r then rapHomePos = r.Position rapPlotPos = r.Position rapRanchPos = r.Position return true end
+    return false
 end
 local function rapPlotEdge()
     local c = rapPlotCenter()
     if not c then return nil end
-    local off = rapPlotHalf() + rapEdgeMargin
-    return c + Vector3.new(off, 0, off)
+    local off = math.min(rapPlotHalf() + rapEdgeMargin, 70)
+    local r0 = rapGetRoot()
+    local dir = Vector3.new(1, 0, 1)
+    if r0 then local d = r0.Position - c d = Vector3.new(d.X, 0, d.Z) if d.Magnitude > 5 then dir = d / d.Magnitude end end
+    return c + dir * off
 end
 local function rapGoPlotEdge(mode)
     local e = rapPlotEdge()
@@ -4001,12 +4012,12 @@ local function rapWHEgg(rarity, eggName, mutation)
     if rapWHRank(rarity) < rapWHRank(minR) then return end
     rapSendWH("Egg Langka Didapat", ("**%s** Rarity: %s Mutation: %s"):format(tostring(eggName), tostring(rarity), tostring(mutation or "-")), "57F287")
 end
--- Simpan posisi awal sebagai cadangan ranch (setelah karakter siap).
+-- Home = posisi spawn saat script jalan (itu plot sendiri). Di-update tiap respawn bila masih kosong.
 task.spawn(function()
     task.wait(3)
-    if not rapRanchPos then
-        rapRefreshRanch()
-    end
+    if not rapHomePos then local r = rapGetRoot() if r then rapHomePos = r.Position end end
+    if not rapRanchPos then rapRefreshRanch() end
+    if not rapPlotPos then rapPlotPos = rapHomePos or rapRanchPos end
 end)
 
 -- ============================== AUTO PLACED EGG (FITUR TERPISAH) ==============================
@@ -5913,6 +5924,13 @@ SecRanch:Label({ Name = "My Plot dideteksi otomatis (nama objek mengandung 'ranc
 SecRanch:Button({
     Name = "Balik ke My Plot Sekarang",
     Callback = function() rapGoPlot(true) end,
+})
+
+SecRanch:Button({
+    Name = "Jadikan Posisi Ini Plot Saya",
+    Callback = function()
+        if rapSetHomeHere() then Window:Notify({ Title = "Plot", Description = "Plot dikunci di posisi kamu berdiri.", Lifetime = 3 }) else Window:Notify({ Title = "Plot", Description = "Karakter tidak ketemu.", Lifetime = 3 }) end
+    end,
 })
 
 SecRanch:Button({
