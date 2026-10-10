@@ -4437,21 +4437,26 @@ function rapPickupTick()
             rapForceTeleport(pp) task.wait(0.2)
         end
     end
-    -- MANUAL RIDE (10-Okt): auto-ride DIMATIKAN (tebakan remote gagal terus). Kamu naik pet MANUAL.
-    -- Farm teleport ke telur, lalu TUNGGU sampai kamu duduk (Sit/SeatPart) maks 60 dtk, baru ambil.
+    -- RIDE OTOMATIS pakai pemicu ASLI (hasil pindai). Gagal = baru tunggu manual.
     do
-        Window:Notify({Title="Ride Manual",Description="Naik pet sendiri, lalu farm lanjut otomatis...",Lifetime=4})
-        local wt0 = os.clock()
-        while os.clock() - wt0 < 60 do
-            local seated = false
-            pcall(function()
-                local ch = LocalPlayer.Character
-                local hum = ch and ch:FindFirstChildOfClass("Humanoid")
-                seated = hum and (hum.Sit or hum.SeatPart ~= nil) or false
-            end)
-            if seated then Window:Notify({Title="Ride",Description="Sudah naik, lanjut ambil!",Lifetime=2}) break end
-            if math.floor(os.clock() - wt0) % 10 == 0 then pcall(function() Window:Notify({Title="Ride Manual",Description="Menunggu kamu naik pet...",Lifetime=2}) end) end
-            task.wait(1)
+        local ok = false
+        pcall(function() ok = rapRideReal() end)
+        if ok then
+            Window:Notify({Title="Ride",Description="Otomatis naik, lanjut ambil!",Lifetime=2})
+        else
+            Window:Notify({Title="Ride Manual",Description="Otomatis gagal, naik pet sendiri...",Lifetime=4})
+            local wt0 = os.clock()
+            while os.clock() - wt0 < 60 do
+                local seated = false
+                pcall(function()
+                    local ch = LocalPlayer.Character
+                    local hum = ch and ch:FindFirstChildOfClass("Humanoid")
+                    seated = hum and (hum.Sit or hum.SeatPart ~= nil) or false
+                end)
+                if seated then Window:Notify({Title="Ride",Description="Sudah naik, lanjut ambil!",Lifetime=2}) break end
+                if math.floor(os.clock() - wt0) % 10 == 0 then pcall(function() Window:Notify({Title="Ride Manual",Description="Menunggu kamu naik pet...",Lifetime=2}) end) end
+                task.wait(1)
+            end
         end
     end
     -- SCAN 20:24: SEMUA prompt Pick Up hold=0, maxdist 16-21. Jadi langsung trigger + backup EggPickup.
@@ -5202,6 +5207,54 @@ function rapRideInstant()
         rapFire({ "Remotes", "Game", "PetRideMode" })
         pcall(function() rapPassBatch(function(a) return a == "Ride" end, 1) end)
         task.wait(0.4)
+        local seated = false
+        pcall(function()
+            local ch = LocalPlayer.Character
+            local hum = ch and ch:FindFirstChildOfClass("Humanoid")
+            seated = hum and (hum.Sit or hum.SeatPart ~= nil) or false
+        end)
+        if seated then pcall(function() Window:Notify({Title="Ride",Description="Sudah naik pet!",Lifetime=2}) end) return true end
+    end
+    return false
+end
+-- RIDE ASLI (hasil pindai user 10-Okt malam, bukan tebakan):
+-- prompt: Workspace.Plots.Plot.Pets.<Pet>.RootPart.RidePrompt [Ride/<Pet>]
+-- remote: ReplicatedStorage.Remotes.Game.PetRideMode + Mounting (+Ride/Mount).
+-- Bisa ditembak dari jauh (fireprompt), jadi urutan teleport-dulu TETAP bisa naik otomatis.
+function rapRideReal()
+    pcall(function() Window:Notify({Title="Ride",Description="Naik pet (pemicu asli)...",Lifetime=2}) end)
+    for attempt = 1, 2 do
+        rapFire({ "Remotes", "Game", "PetRideMode" })
+        rapFire({ "Remotes", "Game", "Mounting" })
+        rapFire({ "Remotes", "Game", "Ride" })
+        rapFire({ "Remotes", "Game", "Mount" })
+        rapFire({ "Remotes", "Game", "Pet", "RideMode" })
+        pcall(function() rapPassBatch(function(a) return a == "Ride" or a == "Mount" end, 1) end)
+        pcall(function()
+            local myPlot = rapMyPlotModel
+            if not myPlot then pcall(function() rapFindMyPlot() end) myPlot = rapMyPlotModel end
+            local pets = myPlot and myPlot:FindFirstChild("Pets")
+            if pets then
+                for _, pet in ipairs(pets:GetChildren()) do
+                    local holder = pet:FindFirstChild("RootPart", true) or pet
+                    local rp = holder and holder:FindFirstChild("RidePrompt")
+                    if not rp then rp = pet:FindFirstChild("RidePrompt", true) end
+                    if rp and rp:IsA("ProximityPrompt") then
+                        pcall(function() rp.RequiresLineOfSight = false end)
+                        rapTriggerPrompt(rp)
+                        task.wait(0.5)
+                        local seated = false
+                        pcall(function()
+                            local ch = LocalPlayer.Character
+                            local hum = ch and ch:FindFirstChildOfClass("Humanoid")
+                            seated = hum and (hum.Sit or hum.SeatPart ~= nil) or false
+                        end)
+                        if seated then break end
+                    end
+                end
+            end
+        end)
+        task.wait(0.6)
         local seated = false
         pcall(function()
             local ch = LocalPlayer.Character
