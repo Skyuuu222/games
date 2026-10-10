@@ -4465,18 +4465,18 @@ function rapPickupTick()
             end)
         end
     end
-    -- GERBANG (10-Okt): verifikasi SUDAH duduk. Belum = JANGAN teleport ke telur, skip telur ini.
-    -- Ini perbaikan "kadang tidak naik langsung teleport": ride diakui gagal, telur dilepas ke tick berikut.
+    -- GERBANG LUNAK (10-Okt): cek duduk 2x (jeda 0.4 dtk, seat butuh waktu weld). Gagal tetap LANJUT
+    -- ke telur (ambil jalan kaki pun bisa, karena habis ini turun buat ambil). Tanpa skip telur.
+    local rapRode = false
     do
-        local seated = false
-        pcall(function()
-            local ch = LocalPlayer.Character
-            local hum = ch and ch:FindFirstChildOfClass("Humanoid")
-            seated = hum and (hum.Sit or hum.SeatPart ~= nil) or false
-        end)
-        if not seated then
-            rapPickupCD = os.clock() + 1
-            return done(0)
+        for chk = 1, 2 do
+            pcall(function()
+                local ch = LocalPlayer.Character
+                local hum = ch and ch:FindFirstChildOfClass("Humanoid")
+                rapRode = hum and (hum.Sit or hum.SeatPart ~= nil) or false
+            end)
+            if rapRode then break end
+            task.wait(0.4)
         end
     end
     -- 2. LANGSUNG 1x teleport ke telur (tanpa nudge kedua = tanpa kesan mantul), seat dipertahankan.
