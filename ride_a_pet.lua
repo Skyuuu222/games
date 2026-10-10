@@ -4320,12 +4320,28 @@ function rapMoveTo(pos, maxWait)
 end
 
 local rapBusy = false
+local rapBusyT = 0
 local rapLockName = nil
 local rapLockSince = 0
+-- Reset fresh tiap ON: buang state nyangkut (penyebab ON lagi tidak mau jalan).
+function rapPickupReset()
+    rapBusy = false rapBusyT = 0
+    rapLockName = nil rapLockSince = 0
+    rapPickupCD = 0
+    pcall(function()
+        rapHandled = setmetatable({}, { __mode = "k" })
+        rapFailCount = {}
+        rapBlacklist = {}
+    end)
+end
 
 function rapPickupTick()
+    -- watchdog: kalau tick sebelumnya error/crash di tengah (misal teleport gagal + off),
+    -- rapBusy nyangkut true selamanya = tidak teleport lagi. Reset otomatis >25 dtk.
+    if rapBusy and os.clock() - (rapBusyT or 0) > 25 then rapBusy = false end
     if rapBusy then return 0 end
-    rapBusy = true
+    rapBusy = true rapBusyT = os.clock()
+    local okTick, resTick = pcall(function()
     local function done(n) rapBusy = false if n == 1 then rapLockName = nil end return n end
     -- SATU telur per tick: ambil sampai berhasil baru lanjut ke telur lain.
     -- Tidak pernah place telur (itu tugas rapFlag.placedEgg / rapPlaceEggs).
@@ -4364,9 +4380,16 @@ function rapPickupTick()
             end
         end
     end)
-    if not cand then return done(0) end
+    if not cand then
+        -- tak ada target: jangan kunci selamanya, lepas biar tick berikut bebas cari lagi.
+        if not rapNoCandT then rapNoCandT = os.clock() end
+        if os.clock() - rapNoCandT > 5 then rapLockName = nil rapNoCandT = nil end
+        return done(0)
+    end
+    rapNoCandT = nil
+    -- KUNCI TARGET 25 dtk saja (dulu 90: gagal sekali = macet lama, dikira tidak teleport).
     -- KUNCI TARGET: kalau telur sebelumnya belum selesai, JANGAN pindah ke telur lain.
-    if rapLockName and os.clock() - rapLockSince < 90 and cand.name ~= rapLockName then
+    if rapLockName and os.clock() - rapLockSince < 25 and cand.name ~= rapLockName then
         rapPickupCD = os.clock() + 1
         return done(0)
     end
@@ -4564,6 +4587,13 @@ function rapPickupTick()
     end
     if mode ~= "Instant" then rapSetNoclip(false) end
     return done(1)
+    end)
+    if not okTick then
+        pcall(function() Window:Notify({Title="Farm",Description="Tick error, lanjut lagi...",Lifetime=2}) end)
+        rapBusy = false
+        return 0
+    end
+    return resTick or 0
 end
 
 -- ============================== AUTO SELL (RARITY + WEIGHT) ==============================
@@ -5233,18 +5263,21 @@ function rapStep()
     rapTickEnd()
 end
 
+local rapLoopGen = 0
 function rapLoopStart()
-    if rapRunning then return end
+    rapLoopGen = (rapLoopGen or 0) + 1
+    local myGen = rapLoopGen
     rapRunning = true
     task.spawn(function()
-        while true do
+        while myGen == rapLoopGen do
             local any = false
             for _, v in pairs(rapFlag) do
                 if v then any = true; break end
             end
             if rapBuyFood or rapBuyGear then any = true end
             if not any then break end
-            pcall(rapStep)
+            local okL, errL = pcall(rapStep)
+            if not okL then task.wait(1) end
             task.wait(RAP_DELAY)
         end
         rapRunning = false
@@ -6043,12 +6076,17 @@ SecAutoEgg:Toggle({
     Name = "Auto Farm Eggs",
     Default = false,
     Callback = function(enabled)
-        rapSet("pickup", enabled, "Auto Farm Eggs",
+        if enabled then
+            pcall(function() rapPickupReset() end)
+            rapSet("pickup", true, "Auto Farm Eggs",
             ("Farming telur (rarity: %s, egg: %s, mutation: %s)."):format(
                 rapFilterText(rapRarityFilterSet, "Semua"),
                 rapFilterText(rapEggFilterSet, "Semua"),
                 rapFilterText(rapMutationFilterSet, "Semua")),
             "Auto farm eggs dimatikan.")
+        else
+            rapSet("pickup", false, "Auto Farm Eggs", "", "Auto farm eggs dimatikan.")
+        end
     end,
 })
 
