@@ -4539,6 +4539,29 @@ function rapPickupTick()
                     end
                     if bestPet == nil and bestTool == nil then
                     -- BEST = speed tertinggi PLOT + TAS dibanding bersama (10-Okt): tas tak lagi ketutup plot.
+                    -- ADIL (10-Okt): Tool di tas skornya 0 (datanya di model plot) -> place SEMUA pet tas dulu, baru adu di plot.
+                    pcall(function()
+                        local chP = LocalPlayer.Character
+                        local humP = chP and chP:FindFirstChildOfClass("Humanoid")
+                        local bpP = LocalPlayer:FindFirstChild("Backpack")
+                        if bpP and humP then
+                            for _, t in ipairs(bpP:GetChildren()) do
+                                if t and t:IsA("Tool") and not tostring(t.Name):lower():find("egg", 1, true) then
+                                    pcall(function() humP:EquipTool(t) end)
+                                    task.wait(0.2)
+                                    pcall(function()
+                                        rapFire({ "Remotes", "Game", "PlacePet" }, t)
+                                        rapFire({ "Remotes", "Game", "PetPlace" }, t)
+                                        rapFire({ "Remotes", "Game", "PlacePet" })
+                                        rapFire({ "Remotes", "Game", "PetPlace" })
+                                    end)
+                                    task.wait(0.2)
+                                end
+                            end
+                            pcall(function() humP:UnequipTools() end)
+                        end
+                    end)
+                    task.wait(0.3)
                     for _, pet in ipairs(pets:GetChildren()) do
                         local rp = pet:FindFirstChild("RidePrompt", true)
                         if rp and rp:IsA("ProximityPrompt") and rp.Parent then
