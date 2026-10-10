@@ -4170,14 +4170,14 @@ local function rapPickupTick()
         local away = Vector3.new(0, 0, 7)
         do local rrS=rapGetRoot() if rrS then local d0=cand.pos-rrS.Position d0=Vector3.new(d0.X,0,d0.Z) if d0.Magnitude>1 then away=(-d0/d0.Magnitude)*7 end end end
         local stop = cand.pos + Vector3.new(away.X, 4, away.Z)
-        rapSetNoclip(false) rapTeleportTo(stop, "Egg") task.wait(0.6)
+        rapSetNoclip(false) rapTeleportTo(stop, "Egg") task.wait(0.25)
     end
     -- 2. pastikan dekat (server tolak dari jauh)
     do
         local pp = rapEntityPos(prompt.Parent) or cand.pos
         local rr = rapGetRoot()
         if pp and rr and (pp - rr.Position).Magnitude > 12 then
-            rapTeleportTo(pp, "Egg") task.wait(0.35)
+            rapTeleportTo(pp, "Egg") task.wait(0.2)
         end
     end
     do
@@ -4198,7 +4198,7 @@ local function rapPickupTick()
         local rar2 = rapRarityOf(cand.name)
         local isRare = (rar2 == "Epic" or rar2 == "Legendary" or rar2 == "Mythic" or rar2 == "Divine" or rar2 == "Ethereal")
         if not isRare then
-            do local hd0 = 0.2 pcall(function() hd0 = prompt.HoldDuration or 0.2 end) if type(fireproximityprompt) == "function" then pcall(function() fireproximityprompt(prompt, 0) end) task.wait((tonumber(hd0) or 0.2) + 0.5) pcall(function() fireproximityprompt(prompt, 1) end) else rapTriggerPrompt(prompt) end task.wait(mode == "Instant" and 0.7 or 1.2) end
+            do local hd0 = 0.2 pcall(function() hd0 = prompt.HoldDuration or 0.2 end) if type(fireproximityprompt) == "function" then pcall(function() fireproximityprompt(prompt, 0) end) task.wait((tonumber(hd0) or 0.2) + 0.2) pcall(function() fireproximityprompt(prompt, 1) end) else rapTriggerPrompt(prompt) end task.wait(0.4) end
         else
             do
                 local pp2 = rapEntityPos(prompt.Parent) or cand.pos
@@ -4213,16 +4213,16 @@ local function rapPickupTick()
                 local hd = 0
                 pcall(function() hd = prompt.HoldDuration or 0 end)
                 pcall(function() fireproximityprompt(prompt, 0) end)
-                task.wait((tonumber(hd) or 0) + 0.6)
+                task.wait((tonumber(hd) or 0) + 0.2)
                 pcall(function() fireproximityprompt(prompt, 1) end)
-                task.wait(2.0)
+                task.wait(0.8)
             else
                 local hd2 = 0
                 pcall(function() hd2 = prompt.HoldDuration or 0 end)
                 pcall(function() prompt:InputHoldBegin() end)
-                task.wait((tonumber(hd2) or 1) + 0.5)
+                task.wait((tonumber(hd2) or 1) + 0.2)
                 pcall(function() prompt:InputHoldEnd() end)
-                task.wait(2.0)
+                task.wait(0.8)
             end
         end
     end
@@ -4268,7 +4268,7 @@ local function rapPickupTick()
     if delivered then
         rapPickedCount = rapPickedCount + 1
         rapEggsCarried = rapEggsCarried + 1
-        rapPickupCD = os.clock() + 1.2
+        rapPickupCD = os.clock() + 0.4
         pcall(function() rapWHEgg(rapRarityOf(cand.name), cand.name, rapFindMutation(cand.name)) end)
         local rar = rapRarityOf(cand.name)
         if rar == "Epic" or rar == "Legendary" or rar == "Mythic" or rar == "Divine" or rar == "Ethereal" then
@@ -4290,7 +4290,7 @@ local function rapPickupTick()
         if remoteOk and delivered then
             rapPickedCount = rapPickedCount + 1
             rapEggsCarried = rapEggsCarried + 1
-            rapPickupCD = os.clock() + 1.2
+            rapPickupCD = os.clock() + 0.4
             pcall(function() rapWHEgg(rapRarityOf(cand.name), cand.name, rapFindMutation(cand.name)) end)
             Window:Notify({ Title = "Pick Up", Description = tostring(cand.name) .. " ketangkep, bawa ke plot...", Lifetime = 2 })
         else
@@ -4319,7 +4319,7 @@ local function rapPickupTick()
         end
         if not edgeOk then
             Window:Notify({ Title = "Plot", Description = "Gagal ke dekat plot, telur ditahan (tidak ambil yg lain).", Lifetime = 3 })
-            rapPickupCD = os.clock() + 3
+            rapPickupCD = os.clock() + 1
             return done(0)
         end
         -- b2. DROP PAKSA DI PINGGIR: drop telur, ambil lagi, baru walk.
@@ -4440,10 +4440,10 @@ local function rapPickupTick()
         local walkOk = rapWalkPlotCenter()
         Window:Notify({ Title = "Walk", Description = walkOk and "Sampai tengah plot" or "GAGAL jalan ke tengah", Lifetime = 3 })
         if not walkOk then
-            rapPickupCD = os.clock() + 3
+            rapPickupCD = os.clock() + 1
             return done(0)
         end
-        task.wait(rareB and 1.5 or 1.0)
+        task.wait(0.3)
         -- d. verifikasi AKHIR: telur harus hilang. Belum hilang = BELUM berhasil -> done(0).
         do
             local gone3 = (prompt.Parent == nil) or (not prompt:IsDescendantOf(workspace))
@@ -4452,7 +4452,7 @@ local function rapPickupTick()
                 rapFailCount[prompt] = fc3
                 if fc3 >= 2 then rapBlacklist[prompt] = os.clock() + 60 rapFailCount[prompt] = 0 end
                 Window:Notify({ Title = "Egg Returned", Description = tostring(cand.name) .. " belum delivery, telur lain menunggu.", Lifetime = 3 })
-                rapPickupCD = os.clock() + 3
+                rapPickupCD = os.clock() + 1
                 return done(0)
             end
         end
