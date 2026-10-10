@@ -4427,8 +4427,7 @@ function rapPickupTick()
                     for _, pet in ipairs(pets:GetChildren()) do
                         local rp = pet:FindFirstChild("RidePrompt", true)
                         if rp and rp:IsA("ProximityPrompt") and rp.Parent then
-                            -- BEST ASLI (hasil deteksi user): Weight attr dulu, seri = Speed value tertinggi.
-                            -- Unicorn Volted (Speed 493235) > Shocked (328823) walau Weight sama 11.99.
+                            -- SKOR ASLI (deteksi user): Weight -> Speed.
                             local wt, sp = 0, 0
                             pcall(function() wt = tonumber(pet:GetAttribute("Weight")) or 0 end)
                             pcall(function()
@@ -4440,14 +4439,6 @@ function rapPickupTick()
                                 end
                             end)
                             local sc = wt * 1000000000 + sp
-                            if sc <= 0 then
-                                pcall(function()
-                                    if pet:IsA("Model") then
-                                        local s = pet:GetExtentsSize()
-                                        sc = (s.X + s.Y + s.Z) / 1000000000
-                                    end
-                                end)
-                            end
                             if sc > bestScore then bestScore = sc bestPet = pet end
                         end
                     end
@@ -6277,33 +6268,39 @@ SecAutoEgg:Toggle({
 SecAutoEgg:Button({
     Name = "Deteksi Best Pet (Lihat Kandidat)",
     Callback = function()
-        -- CODE TERPISAH deteksi best pet: tampilkan semua pet + atributnya, TANPA naik/tanpa ganggu farm.
+        -- DETEKSI LENGKAP: plot + tas + char, urut skor Weight -> Speed. Tanpa naik/tanpa ganggu farm.
         task.spawn(function()
-            local lines = {}
+            local rows = {}
             pcall(function()
                 local myPlot = rapMyPlotModel
                 if not myPlot then pcall(function() rapFindMyPlot() end) myPlot = rapMyPlotModel end
-                local pets = myPlot and myPlot:FindFirstChild("Pets")
-                if pets then
-                    for _, pet in ipairs(pets:GetChildren()) do
-                        local attrs = {}
-                        pcall(function()
-                            for k, v in pairs(pet:GetAttributes()) do table.insert(attrs, k.."="..tostring(v)) end
-                        end)
-                        local vals = {}
-                        pcall(function()
-                            for _, d in ipairs(pet:GetDescendants()) do
-                                if d:IsA("ValueBase") then table.insert(vals, d.Name.."="..tostring(d.Value)) end
-                            end
-                        end)
-                        local sz = "?"
-                        pcall(function() if pet:IsA("Model") then local s = pet:GetExtentsSize() sz = string.format("%.1f", s.X+s.Y+s.Z) end end)
-                        table.insert(lines, tostring(pet.Name).." | size="..sz.." | att:["..table.concat(attrs,","):sub(1,120).."] | val:["..table.concat(vals,","):sub(1,120).."]")
-                    end
+                local function scoreOf(pet)
+                    local wt, sp = 0, 0
+                    pcall(function() wt = tonumber(pet:GetAttribute("Weight")) or 0 end)
+                    pcall(function()
+                        for _, d in ipairs(pet:GetDescendants()) do
+                            if d:IsA("ValueBase") and tostring(d.Name):lower() == "speed" then sp = tonumber(d.Value) or 0 break end
+                        end
+                    end)
+                    return wt, sp, wt * 1000000000 + sp
                 end
+                local function push(pet, loc)
+                    local wt, sp, sc = scoreOf(pet)
+                    local mut = "" pcall(function() mut = tostring(pet:GetAttribute("Mutation") or "") end)
+                    table.insert(rows, {sc=sc, txt=tostring(pet.Name).."@"..loc.." W="..tostring(wt).." S="..tostring(sp).." "..mut})
+                end
+                local pets = myPlot and myPlot:FindFirstChild("Pets")
+                if pets then for _, pet in ipairs(pets:GetChildren()) do push(pet, "plot") end end
+                local bp = LocalPlayer:FindFirstChild("Backpack")
+                if bp then for _, t in ipairs(bp:GetChildren()) do
+                    if t and (tonumber(t:GetAttribute("Weight")) or tostring(t.Name):lower():find("unicorn") or tostring(t.Name):lower():find("pet")) then push(t, "tas") end
+                end end
+                table.sort(rows, function(a,b) return a.sc > b.sc end)
             end)
+            local lines = {}
+            for i, r in ipairs(rows) do if i <= 6 then table.insert(lines, i.."."..r.txt) end end
             local msg = (#lines > 0 and table.concat(lines, "\n"):sub(1, 450) or "pet tak ketemu")
-            Window:Notify({Title="Kandidat Best Pet",Description=msg,Lifetime=10})
+            Window:Notify({Title="Best Pet (urut skor)",Description=msg,Lifetime=10})
         end)
     end,
 })
