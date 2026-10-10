@@ -3858,7 +3858,7 @@ function rapIsMyPlot(inst)
     return rapRanchPos
 end
 
-local rapEdgeMargin = 80
+local rapEdgeMargin = 120
 function rapIsMine(inst)
     if not inst then return false end
     local me = player.Name:lower()
@@ -3957,13 +3957,13 @@ end
 function rapPlotEdge()
     local c = rapPlotCenter()
     if not c then return nil end
-    local off = math.min(rapPlotHalf() + rapEdgeMargin, 160)
+    local off = math.min(rapPlotHalf() + rapEdgeMargin, 250)
     local r0 = rapGetRoot()
     local dir = Vector3.new(1, 0, 1)
     if r0 then local d = r0.Position - c d = Vector3.new(d.X, 0, d.Z) if d.Magnitude > 5 then dir = d / d.Magnitude end end
     return c + dir * off
 end
--- Titik DROP: lebih jauh lagi dari edge (edge + 35 stud keluar), biar server tidak anggap di dalam plot.
+-- Titik DROP: lebih jauh lagi dari edge (edge + 60 stud keluar), biar server tidak anggap di dalam plot.
 function rapDropSpot()
     local c = rapPlotCenter()
     if not c then return nil end
@@ -3972,10 +3972,10 @@ function rapDropSpot()
     local d = Vector3.new(e.X - c.X, 0, e.Z - c.Z)
     if d.Magnitude < 5 then d = Vector3.new(1, 0, 1) end
     d = d / d.Magnitude
-    return e + d * 35
+    return e + d * 60
 end
 function rapGoPlotEdge(mode)
-    -- DROP JAUH: ke rapDropSpot (edge + 35 stud keluar), bukan edge lama. Biar delivery tidak error merah.
+    -- DROP JAUH: ke rapDropSpot (edge + 60 stud keluar), bukan edge lama. Biar delivery tidak error merah.
     local e = nil
     pcall(function() e = rapDropSpot() end)
     if not e then e = rapPlotEdge() end
@@ -4434,8 +4434,10 @@ function rapPickupTick()
         do
             local rrE = rapGetRoot()
             local ee = rapPlotEdge()
+            local cc = rapPlotCenter()
             local dd = (rrE and ee) and math.floor((rrE.Position - ee).Magnitude) or -1
-            Window:Notify({ Title = "Edge", Description = (edgeOk and "Sampai luar plot" or "GAGAL ke luar plot") .. " (sisa " .. tostring(dd) .. " stud)", Lifetime = 3 })
+            local dc = (rrE and cc) and math.floor((rrE.Position - cc).Magnitude) or -1
+            Window:Notify({ Title = "Edge", Description = (edgeOk and "Drop jauh" or "GAGAL drop jauh") .. " (dari tengah " .. tostring(dc) .. " stud)", Lifetime = 3 })
         end
         if not edgeOk then
             Window:Notify({ Title = "Plot", Description = "Gagal ke dekat plot, telur ditahan (tidak ambil yg lain).", Lifetime = 3 })
