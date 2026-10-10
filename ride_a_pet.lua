@@ -4470,15 +4470,25 @@ function rapPickupTick()
                 if pets then
                     -- SKOR BERSAMA tas+plot (10-Okt): helper rapPetScore pakai Weight -> Speed (+attr Speed).
                     local bestPet, bestScore, bestLoc, bestTool, bestToolKey = nil, -1, nil, nil, nil
+                    -- SEAT DULU (10-Okt): catat tunggangan sekarang sebelum scan. Seri skor = yg ditunggangi menang (anti pindah-pindah).
+                    local curSeat0 = nil
+                    pcall(function()
+                        local ch0 = LocalPlayer.Character
+                        local hum0 = ch0 and ch0:FindFirstChildOfClass("Humanoid")
+                        local seat0 = hum0 and hum0.SeatPart or nil
+                        curSeat0 = seat0 and seat0:FindFirstAncestorOfClass("Model") or nil
+                    end)
                     -- BEST = speed tertinggi saat ini (10-Okt): tanpa kunci, tanpa lewati. Tiap telur hitung fresh.
                     for _, pet in ipairs(pets:GetChildren()) do
                         local rp = pet:FindFirstChild("RidePrompt", true)
                         if rp and rp:IsA("ProximityPrompt") and rp.Parent then
                             local _, _, sc = rapPetScore(pet)
-                            if sc > bestScore then bestScore = sc bestPet = pet bestLoc = "plot" end
+                            if sc > bestScore or (sc == bestScore and curSeat0 ~= nil and pet == curSeat0) then bestScore = sc bestPet = pet bestLoc = "plot" end
                         end
                     end
+                    -- tas: lewati kalau sudah duduk (10-Okt): hemat 1.3 dtk + anti pindah pet tiap telur.
                     -- tas: nilai Tool pet (bukan telur). Tanpa equip/place dulu, cuma baca atribut.
+                    if curSeat0 == nil then
                     pcall(function()
                         local bp = LocalPlayer:FindFirstChild("Backpack")
                         if bp then for _, t in ipairs(bp:GetChildren()) do
@@ -4488,6 +4498,7 @@ function rapPickupTick()
                             end
                         end end
                     end)
+                    end -- tutup if curSeat0 == nil
                     -- best ada di TAS: equip tool itu -> place ke plot -> cari lagi modelnya di plot.
                     if bestLoc == "tas" and bestTool and bestTool.Parent then
                         pcall(function()
@@ -4495,7 +4506,7 @@ function rapPickupTick()
                             local hum = ch and ch:FindFirstChildOfClass("Humanoid")
                             if hum then hum:EquipTool(bestTool) end
                         end)
-                        task.wait(0.5)
+                        task.wait(0.3)
                         pcall(function()
                             rapFire({ "Remotes", "Game", "PlacePet" }, bestTool)
                             rapFire({ "Remotes", "Game", "PetPlace" }, bestTool)
@@ -4503,7 +4514,7 @@ function rapPickupTick()
                             rapFire({ "Remotes", "Game", "PetPlace" })
                             pcall(function() rapPassBatch(function(a) return a == "Place" end, 1) end)
                         end)
-                        task.wait(0.8)
+                        task.wait(0.4)
                         pcall(function()
                             local mp = rapMyPlotModel
                             local ps = mp and mp:FindFirstChild("Pets")
@@ -4538,7 +4549,8 @@ function rapPickupTick()
                             curSeatModel = seat and seat:FindFirstAncestorOfClass("Model") or nil
                         end)
                         rapCurRideScore = nil
-                        if bestPet and curSeatModel and curSeatModel == bestPet then
+                        -- NAMA stabil (10-Okt): model pet bisa instance baru tiap pindah; nama tetap. Duduk di nama yg sama = diam.
+                        if bestPet and curSeatModel and (curSeatModel == bestPet or tostring(curSeatModel.Name) == tostring(bestPet.Name)) then
                             rapStay = true
                         elseif curSeatModel ~= nil then
                             pcall(function()
