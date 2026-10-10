@@ -4406,8 +4406,10 @@ function rapPickupTick()
     local mode = rapPickupMode or "Tween"
     local prompt = cand.prompt
     if not prompt or not prompt.Parent then return done(0) end
-    -- URUTAN FINAL (10-Okt): NAIK BEST PET DULU, langsung teleport telur. Tanpa notif manual, tanpa coba satu-satu.
-    -- 1. kalau belum duduk: pilih 1 best pet (weight/size terbesar), teleport ke dia, naik, selesai.
+    -- URUTAN FINAL (10-Okt): NAIK BEST PET DULU, langsung teleport telur, TURUN SEBENTAR buat ambil, naik lagi.
+    -- Kenapa telur kadang tak keambil: server tolak prompt Pick Up selagi duduk (Sit). Jadi turun dulu baru ambil.
+    -- 1. kalau belum duduk: 1 best pet saja (bounding box terbesar), maks 2x coba cepat.
+    local bestPetRef = nil
     do
         local seated0 = false
         pcall(function()
@@ -4421,21 +4423,26 @@ function rapPickupTick()
                 if not myPlot then pcall(function() rapFindMyPlot() end) myPlot = rapMyPlotModel end
                 local pets = myPlot and myPlot:FindFirstChild("Pets")
                 if pets then
-                    -- pilih 1 best: weight attr terbesar, fallback size terbesar
                     local bestPet, bestScore = nil, -1
                     for _, pet in ipairs(pets:GetChildren()) do
                         local rp = pet:FindFirstChild("RidePrompt", true)
                         if rp and rp:IsA("ProximityPrompt") and rp.Parent then
-                            local sc = rapGetItemWeight(pet) or 0
-                            if sc <= 0 then
-                                local sz = rapEntityPos(pet) and 0 or 0
-                                local m = pet:IsA("Model") and (pet:GetExtentsSize() or Vector3.new()) or Vector3.new()
-                                sc = m.X + m.Y + m.Z
-                            end
+                            local sc = 0
+                            pcall(function()
+                                if pet:IsA("Model") then
+                                    local s = pet:GetExtentsSize()
+                                    sc = s.X + s.Y + s.Z
+                                else
+                                    local p0 = rapEntityPos(pet)
+                                    sc = p0 and 1 or 0
+                                end
+                            end)
                             if sc >= bestScore then bestScore = sc bestPet = pet end
                         end
                     end
-                    if bestPet then
+                    bestPetRef = bestPet
+                    for try = 1, 2 do
+                        if not bestPet then break end
                         local rp = bestPet:FindFirstChild("RidePrompt", true)
                         local pp = rp and rp.Parent and rapEntityPos(rp.Parent)
                         if pp then rapForceTeleport(pp) task.wait(0.2) end
@@ -4446,6 +4453,13 @@ function rapPickupTick()
                             rapTriggerPrompt(rp)
                             task.wait(0.4)
                         end
+                        local okS = false
+                        pcall(function()
+                            local ch = LocalPlayer.Character
+                            local hum = ch and ch:FindFirstChildOfClass("Humanoid")
+                            okS = hum and (hum.Sit or hum.SeatPart ~= nil) or false
+                        end)
+                        if okS then break end
                     end
                 end
             end)
@@ -4460,20 +4474,63 @@ function rapPickupTick()
     rapHandled[prompt] = true
     rapLockName = cand.name rapLockSince = os.clock()
     do
-        local away = Vector3.new(0, 0, 7)
-        do local rrS=rapGetRoot() if rrS then local d0=cand.pos-rrS.Position d0=Vector3.new(d0.X,0,d0.Z) if d0.Magnitude>1 then away=(-d0/d0.Magnitude)*7 end end end
-        local stop = cand.pos + Vector3.new(away.X, 4, away.Z)
+        -- rapat 3 stud (bukan 7): prompt MaxDist 16-21, duduk di pet bikin root meleset.
+        local stop = cand.pos + Vector3.new(0, 4, 3)
         rapForceTeleport(stop) task.wait(0.2)
     end
-    -- 3. ambil langsung (sudah naik + sudah di telur).
-    -- SCAN 20:24: SEMUA prompt Pick Up hold=0, maxdist 16-21. Jadi langsung trigger + backup EggPickup.
+    -- 3. TURUN SEBENTAR -> ambil 2x -> NAIK LAGI (pet ikut teleport, prompt-nya dekat).
     do
-        pcall(function() prompt.RequiresLineOfSight = false end)
-        rapTriggerPrompt(prompt)
-        task.wait(0.3)
         pcall(function()
-            local m = rapEggModelOf(prompt)
-            rapFire({"Remotes", "Game", "EggPickup"}, m)
+            local ch = LocalPlayer.Character
+            local hum = ch and ch:FindFirstChildOfClass("Humanoid")
+            if hum and (hum.Sit or hum.SeatPart ~= nil) then
+                hum.Sit = false
+                pcall(function() hum:ChangeState(Enum.HumanoidStateType.Jumping) end)
+            end
+        end)
+        task.wait(0.3)
+        for grab = 1, 2 do
+            pcall(function() prompt.RequiresLineOfSight = false end)
+            rapTriggerPrompt(prompt)
+            task.wait(0.3)
+            pcall(function()
+                local m = rapEggModelOf(prompt)
+                rapFire({"Remotes", "Game", "EggPickup"}, m)
+            end)
+            task.wait(0.3)
+            local hasEgg = false
+            pcall(function()
+                local chW = LocalPlayer.Character
+                local bpW = LocalPlayer:FindFirstChild("Backpack")
+                for _, par in ipairs({ chW, bpW }) do
+                    if par then
+                        for _, t in ipairs(par:GetChildren()) do
+                            if t and (t:IsA("Tool") or t.Name:lower():find("egg", 1, true)) and tostring(t.Name):lower():find("egg", 1, true) then hasEgg = true break end
+                        end
+                    end
+                    if hasEgg then break end
+                end
+            end)
+            if hasEgg or prompt.Parent == nil or (not prompt:IsDescendantOf(workspace)) then break end
+        end
+        -- naik lagi sebelum diam 20 dtk + teleport sarang (syarat anti-cheat).
+        pcall(function()
+            rapFire({ "Remotes", "Game", "PetRideMode" })
+            rapFire({ "Remotes", "Game", "Mounting" })
+            local ch = LocalPlayer.Character
+            if ch then
+                for _, pr in ipairs(ch:GetDescendants()) do
+                    if pr:IsA("ProximityPrompt") and tostring(pr.ActionText or ""):lower():find("ride", 1, true) then
+                        pcall(function() pr.RequiresLineOfSight = false end)
+                        rapTriggerPrompt(pr)
+                        break
+                    end
+                end
+            end
+            if bestPetRef and bestPetRef.Parent then
+                local rp = bestPetRef:FindFirstChild("RidePrompt", true)
+                if rp then rapTriggerPrompt(rp) end
+            end
         end)
         task.wait(0.3)
     end
