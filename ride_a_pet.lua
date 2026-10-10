@@ -4496,10 +4496,28 @@ function rapPickupTick()
                                 end
                             end
                         end
-                        if bestPet == nil then rapRideName = nil end -- kunci hilang (pet dihapus), scan fresh di bawah
+                        -- tak di plot: cari di TAS + CHARACTER (Tool nama sama, bukan telur).
+                        if bestPet == nil then
+                            pcall(function()
+                                local chI = LocalPlayer.Character
+                                local bpI = LocalPlayer:FindFirstChild("Backpack")
+                                for _, par in ipairs({ chI, bpI }) do
+                                    if bestTool == nil and par then
+                                        for _, t in ipairs(par:GetChildren()) do
+                                            if t and t:IsA("Tool") and tostring(t.Name) == tostring(rapRideName) and not tostring(t.Name):lower():find("egg", 1, true) then
+                                                bestTool = t bestLoc = "tas" bestToolKey = tostring(t.Name)
+                                                pcall(function() local _, _, sc = rapPetScore(t) bestScore = sc end)
+                                                break
+                                            end
+                                        end
+                                    end
+                                end
+                            end)
+                        end
+                        if bestPet == nil and bestTool == nil then rapRideName = nil end -- kunci hilang total, scan fresh di bawah
                     end
-                    if bestPet == nil then
-                    -- BEST = speed tertinggi (cuma jalan kalau belum ada kunci).
+                    if bestPet == nil and bestTool == nil then
+                    -- BEST = speed tertinggi (cuma jalan kalau belum ada kunci di mana pun).
                     for _, pet in ipairs(pets:GetChildren()) do
                         local rp = pet:FindFirstChild("RidePrompt", true)
                         if rp and rp:IsA("ProximityPrompt") and rp.Parent then
@@ -4511,7 +4529,7 @@ function rapPickupTick()
                     if bestPet and rapRideName == nil then pcall(function() rapRideName = tostring(bestPet.Name) end) end
                     -- tas: lewati kalau sudah duduk ATAU kunci nama sudah ketemu (10-Okt): anti pindah pet.
                     -- tas: nilai Tool pet (bukan telur). Tanpa equip/place dulu, cuma baca atribut.
-                    if curSeat0 == nil and bestPet == nil then
+                    if curSeat0 == nil and bestPet == nil and bestTool == nil then
                     pcall(function()
                         local bp = LocalPlayer:FindFirstChild("Backpack")
                         if bp then for _, t in ipairs(bp:GetChildren()) do
