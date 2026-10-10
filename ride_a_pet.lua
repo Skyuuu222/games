@@ -3860,6 +3860,20 @@ local function rapGoPlotEdge(mode)
     else rapTweenTo(e, rapPlanned.glideSpeed) end
     return true
 end
+-- jalan kaki ke tengah plot (tanpa teleport) supaya server daftarkan masuk region + selesaikan delivery
+local function rapWalkPlotCenter()
+    local c = rapPlotCenter()
+    if not c then return false end
+    pcall(function()
+        local chW = LocalPlayer.Character
+        if chW then for _, v in ipairs(chW:GetDescendants()) do
+            if v:IsA("BasePart") then v.CanCollide = false end
+        end end
+    end)
+    local ok = rapMoveTo(c, 25)
+    task.wait(0.5)
+    return ok
+end
 local function rapGoPlot(notify)
     local pos = rapPlotPos or rapRanchPos or rapRefreshRanch()
     if not pos then
@@ -4173,7 +4187,9 @@ local function rapPickupTick()
             -- a. ke pinggir plot dulu (jangan tengah, server return kalau langsung tengah)
             rapGoPlotEdge(mode)
             task.wait(rareB and 2.0 or 1.2)
-            -- b. drop: biarkan server menyelesaikan delivery (telur jatuh di edge).
+            -- b. telur ini virtual (bukan Tool) -> tidak ada yg bisa di-drop manual.
+            --    delivery selesai saat karakter MASUK region plot. Makanya: teleport cuma
+            --    sampai LUAR plot, ke tengahnya WAJIB jalan kaki (tanpa teleport).
             --    Paksa drop tool telur yg nyangkut di karakter supaya jatuh di edge.
             pcall(function()
                 local ch2 = LocalPlayer.Character
@@ -4204,37 +4220,24 @@ local function rapPickupTick()
                 end
             end)
             task.wait(1.0)
-            -- c. ambil lagi telur yg jatuh di dekat edge (radius 35)
-            pcall(function()
-                local er = rapGetRoot()
-                if er then
-                    local bp, bd = nil, 40
-                    local fresh = workspace:GetDescendants()
-                    for _, d in ipairs(fresh) do
-                        if d:IsA("ProximityPrompt") and tostring(d.ActionText) == "Pick Up" then
-                            local pp3 = rapEntityPos(d.Parent) or rapEntityPos(d)
-                            if pp3 then
-                                local dd = (pp3 - er.Position).Magnitude
-                                if dd <= bd then bd = dd bp = d end
-                            end
-                        end
-                    end
-                    if bp then
-                        pcall(function()
-                            bp.HoldDuration = 0
-                            bp.MaxActivationDistance = 17
-                            bp.RequiresLineOfSight = false
-                        end)
-                        rapTriggerPrompt(bp)
-                    end
+                        -- c. TIDAK ada drop manual (telur virtual) -> langsung WALK ke tengah plot.
+            --    jalan kaki max 25 dtk; server mendeteksi masuk region dan menyelesaikan delivery.
+            rapWalkPlotCenter()
+            task.wait(1.2)
+            -- d. verifikasi: telur harus sudah hilang / masuk tas. Kalau masih Returned,
+            --    berarti server menolak dari awal (bukan salah jalan) -> blacklist + cooldown.
+            do
+                local gone3 = (prompt.Parent == nil) or (not prompt:IsDescendantOf(workspace))
+                if not gone3 then
+                    local fc3 = (rapFailCount[prompt] or 0) + 1
+                    rapFailCount[prompt] = fc3
+                    if fc3 >= 2 then rapBlacklist[prompt] = os.clock() + 60 rapFailCount[prompt] = 0 end
+                    Window:Notify({ Title = "Egg Returned", Description = tostring(cand.name) .. " di-return server (coba manual).", Lifetime = 3 })
                 end
-            end)
-            task.wait(1.0)
-            -- d. baru bawa ke tengah plot
-            rapGoPlot(false)
-            task.wait(0.5)
+            end
         end
     end
+
     if mode ~= "Instant" then rapSetNoclip(false) end
     return 1
 end
