@@ -44,7 +44,7 @@ ZYPHERAX_DEBUG = false
 -- Hanya 400 baris terakhir yang disimpan supaya tidak makan memory.
 ZYPHERAX_LOG_BUFFER = ""
 
-local function log(msg, ...)
+function log(msg, ...)
     if not ZYPHERAX_DEBUG then return end
     local ok, text = pcall(string.format, tostring(msg), ...)
     local line = ok and text or tostring(msg)
@@ -61,7 +61,7 @@ end
 -- ==============================================================================
 -- HELPER UTILITIES
 -- ==============================================================================
-local function find_player(name)
+function find_player(name)
     if not name or name == "" then return LocalPlayer end
     name = tostring(name):lower()
     for _, p in ipairs(Players:GetPlayers()) do
@@ -77,7 +77,7 @@ local function find_player(name)
     return nil
 end
 
-local function retry(tries, delay, fn)
+function retry(tries, delay, fn)
     local lastErr
     for i = 1, tries do
         local ok, res = pcall(fn)
@@ -88,20 +88,20 @@ local function retry(tries, delay, fn)
     return nil, lastErr
 end
 
-local function http_json(url)
+function http_json(url)
     return retry(3, 1.2, function()
         return HttpService:JSONDecode(game:HttpGet(url))
     end)
 end
 
-local function normalize(s)
+function normalize(s)
     s = tostring(s):lower()
     s = s:gsub("[\226\128\139-\226\128\141\239\187\191]", "")
     s = s:gsub("%s+", " ")
     return s:gsub("^%s+", ""):gsub("%s+$", "")
 end
 
-local function hex_to_color(hex)
+function hex_to_color(hex)
     if not hex then return nil end
     hex = tostring(hex):gsub("#", "")
     local r = tonumber(hex:sub(1, 2), 16)
@@ -264,7 +264,7 @@ end
 ZypheraxUI:EnableAntiAFK()
 
 -- // SAFE CORE GUI RESOLVER \ --
-local function GetCore()
+function GetCore()
     if RunService:IsStudio() then return Player:WaitForChild("PlayerGui") end
     local ok, h = pcall(function() return gethui() end)
     if ok and h then return h end
@@ -381,7 +381,7 @@ local T = ZypheraxUI.Theme
 
 -- Theme subscriber system
 local ThemeSubscribers = {}
-local function RegisterThemeColor(obj, prop, themeKey)
+function RegisterThemeColor(obj, prop, themeKey)
     table.insert(ThemeSubscribers, { obj = obj, prop = prop, key = themeKey })
     pcall(function() obj[prop] = T[themeKey] end)
 end
@@ -534,7 +534,7 @@ local NotifGui = nil
 local NotifSeq = 0
 local ActiveNotif = {}
 
-local function ensureNotifGui()
+function ensureNotifGui()
     if NotifGui and NotifGui.Parent then return NotifGui end
     NotifGui = U.New("ScreenGui", {
         Name = "ZypheraxNotifs",
@@ -562,7 +562,7 @@ local function ensureNotifGui()
     return NotifGui
 end
 
-local function notifSlideOut(wrap, card)
+function notifSlideOut(wrap, card)
     if not (wrap and wrap.Parent) then return end
     local h = (wrap.AbsoluteSize and wrap.AbsoluteSize.Y) or 0
     if h <= 0 then h = 64 end
@@ -761,7 +761,7 @@ local FloatingToggleGui = nil
 local FloatingButton    = nil
 local FloatingContainer = nil
 
-local function EnsureFloatingButton(onToggleWindow)
+function EnsureFloatingButton(onToggleWindow)
     if FloatingContainer and FloatingContainer.Parent then return FloatingButton end
 
     -- Buang GUI toggle lama dari run sebelumnya
@@ -2713,7 +2713,7 @@ ZypheraxWindow = Window
 -- Frosted watermark elegant (warna ikut logo, teks tajam)
 -- Frosted watermark elegant v4 (logo asli, biru logo, 2 label)
 -- Frosted watermark v5 (blur ala Real, warna biru logo)
-local function _zy_show_watermark(gameName)
+function _zy_show_watermark(gameName)
     pcall(function()
         local core = (gethui and gethui()) or (cloneref and cloneref(game:GetService("CoreGui"))) or game:GetService("CoreGui")
         local old = core:FindFirstChild("ZypheraxWatermarkGui")
@@ -3080,7 +3080,7 @@ local currentSpeed = 16
 local loopSpeed = false
 local speedConn = nil
 
-local function set_player_speed(val)
+function set_player_speed(val)
     local num = tonumber(val)
     if not num then return end
     currentSpeed = num
@@ -3091,7 +3091,7 @@ local function set_player_speed(val)
     end
 end
 
-local function toggle_loop_speed(enabled)
+function toggle_loop_speed(enabled)
     loopSpeed = enabled
     if speedConn then speedConn:Disconnect(); speedConn = nil end
     if loopSpeed then
@@ -3124,7 +3124,7 @@ local flyBV = nil
 local flyKeyDown = nil
 local flyKeyUp = nil
 
-local function stop_fly()
+function stop_fly()
     FLYING = false
     if flyConn then pcall(function() flyConn:Disconnect() end); flyConn = nil end
     if flyKeyDown then pcall(function() flyKeyDown:Disconnect() end); flyKeyDown = nil end
@@ -3139,7 +3139,7 @@ local function stop_fly()
     end
 end
 
-local function start_fly()
+function start_fly()
     if FLYING then return end
     local char = LocalPlayer.Character
     if not char then return end
@@ -3230,7 +3230,7 @@ local VirtualUser = cloneref and cloneref(game:GetService("VirtualUser")) or gam
 local antiAfkConn = nil
 local antiAfkEnabled = false
 
-local function toggle_anti_afk(enabled)
+function toggle_anti_afk(enabled)
     antiAfkEnabled = enabled
     if antiAfkConn then antiAfkConn:Disconnect(); antiAfkConn = nil end
     if enabled then
@@ -3392,9 +3392,9 @@ local rapHandled = setmetatable({}, { __mode = "k" })
 -- pickup, buy, autoTp). Di map yang padat itu puluhan pemindaian penuh per detik
 -- -> frame drop berat sampai Roblox menutup paksa.
 local rapTickCache = nil
-local function rapTickBegin() rapTickCache = nil end
-local function rapTickEnd() rapTickCache = nil end
-local function rapTickList()
+function rapTickBegin() rapTickCache = nil end
+function rapTickEnd() rapTickCache = nil end
+function rapTickList()
     if not rapTickCache then rapTickCache = workspace:GetDescendants() end
     return rapTickCache
 end
@@ -3540,35 +3540,35 @@ local rapGoals = { "Player Spawn" }
 for _, n in ipairs(rapEggNames) do table.insert(rapGoals, n) end
 for _, n in ipairs(rapActors) do table.insert(rapGoals, n) end
 
-local function rapSetCount(t)
+function rapSetCount(t)
     local n = 0
     if t then for _ in pairs(t) do n = n + 1 end end
     return n
 end
 
-local function rapInSet(t, v)
+function rapInSet(t, v)
     if rapSetCount(t) == 0 then return true end
     return t[v] == true
 end
 
-local function rapKeysOf(t)
+function rapKeysOf(t)
     local out = {}
     if t then for k in pairs(t) do table.insert(out, tostring(k)) end end
     table.sort(out)
     return out
 end
 
-local function rapFilterText(t, allText)
+function rapFilterText(t, allText)
     local k = rapKeysOf(t)
     if #k == 0 then return allText end
     return table.concat(k, ", ")
 end
 
-local function rapRarityOf(name)
+function rapRarityOf(name)
     return RAP_RARITY[name] or "Common"
 end
 
-local function rapRarityOfName(nm)
+function rapRarityOfName(nm)
     nm = tostring(nm or "")
     if RAP_RARITY[nm] then return RAP_RARITY[nm] end
     for k, v in pairs(RAP_RARITY) do
@@ -3581,7 +3581,7 @@ local function rapRarityOfName(nm)
     return nil
 end
 
-local function rapFindMutation(inst) -- rapFindMutationStrOk
+function rapFindMutation(inst) -- rapFindMutationStrOk
     if type(inst)=="string" then local s=inst:lower() for _, m in ipairs(RAP_MUTATIONS) do if s:find(m:lower(),1,true) then return m end end return "normal" end
     if type(inst)=="string" then local s=inst:lower() for _, m in ipairs(RAP_MUTATIONS) do if s:find(m:lower(),1,true) then return m end end return "normal" end
     if not inst then return "normal" end
@@ -3605,7 +3605,7 @@ local function rapFindMutation(inst) -- rapFindMutationStrOk
     return "normal"
 end
 
-local function rapMatchFilter(name, inst)
+function rapMatchFilter(name, inst)
     if rapPlanned and rapPlanned.rebirthEgg then return string.lower(tostring(name or "")):find("rebirth", 1, true) ~= nil end
     if not rapInSet(rapEggFilterSet, name) then return false end
     if not rapInSet(rapRarityFilterSet, rapRarityOf(name)) then return false end
@@ -3616,7 +3616,7 @@ local function rapMatchFilter(name, inst)
     return true
 end
 
-local function rapTriggerPrompt(p)
+function rapTriggerPrompt(p)
     if type(fireproximityprompt) == "function" then
         pcall(fireproximityprompt, p, 0)
         return true
@@ -3630,7 +3630,7 @@ local function rapTriggerPrompt(p)
     return true
 end
 
-local function rapPassBatch(matchFn, batch)
+function rapPassBatch(matchFn, batch)
     local n = 0
     pcall(function()
         for _, d in ipairs(rapTickList()) do
@@ -3652,7 +3652,7 @@ local function rapPassBatch(matchFn, batch)
     return n
 end
 
-local function rapPath(container, names)
+function rapPath(container, names)
     local cur = container
     for _, nm in ipairs(names) do
         if not cur then return nil end
@@ -3661,7 +3661,7 @@ local function rapPath(container, names)
     return cur
 end
 
-local function rapFire(names, arg)
+function rapFire(names, arg)
     local r = rapPath(ReplicatedStorage, names)
     if not r then return false end
     if arg ~= nil then
@@ -3670,7 +3670,7 @@ local function rapFire(names, arg)
     return pcall(function() r:FireServer() end)
 end
 
-local function rapEntityPos(d)
+function rapEntityPos(d)
     if d:IsA("Model") then
         local ok, cf = pcall(function() return d:GetPivot() end)
         if ok then return cf.Position end
@@ -3680,12 +3680,12 @@ local function rapEntityPos(d)
     return nil
 end
 
-local function rapGetRoot()
+function rapGetRoot()
     local char = LocalPlayer.Character
     return char and char:FindFirstChild("HumanoidRootPart") or nil
 end
 
-local function rapTeleportTo(pos, label)
+function rapTeleportTo(pos, label)
     local root = rapGetRoot()
     if not root or not pos then return false end
     root.CFrame = CFrame.new(pos + Vector3.new(0, 4, 0))
@@ -3694,7 +3694,7 @@ end
 -- Noclip + Tween fly (untuk mode Tween Auto Egg Collector)
 local rapNoclip = false
 local rapNoclipConn = nil
-local function rapSetNoclip(on)
+function rapSetNoclip(on)
     rapNoclip = on and true or false
     pcall(function() if rapNoclipConn then rapNoclipConn:Disconnect() rapNoclipConn = nil end end)
     if rapNoclip then
@@ -3706,7 +3706,7 @@ local function rapSetNoclip(on)
         end)
     end
 end
-local function rapTweenTo(pos, speed)
+function rapTweenTo(pos, speed)
     local root = rapGetRoot()
     if not root or not pos then return false end
     rapSetNoclip(true)
@@ -3740,7 +3740,7 @@ local RAP_PICKUP_REMOTES = {
     {"Remotes", "Game", "EggArrivalClaim"},
     {"Remotes", "Game", "Hatch"},
 }
-local function rapEggModelOf(prompt)
+function rapEggModelOf(prompt)
     local cur = prompt and prompt.Parent
     for _ = 1, 8 do
         if not cur then break end
@@ -3751,7 +3751,7 @@ local function rapEggModelOf(prompt)
     end
     return prompt and prompt.Parent or nil
 end
-local function rapRemotePickup(cand, prompt)
+function rapRemotePickup(cand, prompt)
     local model = rapEggModelOf(prompt)
     local eggName = cand and cand.name or ""
     local argSets = { { model }, { eggName }, { model, eggName }, {} }
@@ -3784,7 +3784,7 @@ local RANCH_PATTERNS = { "ranch", "myplot", "my plot", "plot", "paddock", "pastu
 local rapHomePos = nil
 
 local rapIsMyPlotSafe = true
-local function rapIsMyPlot(inst)
+function rapIsMyPlot(inst)
         if not inst then return false end
         local me = player.Name:lower()
         local ok, owned = pcall(function()
@@ -3829,7 +3829,7 @@ local function rapIsMyPlot(inst)
 end
 
 local rapEdgeMargin = 18
-local function rapIsMine(inst)
+function rapIsMine(inst)
     if not inst then return false end
     local me = player.Name:lower()
     local ok, owned = pcall(function()
@@ -3848,7 +3848,7 @@ local rapMyPlotModel = nil
 local rapPlotCacheT = 0
 -- Plot: Workspace.Plots.Plot + Data.Owner (ObjectValue/StringValue menunjuk pemain).
 -- Otomatis tiap server: cocokkan Owner==LocalPlayer, TANPA set manual.
-local function rapPlotOwnerOf(plot)
+function rapPlotOwnerOf(plot)
     local own = nil
     pcall(function()
         local d = plot and plot:FindFirstChild("Data")
@@ -3861,14 +3861,14 @@ local function rapPlotOwnerOf(plot)
     end)
     return own
 end
-local function rapOwnerIsMe(plot)
+function rapOwnerIsMe(plot)
     local me = LocalPlayer or Player
     local o = rapPlotOwnerOf(plot)
     if o == nil or me == nil then return false end
     if typeof(o) == "Instance" then return o == me end
     return tostring(o) == me.Name or tostring(o) == me.DisplayName
 end
-local function rapFindMyPlot()
+function rapFindMyPlot()
     local found, foundPos = nil, nil
     pcall(function()
         local plots = workspace:FindFirstChild("Plots")
@@ -3886,7 +3886,7 @@ local function rapFindMyPlot()
     if foundPos then rapPlotPos = foundPos rapRanchPos = foundPos end
     return found, foundPos
 end
-local function rapPlotHalf()
+function rapPlotHalf()
     local m = rapMyPlotModel
     if m and m.Parent then
         local ok, sz = pcall(function() if m:IsA("Model") then return m:GetExtentsSize() else return m.Size end end)
@@ -3894,17 +3894,17 @@ local function rapPlotHalf()
     end
     return 45
 end
-local function rapPlotCenter()
+function rapPlotCenter()
     if rapPlotPos then return rapPlotPos end
     if rapHomePos then return rapHomePos end
     return rapRanchPos or rapRefreshRanch()
 end
-local function rapSetHomeHere()
+function rapSetHomeHere()
     local r = rapGetRoot()
     if r then rapHomePos = r.Position rapPlotPos = r.Position rapRanchPos = r.Position return true end
     return false
 end
-local function rapPlotEdge()
+function rapPlotEdge()
     local c = rapPlotCenter()
     if not c then return nil end
     local off = math.min(rapPlotHalf() + rapEdgeMargin, 70)
@@ -3913,7 +3913,7 @@ local function rapPlotEdge()
     if r0 then local d = r0.Position - c d = Vector3.new(d.X, 0, d.Z) if d.Magnitude > 5 then dir = d / d.Magnitude end end
     return c + dir * off
 end
-local function rapGoPlotEdge(mode)
+function rapGoPlotEdge(mode)
     local e = rapPlotEdge()
     if not e then return false end
     for attempt = 1, 3 do
@@ -3926,7 +3926,7 @@ local function rapGoPlotEdge(mode)
 end
 -- WALK BENERAN (animasi): pakai Humanoid:MoveTo bertahap, bukan geser CFrame.
 -- Geser CFrame tidak memicu animasi jalan -> server anggap diam -> delivery gagal.
-local function raycastGround(root)
+function raycastGround(root)
     local ok, pos = pcall(function()
         local rp = RaycastParams.new() rp.FilterType = Enum.RaycastFilterType.Exclude rp.FilterDescendantsInstances = { LocalPlayer.Character }
         local res = workspace:Raycast(root.Position, Vector3.new(0, -60, 0), rp)
@@ -3934,7 +3934,7 @@ local function raycastGround(root)
     end)
     if ok then return pos end return nil
 end
-local function rapWalkPlotCenter()
+function rapWalkPlotCenter()
     local c = rapPlotCenter()
     if not c then return false end
     rapSetNoclip(false)
@@ -3991,7 +3991,7 @@ rapSetNoclip(false) do local gg = raycastGround(root) if gg then root.CFrame = C
     Window:Notify({ Title = "Walk", Description = "sisa " .. tostring(dd) .. " stud", Lifetime = 3 })
     return rf and (Vector3.new(c.X - rf.Position.X, 0, c.Z - rf.Position.Z).Magnitude <= 16) or false
 end
-local function rapGoPlot(notify)
+function rapGoPlot(notify)
     local pos = rapPlotPos or rapRanchPos or rapRefreshRanch()
     if not pos then
         if notify then
@@ -4008,12 +4008,12 @@ end
 
 -- ================= WEBHOOK SENDER (logo + nama Zypherax Hub) =================
 local ZYPH_LOGO_URL = "https://tr.rbxcdn.com/180DAY-38bd5cad6dff8c3aa7afb010264d3081/420/420/Image/Png/noFilter"
-local function rapWHRank(rarity)
+function rapWHRank(rarity)
     local order = {}
     for i, r in ipairs((typeof(RARITY_LIST)=="table" and RARITY_LIST) or {"Common","Rare","Epic","Legendary","Mythic"}) do order[r] = i end
     return order[rarity] or 0
 end
-local function rapSendWH(title, desc, colorHex)
+function rapSendWH(title, desc, colorHex)
     local url = rapPlanned and rapPlanned.webhookUrl or ""
     if not (rapPlanned and rapPlanned.webhookOn) then return end
     if url == "" or not url:find("discord.com/api/webhooks") then return end
@@ -4026,7 +4026,7 @@ local function rapSendWH(title, desc, colorHex)
         elseif request then request({ Url = url, Method = "POST", Headers = { ["Content-Type"] = "application/json" }, Body = body }) end
     end)
 end
-local function rapWHEgg(rarity, eggName, mutation)
+function rapWHEgg(rarity, eggName, mutation)
     if not (rapPlanned and rapPlanned.whEgg) then return end
     local minR = (rapPlanned and rapPlanned.whMinRarity) or "Legendary"
     if rapWHRank(rarity) < rapWHRank(minR) then return end
@@ -4041,7 +4041,7 @@ task.spawn(function()
 end)
 
 -- ============================== AUTO PLACED EGG (FITUR TERPISAH) ==============================
-local function rapPlaceEggs()
+function rapPlaceEggs()
     local root = rapGetRoot()
     if not root then return 0 end
     pcall(function() rapFindMyPlot() end)
@@ -4133,7 +4133,7 @@ local function rapPlaceEggs()
 end
 
 -- ============================== AUTO PICKUP TELUR ==============================
-local function rapFindEggName(inst)
+function rapFindEggName(inst)
     local cur = inst
     for _ = 1, 8 do
         if not cur or not cur.Parent then break end
@@ -4176,7 +4176,7 @@ local function rapFindEggName(inst)
     return nil, nil
 end
 
-local function rapMoveTo(pos, maxWait)
+function rapMoveTo(pos, maxWait)
     local char = LocalPlayer.Character
     local hum = char and char:FindFirstChildOfClass("Humanoid")
     local root = char and char:FindFirstChild("HumanoidRootPart")
@@ -4203,7 +4203,7 @@ local rapBusy = false
 local rapLockName = nil
 local rapLockSince = 0
 
-local function rapPickupTick()
+function rapPickupTick()
     if rapBusy then return 0 end
     rapBusy = true
     local function done(n) rapBusy = false if n == 1 then rapLockName = nil end return n end
@@ -4535,7 +4535,7 @@ local function rapPickupTick()
 end
 
 -- ============================== AUTO SELL (RARITY + WEIGHT) ==============================
-local function rapGetItemWeight(obj)
+function rapGetItemWeight(obj)
     if not obj then return nil end
     for _, key in ipairs({ "Weight", "weight", "Berat", "berat" }) do
         local ok, v = pcall(function() return obj:GetAttribute(key) end)
@@ -4553,7 +4553,7 @@ local function rapGetItemWeight(obj)
     return found
 end
 
-local function rapGetItemRarity(obj)
+function rapGetItemRarity(obj)
     if not obj then return nil end
     local name = tostring(obj.Name)
     for _, n in ipairs(rapEggNames) do
@@ -4573,7 +4573,7 @@ local function rapGetItemRarity(obj)
     return nil
 end
 
-local function rapPetMoney(label)
+function rapPetMoney(label)
     local s = tostring(label or "")
     local num = s:match("([%d%.%,]+)%s*/%s*s") or s:match("%$%s*([%d%.%,]+)") or s:match("([%d%.%,]+)%s*%$")
     if not num then return nil end
@@ -4581,7 +4581,7 @@ local function rapPetMoney(label)
     return tonumber(num)
 end
 
-local function rapShouldSell(obj, label)
+function rapShouldSell(obj, label)
     local nm = tostring(label or (obj and obj.Name) or "")
     -- Rarity hasil deteksi struktur item, kalau tidak ada baru tebak dari teks.
     local rar = rapGetItemRarity(obj) or rapRarityOfName(nm)
@@ -4615,7 +4615,7 @@ local function rapShouldSell(obj, label)
 end
 
 -- Ambil teks yang terlihat di dalam satu baris pet (nama + rarity), plus atribut.
-local function rapRowText(row, skipBtn)
+function rapRowText(row, skipBtn)
     local parts = {}
     pcall(function()
         for _, d in ipairs(row:GetDescendants()) do
@@ -4636,7 +4636,7 @@ end
 
 -- Kumpulkan tombol "Sell/Jual/Sell All" yang terlihat di layar.
 -- Kalau filter rarity aktif, tombol per-baris hanya ikut kalau barisnya cocok.
-local function rapSellButtons(scope, forceAll)
+function rapSellButtons(scope, forceAll)
     local out = {}
     local filterOn = (not forceAll) and rapSetCount(rapSellRaritySet) > 0
     pcall(function()
@@ -4667,7 +4667,7 @@ local function rapSellButtons(scope, forceAll)
     return out
 end
 
-local function rapClickButton(btn)
+function rapClickButton(btn)
     if not btn or not btn.Parent then return false end
     pcall(function() btn:Activate() end)
     pcall(function() btn.MouseButton1Click:Fire() end)
@@ -4675,7 +4675,7 @@ local function rapClickButton(btn)
 end
 
 -- Cari prompt "Sell" di dunia (dipakai kalau belum ada tombol UI).
-local function rapFindSellPrompt()
+function rapFindSellPrompt()
     local root = rapGetRoot()
     local best, bestDist = nil, nil
     pcall(function()
@@ -4694,7 +4694,7 @@ end
 
 -- Langsung menjual: pencet tombol Sell/Sell All / tembak prompt Sell dari jarak jauh.
 -- TIDAK teleport ke NPC Sell dan TIDAK perlu buka menu sell manual.
-local function rapSellTick(forceAll)
+function rapSellTick(forceAll)
     local n = 0
     local gui = LocalPlayer:FindFirstChild("PlayerGui")
     local scope = gui or (gethui and gethui()) or game:GetService("CoreGui")
@@ -4763,7 +4763,7 @@ local function rapSellTick(forceAll)
 end
 
 -- ============================== AUTO BUY (FOOD & GEARS) ==============================
-local function rapZoneOf(obj)
+function rapZoneOf(obj)
     local cur = obj
     for _ = 1, 4 do
         if not cur then break end
@@ -4775,7 +4775,7 @@ local function rapZoneOf(obj)
     return nil
 end
 
-local function rapKeyMatch(set, text)
+function rapKeyMatch(set, text)
     if rapSetCount(set) == 0 then return true end
     local low = string.lower(tostring(text or ""))
     for k in pairs(set) do
@@ -4785,7 +4785,7 @@ local function rapKeyMatch(set, text)
 end
 
 -- Cari tombol beli yang cocok dengan pilihan item di sebuah zona (food/gear).
-local function rapBuyInScope(scope, wantFood, wantGear, set)
+function rapBuyInScope(scope, wantFood, wantGear, set)
     local n = 0
     pcall(function()
         for _, d in ipairs(scope:GetDescendants()) do
@@ -4821,7 +4821,7 @@ end
 
 local rapScanShopItems -- forward declaration (didefinisikan di bawah)
 
-local function rapBuyTick()
+function rapBuyTick()
     local n = 0
     local root = rapGetRoot()
     local rootPos = root and root.Position
@@ -4949,7 +4949,7 @@ rapScanShopItems = function()
 end
 
 -- ============================== SKILL & SPELL (ONE-SHOT) ==============================
-local function rapSpellTick()
+function rapSpellTick()
     local now = os.clock()
     if (now - rapLastSpell) < 0.6 then return end
     rapLastSpell = now
@@ -4992,7 +4992,7 @@ end
 -- ================== ENGINE TAMBAHAN (UI WIRE, tidak sentuh alur farm bagus) ==================
 local rapVolcanoDipped = 0
 local rapPlaceBestLast = 0
-local function rapVolcanoTick()
+function rapVolcanoTick()
     if not (rapPlanned and rapPlanned.volcanoDip) then return 0 end
     local hit = 0
     pcall(function()
@@ -5036,7 +5036,7 @@ local function rapVolcanoTick()
     pcall(function() if rapVolcanoStatus and rapVolcanoStatus.Set then rapVolcanoStatus:Set("Volcano: " .. (hit > 0 and "Dipping" or "Idle") .. " | " .. rapVolcanoDipped .. " Dipped") end end)
     return hit
 end
-local function rapPlaceBestTick()
+function rapPlaceBestTick()
     if not (rapPlanned and rapPlanned.placeBest) then return 0 end
     if os.clock() - (rapPlaceBestLast or 0) < (tonumber(rapPlanned.placeBestDelay) or 10) then return 0 end
     rapPlaceBestLast = os.clock()
@@ -5049,7 +5049,7 @@ local function rapPlaceBestTick()
     pcall(function() rapPassBatch(function(a) return a == "Place" end, 2) end)
     return 1
 end
-local function rapClaimFuseTick()
+function rapClaimFuseTick()
     if not (rapPlanned and rapPlanned.autoClaimFuse) then return 0 end
     rapFire({ "Remotes", "Game", "FusionClaim" })
     rapFire({ "Remotes", "Game", "ClaimFusion" })
@@ -5057,7 +5057,7 @@ local function rapClaimFuseTick()
     pcall(function() rapPassBatch(function(a) return a == "Claim" or a:find("Fusion", 1, true) ~= nil end, 2) end)
     return 1
 end
-local function rapFeedBestTick()
+function rapFeedBestTick()
     if not (rapPlanned and rapPlanned.feedBest) then return 0 end
     rapFire({ "Remotes", "Game", "FeedBestPet" })
     rapFire({ "Remotes", "Game", "FeedPet" })
@@ -5065,7 +5065,7 @@ local function rapFeedBestTick()
     pcall(function() rapPassBatch(function(a) return a == "Feed" end, 1) end)
     return 1
 end
-local function rapPlacePetsTick()
+function rapPlacePetsTick()
     if not (rapPlanned and rapPlanned.placePets) then return 0 end
     pcall(function() rapFindMyPlot() end)
     local c = rapPlotCenter()
@@ -5077,7 +5077,7 @@ local function rapPlacePetsTick()
     return 1
 end
 -- Feed berfilter: kirim argumen food/rarity/min bila UI diisi (best-effort, server yang abaikan bila tak dikenal).
-local function rapFeedFilteredTick()
+function rapFeedFilteredTick()
     local ff = rapPlanned and rapPlanned.feedFood
     local fr = rapPlanned and rapPlanned.feedRarity
     local mm = tonumber(rapPlanned and rapPlanned.feedMinMoney) or 0
@@ -5098,7 +5098,7 @@ local function rapFeedFilteredTick()
     return 1
 end
 -- Fuse berfilter: kirim rarity/pet/below bila UI diisi (best-effort).
-local function rapFuseFilteredTick()
+function rapFuseFilteredTick()
     local fr = rapPlanned and rapPlanned.fuseRarity
     local fp = rapPlanned and rapPlanned.fusePet
     local fb = tonumber(rapPlanned and rapPlanned.fuseBelow) or 0
@@ -5113,7 +5113,7 @@ local function rapFuseFilteredTick()
 end
 
 -- ============================== LOOP ==============================
-local function rapStep()
+function rapStep()
     rapTickBegin()
     if rapFlag.pickup then rapPickupTick() end
     if rapFlag.hatch then rapPassBatch(function(a) return a == "Hatch" end, 3) end
@@ -5153,7 +5153,7 @@ local function rapStep()
     rapTickEnd()
 end
 
-local function rapLoopStart()
+function rapLoopStart()
     if rapRunning then return end
     rapRunning = true
     task.spawn(function()
@@ -5171,7 +5171,7 @@ local function rapLoopStart()
     end)
 end
 
-local function rapSet(key, on, title, onMsg, offMsg)
+function rapSet(key, on, title, onMsg, offMsg)
     rapFlag[key] = on and true or nil
     if on then rapLoopStart() end
     Window:Notify({ Title = title, Description = on and onMsg or offMsg, Lifetime = 3 })
@@ -5195,10 +5195,10 @@ local espFrame = 0
 -- Daftar descendant workspace di-cache satu kali per refresh supaya tidak
 -- memanggil workspace:GetDescendants() berulang-ulang di tick yang sama.
 local rapDescCache = nil
-local function rapDescRefresh() rapDescCache = workspace:GetDescendants() end
-local function rapDescList() return rapDescCache or workspace:GetDescendants() end
+function rapDescRefresh() rapDescCache = workspace:GetDescendants() end
+function rapDescList() return rapDescCache or workspace:GetDescendants() end
 
-local function espFolder()
+function espFolder()
     if espHost and espHost.Parent then return espHost end
     local f = workspace:FindFirstChild(ESP_NAME)
     if not f then
@@ -5210,7 +5210,7 @@ local function espFolder()
     return f
 end
 
-local function espDrop(inst)
+function espDrop(inst)
     local e = espLive[inst]
     if not e then return end
     espLive[inst] = nil
@@ -5218,7 +5218,7 @@ local function espDrop(inst)
     pcall(function() if e.bb then e.bb:Destroy() end end)
 end
 
-local function espWipe()
+function espWipe()
     pcall(function()
         local all = {}
         for inst in pairs(espLive) do table.insert(all, inst) end
@@ -5229,13 +5229,13 @@ local function espWipe()
     end)
 end
 
-local function espColorEq(a, b)
+function espColorEq(a, b)
     if a == b then return true end
     if not a or not b then return false end
     return a.R == b.R and a.G == b.G and a.B == b.B
 end
 
-local function espMark(inst, label, color, key)
+function espMark(inst, label, color, key)
     if not inst or not inst.Parent then return end
     local f = espFolder()
     key = key or label
@@ -5304,7 +5304,7 @@ local function espMark(inst, label, color, key)
 end
 
 -- Buang penanda yang tidak lagi terpakai di refresh ini.
-local function espSweep()
+function espSweep()
     local dead = nil
     for inst, e in pairs(espLive) do
         if e.frame ~= espFrame then
@@ -5317,7 +5317,7 @@ local function espSweep()
     end
 end
 
-local function rapCountEggs(mark)
+function rapCountEggs(mark)
     local c = 0
     local myPos = rapGetRoot() and rapGetRoot().Position
     local found = {}
@@ -5350,7 +5350,7 @@ local function rapCountEggs(mark)
     return c
 end
 
-local function rapZones(mark)
+function rapZones(mark)
     local c = 0
     for _, d in ipairs(rapDescList()) do
         if (d:IsA("Model") or d:IsA("BasePart")) and d.Parent and d.Parent.Name == "EggSpawns" then
@@ -5361,7 +5361,7 @@ local function rapZones(mark)
     return c
 end
 
-local function rapNpcs(mark)
+function rapNpcs(mark)
     local c = 0
     for _, d in ipairs(rapDescList()) do
         if d:IsA("Model") then
@@ -5377,7 +5377,7 @@ local function rapNpcs(mark)
     return c
 end
 
-local function rapPlayers(mark)
+function rapPlayers(mark)
     local c = 0
     local myRoot = rapGetRoot()
     for _, p in ipairs(Players:GetPlayers()) do
@@ -5396,7 +5396,7 @@ local function rapPlayers(mark)
     return c
 end
 
-local function rapRanchMark(mark)
+function rapRanchMark(mark)
     if not mark then return 0 end
     local found = nil
     for _, pat in ipairs(RANCH_PATTERNS) do
@@ -5414,7 +5414,7 @@ local function rapRanchMark(mark)
     return 0
 end
 
-local function espRefresh()
+function espRefresh()
     espFrame = espFrame + 1
     rapDescRefresh()
     rapEggCount    = rapCountEggs(espMode.egg)
@@ -5428,7 +5428,7 @@ end
 
 -- Satu task permanen (dibuat sekali). Loop lama start/stop punya balapan:
 -- toggle OFF lalu ON dalam <0.45s bisa membuat loop keluar & ESP mati permanen.
-local function espLoopStart()
+function espLoopStart()
     if espRunning then return end
     espRunning = true
     task.spawn(function()
@@ -5445,7 +5445,7 @@ local function espLoopStart()
     end)
 end
 
-local function espSet(key, on, title, onMsg, offMsg)
+function espSet(key, on, title, onMsg, offMsg)
     espMode[key] = on and true or nil
     espLoopStart()
     Window:Notify({ Title = title, Description = on and onMsg or offMsg, Lifetime = 3 })
@@ -5458,7 +5458,7 @@ end
 -- RegisterThemeColor adalah LOCAL di dalam IIFE pembuat UI ZypheraxUI sehingga
 -- tidak terlihat dari sini. Ini penyebab error "attempt to index nil with 'New'".
 -- ==============================================================================================
-local function rapMultiSelect(cfg)
+function rapMultiSelect(cfg)
     local nm        = cfg.Label or cfg.Name or "Filter"
     local titleAttr = cfg.Name or nm
     local options   = cfg.Options or cfg.Items or {}
@@ -5793,7 +5793,7 @@ local function rapMultiSelect(cfg)
     }
 end
 
-local function rapNewFilter(parent, label, options, defaultList, callback)
+function rapNewFilter(parent, label, options, defaultList, callback)
     local sel = {}
     for _, v in ipairs(defaultList or {}) do sel[v] = true end
     local obj = rapMultiSelect({
@@ -5815,7 +5815,7 @@ local TabFarmRAP = tabGroup:Tab({ Name = "Farm", Image = "lucide/sprout" })
 local SecProg = TabMainRAP:Section({ Name = "Main", Side = 1 })
 SecProg:Header({ Name = ZypheraxLib:Gradient("Main", Color3.fromRGB(0, 170, 255), Color3.fromRGB(0, 140, 230)) })
 rapPlanned = rapPlanned or {}
-local function rapProgToggle(name, key, onMsg, offMsg)
+function rapProgToggle(name, key, onMsg, offMsg)
     SecProg:Toggle({ Name = name, Default = false, Callback = function(enabled)
         rapPlanned[key] = enabled and true or false
         Window:Notify({ Title = "Main", Description = enabled and onMsg or offMsg, Lifetime = 3 })
@@ -5836,7 +5836,7 @@ SecProg:Label({ Name = "Ride: Idle  Speed 0  Mounts 0" })
 -- ===== FARM: 2 GRUP (EGGS kiri | PETS kanan) =====
 local farmEggSecs, farmPetSecs = {}, {}
 local eggsHidden, petsHidden = false, false
-local function farmSetVisible(list, vis)
+function farmSetVisible(list, vis)
     for _, s in ipairs(list) do
         pcall(function()
             local box = s._box or (s._zsec and s._zsec._box)
@@ -5926,7 +5926,7 @@ do table.insert(farmEggSecs, SecAutoEgg) end
 
 -- Grup Auto Farm ala foto (pakai UI Zypherax sendiri)
 local RAP_ALL = "--"
-local function rapSetSingle(setName, val)
+function rapSetSingle(setName, val)
     local set = (setName == "rarity") and rapRarityFilterSet
         or (setName == "mutation") and rapMutationFilterSet
         or rapEggFilterSet
@@ -5935,7 +5935,7 @@ local function rapSetSingle(setName, val)
         set[val] = true
     end
 end
-local function rapSetMulti(setName, val, on)
+function rapSetMulti(setName, val, on)
     local set = (setName == "rarity") and rapRarityFilterSet
         or (setName == "mutation") and rapMutationFilterSet
         or (setName == "placeRarity") and (rapPlanned.placeRaritySet or {})
@@ -5947,7 +5947,7 @@ local function rapSetMulti(setName, val, on)
     if setName == "placeMutation" then rapPlanned.placeMutationSet = rapPlanned.placeMutationSet or {} set = rapPlanned.placeMutationSet end
     if on then set[val] = true else set[val] = nil end
 end
-local function rapSetList(setName, list)
+function rapSetList(setName, list)
     local set = (setName == "rarity") and rapRarityFilterSet
         or (setName == "mutation") and rapMutationFilterSet
         or (setName == "placeRarity") and (function() rapPlanned.placeRaritySet = rapPlanned.placeRaritySet or {} return rapPlanned.placeRaritySet end)()
