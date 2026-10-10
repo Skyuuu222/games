@@ -4406,22 +4406,9 @@ function rapPickupTick()
     local mode = rapPickupMode or "Tween"
     local prompt = cand.prompt
     if not prompt or not prompt.Parent then return done(0) end
-    -- ke telur dulu (teleport), ride NANTI pas sudah di telur. Jangan ride sebelum teleport (bug: gagal gerak).
-    -- 1. pergi ke telur: TELEPORT langsung (paksa, bukan jalan). Ride nanti pas sudah sampai.
-    do
-        local away = Vector3.new(0, 0, 7)
-        do local rrS=rapGetRoot() if rrS then local d0=cand.pos-rrS.Position d0=Vector3.new(d0.X,0,d0.Z) if d0.Magnitude>1 then away=(-d0/d0.Magnitude)*7 end end end
-        local stop = cand.pos + Vector3.new(away.X, 4, away.Z)
-        rapForceTeleport(stop) task.wait(0.25)
-    end
-    -- 2. pastikan dekat (server tolak dari jauh)
-    do
-        local pp = rapEntityPos(prompt.Parent) or cand.pos
-        local rr = rapGetRoot()
-        if pp and rr and (pp - rr.Position).Magnitude > 12 then
-            rapForceTeleport(pp) task.wait(0.2)
-        end
-    end
+    -- URUTAN (sesuai arahan): TELEPORT dulu ke telur, LANGSUNG instan naik pet via remote,
+    -- lalu ambil + diam 20 dtk. Ride full (prompt) hanya fallback bila remote gagal.
+    -- 1. teleport ke telur dulu.
     do
         local rar0 = rapRarityOf(cand.name)
         local rare0 = (rar0 == "Epic" or rar0 == "Legendary" or rar0 == "Mythic" or rar0 == "Divine" or rar0 == "Ethereal")
@@ -4435,9 +4422,27 @@ function rapPickupTick()
     end
     rapHandled[prompt] = true
     rapLockName = cand.name rapLockSince = os.clock()
-    -- 3. SUDAH DI TELUR: ride pet terbaik + ambil telur sekalian.
-    pcall(function() rapRideBest() end)
-    task.wait(0.4)
+    -- 2. teleport BAWA pet (seat dipertahankan, tidak disentuh).
+    do
+        local away = Vector3.new(0, 0, 7)
+        do local rrS=rapGetRoot() if rrS then local d0=cand.pos-rrS.Position d0=Vector3.new(d0.X,0,d0.Z) if d0.Magnitude>1 then away=(-d0/d0.Magnitude)*7 end end end
+        local stop = cand.pos + Vector3.new(away.X, 4, away.Z)
+        rapForceTeleport(stop) task.wait(0.25)
+    end
+    -- 3. pastikan dekat setelah teleport (server tolak dari jauh)
+    do
+        local pp = rapEntityPos(prompt.Parent) or cand.pos
+        local rr = rapGetRoot()
+        if pp and rr and (pp - rr.Position).Magnitude > 12 then
+            rapForceTeleport(pp) task.wait(0.2)
+        end
+    end
+    -- 4. LANGSUNG instan naik pet (remote, tanpa perlu dekat pet) + fallback ride full bila gagal.
+    do
+        local ok = false
+        pcall(function() ok = rapRideInstant() end)
+        if not ok then pcall(function() rapRideBest() end) end
+    end
     -- SCAN 20:24: SEMUA prompt Pick Up hold=0, maxdist 16-21. Jadi langsung trigger + backup EggPickup.
     do
         pcall(function() prompt.RequiresLineOfSight = false end)
@@ -5171,6 +5176,30 @@ function rapRideBest()
             Window:Notify({Title="Ride",Description="Sudah naik pet!",Lifetime=2})
         end
     end)
+end
+-- RIDE INSTAN via REMOTE saja (tanpa scan prompt workspace = tanpa perlu dekat pet).
+-- Dipakai SETELAH teleport ke telur: langsung naik walau pet jauh di plot.
+function rapRideInstant()
+    pcall(function() Window:Notify({Title="Ride",Description="Naik pet (instan)...",Lifetime=2}) end)
+    for i = 1, 3 do
+        rapFire({ "Remotes", "Game", "RideBestPet" })
+        rapFire({ "Remotes", "Game", "EquipBestPet" })
+        rapFire({ "Remotes", "Game", "RidePet" })
+        rapFire({ "Remotes", "Game", "BestPet" })
+        rapFire({ "Remotes", "Game", "Mounting" })
+        rapFire({ "Remotes", "Game", "Mount" })
+        rapFire({ "Remotes", "Game", "PetRideMode" })
+        pcall(function() rapPassBatch(function(a) return a == "Ride" end, 1) end)
+        task.wait(0.4)
+        local seated = false
+        pcall(function()
+            local ch = LocalPlayer.Character
+            local hum = ch and ch:FindFirstChildOfClass("Humanoid")
+            seated = hum and (hum.Sit or hum.SeatPart ~= nil) or false
+        end)
+        if seated then pcall(function() Window:Notify({Title="Ride",Description="Sudah naik pet!",Lifetime=2}) end) return true end
+    end
+    return false
 end
 -- Teleport PAKSA (CFrame langsung) untuk leg telur->plot setelah 20 dtk + ride.
 -- Anti-cheat baru lolos bila sudah naik pet + tunggu. Jangan pakai untuk gerak lain.
