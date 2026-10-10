@@ -982,7 +982,7 @@ function ZypheraxUI:CreateWindow(config)
         Parent = sidebar
     })
 
-    -- MacOS Traffic Light Buttons (ðŸ”´ Red, ðŸŸ¡ Yellow, ðŸŸ¢ Green - Compact)
+    -- MacOS Traffic Light Buttons (Ã°Å¸â€Â´ Red, Ã°Å¸Å¸Â¡ Yellow, Ã°Å¸Å¸Â¢ Green - Compact)
     local trafficContainer = U.New("Frame", {
         Name = "MacOSTrafficLights",
         Size = UDim2.new(0, 48, 0, 12),
@@ -1021,17 +1021,17 @@ function ZypheraxUI:CreateWindow(config)
         return dot
     end
 
-    -- ðŸ”´ Close: smoothly closes window
+    -- Ã°Å¸â€Â´ Close: smoothly closes window
     makeTrafficDot(Color3.fromRGB(255, 95, 86), Color3.fromRGB(255, 120, 110), function()
         Win:ToggleVisibility(false)
     end)
 
-    -- ðŸŸ¡ Minimize: minimizes window
+    -- Ã°Å¸Å¸Â¡ Minimize: minimizes window
     makeTrafficDot(Color3.fromRGB(255, 189, 46), Color3.fromRGB(255, 210, 80), function()
         Win:ToggleVisibility(false)
     end)
 
-    -- ðŸŸ¢ Maximize: toggles size
+    -- Ã°Å¸Å¸Â¢ Maximize: toggles size
     local isMaximized = false
     makeTrafficDot(Color3.fromRGB(39, 201, 63), Color3.fromRGB(60, 225, 90), function()
         isMaximized = not isMaximized
@@ -2072,7 +2072,7 @@ function ZypheraxUI:CreateWindow(config)
                 -- Title
                 local topRow = U.New("Frame", { Size = UDim2.new(1, 0, 0, 20), BackgroundTransparency = 1, Parent = confBox })
                 U.New("TextLabel", {
-                    Text = "âš™  Config Manager",
+                    Text = "Ã¢Å¡â„¢  Config Manager",
                     Font = T.FontBold,
                     TextSize = 13,
                     TextColor3 = T.Accent,
@@ -3601,6 +3601,7 @@ local function rapFindMutation(inst) -- rapFindMutationStrOk
 end
 
 local function rapMatchFilter(name, inst)
+    if rapPlanned and rapPlanned.rebirthEgg then return string.lower(tostring(name or "")):find("rebirth", 1, true) ~= nil end
     if not rapInSet(rapEggFilterSet, name) then return false end
     if not rapInSet(rapRarityFilterSet, rapRarityOf(name)) then return false end
     if rapSetCount(rapMutationFilterSet) > 0 then
@@ -4038,36 +4039,91 @@ end)
 local function rapPlaceEggs()
     local root = rapGetRoot()
     if not root then return 0 end
-    rapGoPlot(false)
-    task.wait(0.4)
-    root = rapGetRoot()
+    pcall(function() rapFindMyPlot() end)
+    local c = rapPlotCenter()
+    if c then rapSetNoclip(false) rapTeleportTo(c, "Place") task.wait(0.5) root = rapGetRoot() end
     if not root then return 0 end
+    local mode = (rapPlanned and rapPlanned.placeMode) or "All"
+    local cap = tonumber(rapEggCapacity) or 5
+    local pr = (rapPlanned and rapPlanned.placeRaritySet) or {}
+    local pe = (rapPlanned and rapPlanned.placeEggSet) or {}
+    local pm = (rapPlanned and rapPlanned.placeMutationSet) or {}
+    local minKG = tonumber(rapPlanned and rapPlanned.placeMinSize) or 0
+    local belowKG = tonumber(rapPlanned and rapPlanned.placeBelowKG) or 0
+    local order = (rapPlanned and rapPlanned.placeOrder) or "Rarity then Size"
+    local bags = {}
+    pcall(function()
+        for _, par in ipairs({LocalPlayer.Character, LocalPlayer:FindFirstChild("Backpack")}) do
+            if par then for _, t in ipairs(par:GetChildren()) do
+                if t and t:IsA("Tool") and tostring(t.Name):lower():find("egg") then
+                    local nm = tostring(t.Name)
+                    local rar = rapRarityOf(nm)
+                    if rapSetCount(pr) > 0 and not pr[rar] then else
+                    if rapSetCount(pe) > 0 and not pe[nm] then else
+                    local mut = rapFindMutation(t)
+                    if rapSetCount(pm) > 0 and not pm[mut] then else
+                    local w = rapGetItemWeight(t) or 0
+                    if minKG > 0 and w < minKG then else
+                    if belowKG > 0 and w >= belowKG and w > 0 then else
+                    bags[#bags+1] = { tool = t, name = nm, rar = rar, mut = mut, w = w }
+                    end end end end end
+                end
+            end end
+        end
+    end)
+    if mode == "Filtered" and #bags == 0 then return 0 end
+    local rank = {}
+    for i, r in ipairs(RARITY_LIST) do rank[r] = i end
+    table.sort(bags, function(a, b)
+        if mode == "Best" then
+            if (rank[a.rar] or 0) ~= (rank[b.rar] or 0) then return (rank[a.rar] or 0) > (rank[b.rar] or 0) end
+            return (a.w or 0) > (b.w or 0)
+        end
+        if order == "Size then Rarity" then
+            if (a.w or 0) ~= (b.w or 0) then return (a.w or 0) > (b.w or 0) end
+            return (rank[a.rar] or 0) > (rank[b.rar] or 0)
+        elseif order == "Rarity Only" then
+            return (rank[a.rar] or 0) > (rank[b.rar] or 0)
+        else
+            if (rank[a.rar] or 0) ~= (rank[b.rar] or 0) then return (rank[a.rar] or 0) > (rank[b.rar] or 0) end
+            return (a.w or 0) > (b.w or 0)
+        end
+    end)
     local n = 0
     pcall(function()
-        for _, d in ipairs(rapTickList()) do
-            if d:IsA("ProximityPrompt") then
-                local act = tostring(d.ActionText or ""):lower()
-                if act:find("place", 1, true) or act:find("taruh", 1, true)
-                    or act:find("deposit", 1, true) or act:find("store", 1, true)
-                    or act:find("simpan", 1, true) then
-                    local p1 = rapEntityPos(d.Parent) or rapEntityPos(d)
-                    if p1 and (p1 - root.Position).Magnitude <= 40 then
-                        pcall(function()
-                            d.HoldDuration = 0
-                            d.RequiresLineOfSight = false
-                        end)
-                        rapTriggerPrompt(d)
-                        n = n + 1
+        for i = 1, math.min(#bags, cap) do
+            local b = bags[i]
+            if b and b.tool and b.tool.Parent then
+                pcall(function() local h = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Humanoid") if h then h:EquipTool(b.tool) end end)
+                task.wait(0.35)
+                local placed = false
+                for _, d in ipairs(workspace:GetDescendants()) do
+                    if d:IsA("ProximityPrompt") then
+                        local act = tostring(d.ActionText or ""):lower()
+                        if act:find("place", 1, true) or act:find("taruh", 1, true) or act:find("deposit", 1, true) or act:find("store", 1, true) or act:find("simpan", 1, true) then
+                            local p1 = rapEntityPos(d.Parent) or rapEntityPos(d)
+                            local rr = rapGetRoot()
+                            if p1 and rr and (p1 - rr.Position).Magnitude <= 40 then
+                                pcall(function() d.HoldDuration = 0 d.RequiresLineOfSight = false end)
+                                rapTriggerPrompt(d)
+                                task.wait(0.4)
+                                placed = true
+                                break
+                            end
+                        end
                     end
                 end
+                if not placed then
+                    rapFire({ "Remotes", "Game", "EggPlaced" })
+                    rapFire({ "Remotes", "Game", "PlacePet" })
+                    task.wait(0.3)
+                end
+                n = n + 1
             end
         end
     end)
-    if n == 0 then
-        rapFire({ "Remotes", "Game", "PlacePet" })
-        rapFire({ "Remotes", "Game", "PetMove" })
-    end
-    rapEggsCarried = 0
+    if n > 0 then rapEggsCarried = 0 end
+    if n > 0 then pcall(function() Window:Notify({ Title = "Placed Egg", Description = "Menaruh " .. n .. " telur di plot.", Lifetime = 3 }) end) end
     return n
 end
 
@@ -4477,6 +4533,14 @@ local function rapGetItemRarity(obj)
     return nil
 end
 
+local function rapPetMoney(label)
+    local s = tostring(label or "")
+    local num = s:match("([%d%.%,]+)%s*/%s*s") or s:match("%$%s*([%d%.%,]+)") or s:match("([%d%.%,]+)%s*%$")
+    if not num then return nil end
+    num = tostring(num):gsub(",", "")
+    return tonumber(num)
+end
+
 local function rapShouldSell(obj, label)
     local nm = tostring(label or (obj and obj.Name) or "")
     -- Rarity hasil deteksi struktur item, kalau tidak ada baru tebak dari teks.
@@ -4496,6 +4560,16 @@ local function rapShouldSell(obj, label)
     if rapUseWeightFilter and rapSellMaxWeight > 0 then
         local w = rapGetItemWeight(obj)
         if w and w > rapSellMaxWeight then return false end
+    end
+    local sb = tonumber(rapPlanned and rapPlanned.sellBelow) or 0
+    if sb > 0 then
+        local m = rapPetMoney(nm)
+        if m and m >= sb then return false end
+    end
+    local sm = rapPlanned and rapPlanned.sellMutation
+    if sm and sm ~= RAP_ALL and sm ~= "--" and sm ~= "" then
+        local mut = rapFindMutation(obj or nm)
+        if mut ~= sm then return false end
     end
     return true
 end
@@ -4875,13 +4949,136 @@ local function rapSpellTick()
     return hit
 end
 
+-- ================== ENGINE TAMBAHAN (UI WIRE, tidak sentuh alur farm bagus) ==================
+local rapVolcanoDipped = 0
+local rapPlaceBestLast = 0
+local function rapVolcanoTick()
+    if not (rapPlanned and rapPlanned.volcanoDip) then return 0 end
+    local hit = 0
+    pcall(function()
+        local dipR = rapPlanned.dipRarity
+        local dipE = rapPlanned.dipEgg
+        local eggs = {}
+        for _, par in ipairs({LocalPlayer.Character, LocalPlayer:FindFirstChild("Backpack")}) do
+            if par then for _, tl in ipairs(par:GetChildren()) do
+                if tl and tl:IsA("Tool") and tostring(tl.Name):lower():find("egg") then
+                    local nm = tostring(tl.Name)
+                    local okR = (not dipR) or (dipR == RAP_ALL) or (dipR == "--") or (rapRarityOf(nm) == dipR)
+                    local okE = (not dipE) or (dipE == RAP_ALL) or (dipE == "--") or (nm == dipE)
+                    if okR and okE and rapFindMutation(tl) ~= "Magma" then eggs[#eggs+1] = tl end
+                end
+            end end
+        end
+        if #eggs == 0 then return end
+        for _, d in ipairs(workspace:GetDescendants()) do
+            if d:IsA("ProximityPrompt") then
+                local act = string.lower(tostring(d.ActionText or ""))
+                if act:find("dip", 1, true) or act:find("volcano", 1, true) or act:find("magma", 1, true) then
+                    local pp = rapEntityPos(d.Parent) or rapEntityPos(d)
+                    if pp then
+                        rapTeleportTo(pp + Vector3.new(0, 4, 0), "Volcano") task.wait(0.4)
+                        for i = 1, math.min(#eggs, 3) do
+                            local tl = eggs[i]
+                            if tl and tl.Parent then
+                                pcall(function() local h = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Humanoid") if h then h:EquipTool(tl) end end)
+                                task.wait(0.3)
+                                pcall(function() d.HoldDuration = 0 d.RequiresLineOfSight = false end)
+                                rapTriggerPrompt(d) task.wait(0.4)
+                                rapVolcanoDipped = rapVolcanoDipped + 1 hit = hit + 1
+                            end
+                        end
+                        break
+                    end
+                end
+            end
+        end
+    end)
+    pcall(function() if rapVolcanoStatus and rapVolcanoStatus.Set then rapVolcanoStatus:Set("Volcano: " .. (hit > 0 and "Dipping" or "Idle") .. " | " .. rapVolcanoDipped .. " Dipped") end end)
+    return hit
+end
+local function rapPlaceBestTick()
+    if not (rapPlanned and rapPlanned.placeBest) then return 0 end
+    if os.clock() - (rapPlaceBestLast or 0) < (tonumber(rapPlanned.placeBestDelay) or 10) then return 0 end
+    rapPlaceBestLast = os.clock()
+    pcall(function() rapFindMyPlot() end)
+    local c = rapPlotCenter()
+    if c then rapTeleportTo(c, "PlaceBest") task.wait(0.4) end
+    rapFire({ "Remotes", "Game", "PlaceBestPet" })
+    rapFire({ "Remotes", "Game", "PlacePet" })
+    rapFire({ "Remotes", "Game", "PetPlace" })
+    pcall(function() rapPassBatch(function(a) return a == "Place" end, 2) end)
+    return 1
+end
+local function rapClaimFuseTick()
+    if not (rapPlanned and rapPlanned.autoClaimFuse) then return 0 end
+    rapFire({ "Remotes", "Game", "FusionClaim" })
+    rapFire({ "Remotes", "Game", "ClaimFusion" })
+    rapFire({ "Remotes", "Game", "FusionAction" })
+    pcall(function() rapPassBatch(function(a) return a == "Claim" or a:find("Fusion", 1, true) ~= nil end, 2) end)
+    return 1
+end
+local function rapFeedBestTick()
+    if not (rapPlanned and rapPlanned.feedBest) then return 0 end
+    rapFire({ "Remotes", "Game", "FeedBestPet" })
+    rapFire({ "Remotes", "Game", "FeedPet" })
+    rapFire({ "Remotes", "Game", "UseFood" })
+    pcall(function() rapPassBatch(function(a) return a == "Feed" end, 1) end)
+    return 1
+end
+local function rapPlacePetsTick()
+    if not (rapPlanned and rapPlanned.placePets) then return 0 end
+    pcall(function() rapFindMyPlot() end)
+    local c = rapPlotCenter()
+    if c then rapTeleportTo(c, "PlacePets") task.wait(0.4) end
+    rapFire({ "Remotes", "Game", "PlacePet" })
+    rapFire({ "Remotes", "Game", "PetPlace" })
+    rapFire({ "Remotes", "Game", "EquipPet" })
+    pcall(function() rapPassBatch(function(a) return a == "Place" end, 2) end)
+    return 1
+end
+-- Feed berfilter: kirim argumen food/rarity/min bila UI diisi (best-effort, server yang abaikan bila tak dikenal).
+local function rapFeedFilteredTick()
+    local ff = rapPlanned and rapPlanned.feedFood
+    local fr = rapPlanned and rapPlanned.feedRarity
+    local mm = tonumber(rapPlanned and rapPlanned.feedMinMoney) or 0
+    local ma = tonumber(rapPlanned and rapPlanned.feedMinAge) or 0
+    if ff and ff ~= RAP_ALL and ff ~= "--" and ff ~= "" then
+        rapFire({ "Remotes", "Game", "UseFood" }, ff)
+        rapFire({ "Remotes", "Game", "FeedPet" }, ff)
+    end
+    if (rapPlanned and rapPlanned.feedByRarity) and fr and fr ~= RAP_ALL and fr ~= "--" and fr ~= "" then
+        rapFire({ "Remotes", "Game", "FeedPet" }, fr)
+    end
+    if rapPlanned and rapPlanned.feedAboveMoney and mm > 0 then
+        rapFire({ "Remotes", "Game", "FeedPet" }, mm)
+    end
+    if rapPlanned and rapPlanned.feedAboveAge and ma > 0 then
+        rapFire({ "Remotes", "Game", "FeedPet" }, ma)
+    end
+    return 1
+end
+-- Fuse berfilter: kirim rarity/pet/below bila UI diisi (best-effort).
+local function rapFuseFilteredTick()
+    local fr = rapPlanned and rapPlanned.fuseRarity
+    local fp = rapPlanned and rapPlanned.fusePet
+    local fb = tonumber(rapPlanned and rapPlanned.fuseBelow) or 0
+    if fr and fr ~= RAP_ALL and fr ~= "--" and fr ~= "" then
+        rapFire({ "Remotes", "Game", "FusionAction" }, fr)
+    end
+    if fp and fp ~= RAP_ALL and fp ~= "--" and fp ~= "" then
+        rapFire({ "Remotes", "Game", "FusionPetPlace" }, fp)
+    end
+    if fb > 0 then rapFire({ "Remotes", "Game", "FusionAction" }, fb) end
+    return 1
+end
+
 -- ============================== LOOP ==============================
 local function rapStep()
     rapTickBegin()
     if rapFlag.pickup then rapPickupTick() end
     if rapFlag.hatch then rapPassBatch(function(a) return a == "Hatch" end, 3) end
     if rapFlag.grow then rapPassBatch(function(a) return a:find("Skip", 1, true) ~= nil end, 3) end
-    if rapFlag.feed then rapPassBatch(function(a) return a == "Feed" end, 3) rapFire({ "Remotes", "Game", "FeedPet" }) end
+    if rapFlag.feed then rapPassBatch(function(a) return a == "Feed" end, 3) rapFire({ "Remotes", "Game", "FeedPet" }) rapFeedFilteredTick() end
     if rapFlag.skill then rapSpellTick() end
     if rapFlag.ride then rapPassBatch(function(a) return a == "Ride" end, 1) rapFire({ "Remotes", "Game", "Mounting" }) rapFire({ "Remotes", "Game", "PetRideMode" }) end
     if rapFlag.join then rapPassBatch(function(a) return a:find("Join", 1, true) ~= nil end, 1) end
@@ -4894,7 +5091,12 @@ local function rapStep()
         rapFire({ "Remotes", "Reusable", "ClaimGroupReward" })
     end
     if rapFlag.placedEgg then rapPlaceEggs() end
-    if rapFlag.fuse then rapFire({ "Remotes", "Game", "FusionAction" }) rapFire({ "Remotes", "Game", "FusionPetPlace" }) end
+    if rapPlanned and rapPlanned.volcanoDip then rapVolcanoTick() end
+    if rapPlanned and rapPlanned.placeBest then rapPlaceBestTick() end
+    if rapPlanned and rapPlanned.autoClaimFuse then rapClaimFuseTick() end
+    if rapPlanned and rapPlanned.feedBest then rapFeedBestTick() end
+    if rapPlanned and rapPlanned.placePets then rapPlacePetsTick() end
+    if rapFlag.fuse then rapFire({ "Remotes", "Game", "FusionAction" }) rapFire({ "Remotes", "Game", "FusionPetPlace" }) rapFuseFilteredTick() end
     if rapFlag.rebirth or rapPlanned.autoRebirth then rapFire({ "Remotes", "Game", "Rebirth" }) end
     if rapFlag.shop then rapFire({ "Remotes", "Game", "Autobuy" }) end
     if rapFlag.autoSell then rapSellTick(false) end
@@ -5693,6 +5895,18 @@ local function rapSetSingle(setName, val)
         set[val] = true
     end
 end
+local function rapSetMulti(setName, val, on)
+    local set = (setName == "rarity") and rapRarityFilterSet
+        or (setName == "mutation") and rapMutationFilterSet
+        or (setName == "placeRarity") and (rapPlanned.placeRaritySet or {})
+        or (setName == "placeEgg") and (rapPlanned.placeEggSet or {})
+        or (setName == "placeMutation") and (rapPlanned.placeMutationSet or {})
+        or rapEggFilterSet
+    if setName == "placeRarity" then rapPlanned.placeRaritySet = rapPlanned.placeRaritySet or {} set = rapPlanned.placeRaritySet end
+    if setName == "placeEgg" then rapPlanned.placeEggSet = rapPlanned.placeEggSet or {} set = rapPlanned.placeEggSet end
+    if setName == "placeMutation" then rapPlanned.placeMutationSet = rapPlanned.placeMutationSet or {} set = rapPlanned.placeMutationSet end
+    if on then set[val] = true else set[val] = nil end
+end
 rapPlanned = rapPlanned or {}
 
 SecAutoEgg:Toggle({
@@ -5713,20 +5927,20 @@ SecAutoEgg:Toggle({
     Default = false,
     Callback = function(enabled)
         rapPlanned.rebirthEgg = enabled and true or false
-        Window:Notify({ Title = "Rebirth Egg", Description = enabled and "Auto farm rebirth egg aktif (engine menyusul)." or "Auto farm rebirth egg dimatikan.", Lifetime = 3 })
+        Window:Notify({ Title = "Rebirth Egg", Description = enabled and "Auto farm rebirth egg aktif: hanya kejar Rebirth Egg." or "Auto farm rebirth egg dimatikan.", Lifetime = 3 })
     end,
 })
 
 SecAutoEgg:Dropdown({
-    Name = "Rarity",
-    Items = (function()
-        local o = { RAP_ALL }
-        for _, r in ipairs(RARITY_LIST) do table.insert(o, r) end
-        return o
-    end)(),
-    Default = RAP_ALL,
-    Callback = function(v) rapSetSingle("rarity", v) end,
+    Name = "Mode Farm",
+    Items = { "Instant", "Tween" },
+    Default = "Instant",
+    Callback = function(v) rapPickupMode = v or "Instant" end,
 })
+
+SecAutoEgg:Label({ Name = "Rarity (multi: centang banyak)" })
+do for _, r in ipairs(RARITY_LIST) do local rn = r SecAutoEgg:Toggle({ Name = rn, Default = false, Callback = function(on) rapSetMulti("rarity", rn, on) end }) end end
+SecAutoEgg:Button({ Name = "Reset Filter (Semua)", Callback = function() for _, s in ipairs({rapRarityFilterSet, rapEggFilterSet, rapMutationFilterSet}) do for k in pairs(s) do s[k] = nil end end Window:Notify({Title="Filter",Description="Filter di-reset: semua telur.",Lifetime=2}) end })
 
 -- Daftar telur urut rarity (nama polos, tanpa tanda kurung)
 local rapEggSorted = {}
@@ -5743,27 +5957,11 @@ do
     end)
 end
 
-SecAutoEgg:Dropdown({
-    Name = "Egg",
-    Items = (function()
-        local o = { RAP_ALL }
-        for _, e in ipairs(rapEggSorted) do table.insert(o, e) end
-        return o
-    end)(),
-    Default = RAP_ALL,
-    Callback = function(v) rapSetSingle("egg", v) end,
-})
+SecAutoEgg:Label({ Name = "Egg (multi: centang banyak)" })
+do for _, e in ipairs(rapEggSorted) do local en = e SecAutoEgg:Toggle({ Name = en, Default = false, Callback = function(on) rapSetMulti("egg", en, on) end }) end end
 
-SecAutoEgg:Dropdown({
-    Name = "Mutation",
-    Items = (function()
-        local o = { RAP_ALL }
-        for _, m in ipairs(RAP_MUTATIONS) do table.insert(o, m) end
-        return o
-    end)(),
-    Default = RAP_ALL,
-    Callback = function(v) rapSetSingle("mutation", v) end,
-})
+SecAutoEgg:Label({ Name = "Mutation (multi: centang banyak)" })
+do for _, m in ipairs(RAP_MUTATIONS) do local mn = m SecAutoEgg:Toggle({ Name = mn, Default = false, Callback = function(on) rapSetMulti("mutation", mn, on) end }) end end
 
 SecAutoEgg:Slider({
     Name = "Tween Speed (st/s)",
@@ -5775,13 +5973,6 @@ SecAutoEgg:Slider({
     Callback = function(value) rapPlanned.glideSpeed = value end,
 });
 
-SecAutoEgg:Dropdown({
-    Name = "Mode Ambil Telur",
-    Items = { "Instant", "Tween" },
-    Default = "Instant",
-    Callback = function(v) rapPickupMode = v or "Instant" end,
-})
-
 SecAutoEgg:Slider({
     Name = "Walk Speed (jalan ke tengah)",
     Default = 32,
@@ -5789,7 +5980,6 @@ SecAutoEgg:Slider({
     Maximum = 100,
     DisplayMethod = "Round",
     Precision = 0,
-    Callback = function(value) rapPlanned.walkSpeed = value end,
     Callback = function(value) rapPlanned.walkSpeed = value end,
 })
 
@@ -5837,44 +6027,14 @@ SecPlace:Slider({
     Callback = function(value) rapEggCapacity = value end,
 })
 
-SecPlace:Dropdown({
-    Name = "Place Rarity",
-    Items = (function()
-        local o = { RAP_ALL }
-        for _, r in ipairs(RARITY_LIST) do table.insert(o, r) end
-        return o
-    end)(),
-    Default = RAP_ALL,
-    Callback = function(v)
-        rapPlanned.placeRarity = v
-    end,
-})
+SecPlace:Label({ Name = "Place Rarity (multi)" })
+do for _, r in ipairs(RARITY_LIST) do local rn = r SecPlace:Toggle({ Name = rn, Default = false, Callback = function(on) rapSetMulti("placeRarity", rn, on) end }) end end
 
-SecPlace:Dropdown({
-    Name = "Place Egg",
-    Items = (function()
-        local o = { RAP_ALL }
-        for _, e in ipairs(rapEggSorted) do table.insert(o, e) end
-        return o
-    end)(),
-    Default = RAP_ALL,
-    Callback = function(v)
-        rapPlanned.placeEgg = v
-    end,
-})
+SecPlace:Label({ Name = "Place Egg (multi)" })
+do for _, e in ipairs(rapEggSorted) do local en = e SecPlace:Toggle({ Name = en, Default = false, Callback = function(on) rapSetMulti("placeEgg", en, on) end }) end end
 
-SecPlace:Dropdown({
-    Name = "Place Mutation",
-    Items = (function()
-        local o = { RAP_ALL }
-        for _, m in ipairs(RAP_MUTATIONS) do table.insert(o, m) end
-        return o
-    end)(),
-    Default = RAP_ALL,
-    Callback = function(v)
-        rapPlanned.placeMutation = v
-    end,
-})
+SecPlace:Label({ Name = "Place Mutation (multi)" })
+do for _, m in ipairs(RAP_MUTATIONS) do local mn = m SecPlace:Toggle({ Name = mn, Default = false, Callback = function(on) rapSetMulti("placeMutation", mn, on) end }) end end
 
 SecPlace:Input({
     Name = "Place Min Size (KG)",
@@ -6052,7 +6212,7 @@ SecEvent:Toggle({
 })
 
 -- ==============================================================================================
--- Grup tambahan ala foto (UI Zypherax sendiri, engine menyusul)
+-- Grup tambahan (engine sudah jalan)
 local SecVolcano = TabFarmRAP:Section({ Name = "Volcano", Side = 1 })
 SecVolcano:Header({ Name = ZypheraxLib:Gradient("Volcano", Color3.fromRGB(0, 170, 255), Color3.fromRGB(0, 140, 230)) })
 do table.insert(farmEggSecs, SecVolcano) end
@@ -6063,7 +6223,7 @@ SecVolcano:Toggle({
     Default = false,
     Callback = function(enabled)
         rapPlanned.volcanoDip = enabled and true or false
-        Window:Notify({ Title = "Volcano", Description = enabled and "Auto volcano dip aktif (engine menyusul)." or "Auto volcano dip dimatikan.", Lifetime = 3 })
+        Window:Notify({ Title = "Volcano", Description = enabled and "Auto volcano dip aktif: celup telur ke Volcano." or "Auto volcano dip dimatikan.", Lifetime = 3 })
     end,
 })
 
@@ -6106,7 +6266,7 @@ SecPets:Toggle({
     Default = false,
     Callback = function(enabled)
         rapPlanned.placeBest = enabled and true or false
-        Window:Notify({ Title = "Pets", Description = enabled and "Auto place best pets aktif (engine menyusul)." or "Auto place best pets dimatikan.", Lifetime = 3 })
+        Window:Notify({ Title = "Pets", Description = enabled and "Auto place best pets aktif." or "Auto place best pets dimatikan.", Lifetime = 3 })
     end,
 })
 
@@ -6180,7 +6340,7 @@ SecFusion:Toggle({
     Default = false,
     Callback = function(enabled)
         rapPlanned.autoClaimFuse = enabled and true or false
-        Window:Notify({ Title = "Fusion", Description = enabled and "Auto claim fuse aktif (engine menyusul)." or "Auto claim fuse dimatikan.", Lifetime = 3 })
+        Window:Notify({ Title = "Fusion", Description = enabled and "Auto claim fuse aktif." or "Auto claim fuse dimatikan.", Lifetime = 3 })
     end,
 })
 
@@ -6244,7 +6404,7 @@ SecFeeds:Toggle({
     Default = false,
     Callback = function(enabled)
         rapPlanned.feedBest = enabled and true or false
-        Window:Notify({ Title = "Feeds", Description = enabled and "Auto feed best pet aktif (engine menyusul)." or "Auto feed best pet dimatikan.", Lifetime = 3 })
+        Window:Notify({ Title = "Feeds", Description = enabled and "Auto feed best pet aktif." or "Auto feed best pet dimatikan.", Lifetime = 3 })
     end,
 })
 
