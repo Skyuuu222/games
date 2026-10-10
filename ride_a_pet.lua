@@ -3761,7 +3761,7 @@ local function rapRemotePickup(cand, prompt)
                     end
                 end)
                 if ok then
-                    task.wait(0.8)
+                    task.wait(0.25)
                     local gone = (not prompt) or (prompt.Parent == nil) or (not prompt:IsDescendantOf(workspace))
                     if gone then return true, table.concat(names, "/") end
                 end
@@ -3839,6 +3839,7 @@ local function rapIsMine(inst)
     return ok and owned or false
 end
 local rapMyPlotModel = nil
+local rapPlotCacheT = 0
 -- Plot: Workspace.Plots.Plot + Data.Owner (ObjectValue/StringValue menunjuk pemain).
 -- Otomatis tiap server: cocokkan Owner==LocalPlayer, TANPA set manual.
 local function rapPlotOwnerOf(plot)
@@ -4275,31 +4276,9 @@ local function rapPickupTick()
             Window:Notify({ Title = "Telur Didapat", Description = ("[%s] %s (total %d)"):format(rar, cand.name, rapPickedCount), Lifetime = 3 })
         end
     else
-        -- prompt gagal -> coba trigger remote langsung (cadangan), tetap satu-per-satu
-        local remoteOk = false
-        if rapUseRemoteFallback then
-            local ok2 = false
-            pcall(function() ok2 = rapRemotePickup(cand, prompt) end)
-            if ok2 == true then remoteOk = true end
-            -- rapRemotePickup return 2 value; cek ulang telur hilang
-            do
-                local gone2 = (prompt.Parent == nil) or (not prompt:IsDescendantOf(workspace))
-                if gone2 then remoteOk = true delivered = true end
-            end
-        end
-        if remoteOk and delivered then
-            rapPickedCount = rapPickedCount + 1
-            rapEggsCarried = rapEggsCarried + 1
-            rapPickupCD = os.clock() + 0.4
-            pcall(function() rapWHEgg(rapRarityOf(cand.name), cand.name, rapFindMutation(cand.name)) end)
-            Window:Notify({ Title = "Pick Up", Description = tostring(cand.name) .. " ketangkep, bawa ke plot...", Lifetime = 2 })
-        else
-            -- JANGAN pulang dulu: telur mungkin sudah virtual di server walau prompt masih ada.
-            -- Lanjut ke edge + walk, verifikasi akhir yg mutuskan done(1)/done(0).
-            Window:Notify({ Title = "Gagal Ambil", Description = tostring(cand.name) .. " belum di tangan - coba lagi...", Lifetime = 3 })
-            pcall(function() print("[RAP-EGG] GAGAL-AMBIL target="..tostring(cand.name).." tas-cek-gagal") end)
-            Window:Notify({ Title = "Pick Up", Description = tostring(cand.name) .. " prompt blm hilang, tetap bawa ke plot...", Lifetime = 2 })
-            rapHandled[prompt] = nil
+        -- prompt blm jelas: LANGSUNG ke plot (tanpa coba remote 6x yg bikin DIAM). Verifikasi akhir yg mutuskan.
+        do
+            Window:Notify({ Title = "Pick Up", Description = tostring(cand.name) .. " bawa ke plot...", Lifetime = 2 })
         end
     end
         -- 3. delivery: WAJIB ke plot SENDIRI (ukur ulang tiap telur), edge luar -> WALK tengah.
@@ -4307,7 +4286,8 @@ local function rapPickupTick()
     do
         local rarB = rapRarityOf(cand.name)
         local rareB = (rarB == "Epic" or rarB == "Legendary" or rarB == "Mythic" or rarB == "Divine" or rarB == "Ethereal")
-        -- a. ukur ulang plot sendiri tiap telur (bukan cache lama)
+        -- a. plot di-cache 60 dtk (scan full tiap telur = DIAM lama). Rejoin = global reset, otomatis cari baru.
+        if not rapPlotPos or os.clock() - rapPlotCacheT > 60 then pcall(function() rapFindMyPlot() end) rapPlotCacheT = os.clock() end
         pcall(function() rapFindMyPlot() end)
         Window:Notify({ Title = "Delivery", Description = "Ke dekat plot: " .. tostring(cand.name), Lifetime = 2 })
         local edgeOk = rapGoPlotEdge(mode)
@@ -4407,7 +4387,6 @@ local function rapPickupTick()
                                 pcall(function() local h2 = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Humanoid") if h2 then h2:EquipTool(tl) end end)
                                 task.wait(0.15)
                                 pcall(function() local hrp2 = rapGetRoot() local hd2 = tl:FindFirstChild("Handle") if hrp2 and hd2 and type(firetouchinterest) == "function" then firetouchinterest(hrp2, hd2, 0) task.wait(0.05) firetouchinterest(hrp2, hd2, 1) end end)
-            task.wait(0.15)
                                 repick = repick + 1
                             end
                         end
