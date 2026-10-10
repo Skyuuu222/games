@@ -4470,7 +4470,8 @@ function rapPickupTick()
                 if pets then
                     -- SKOR BERSAMA tas+plot (10-Okt): helper rapPetScore pakai Weight -> Speed (+attr Speed).
                     local bestPet, bestScore, bestLoc, bestTool, bestToolKey = nil, -1, nil, nil, nil
-                    -- SEAT DULU (10-Okt): catat tunggangan sekarang sebelum scan. Seri skor = yg ditunggangi menang (anti pindah-pindah).
+                    -- KUNCI NAMA (10-Okt): best pertama dikunci permanen per sesi. Tiap telur pakai nama itu, tanpa scan ulang, tanpa pindah.
+                    rapRideName = rapRideName -- global, tak di-reset per telur
                     local curSeat0 = nil
                     pcall(function()
                         local ch0 = LocalPlayer.Character
@@ -4478,7 +4479,27 @@ function rapPickupTick()
                         local seat0 = hum0 and hum0.SeatPart or nil
                         curSeat0 = seat0 and seat0:FindFirstAncestorOfClass("Model") or nil
                     end)
-                    -- BEST = speed tertinggi saat ini (10-Okt): tanpa kunci, tanpa lewati. Tiap telur hitung fresh.
+                    -- DUDUK = PAKAI ITU (10-Okt): yg ditunggangi (keluar folder plot) = best. Tanpa scan, tanpa pindah.
+                    if curSeat0 ~= nil then
+                        bestPet = curSeat0 bestLoc = "seat"
+                        pcall(function() local _, _, sc = rapPetScore(curSeat0) bestScore = sc end)
+                        if rapRideName == nil then pcall(function() rapRideName = tostring(curSeat0.Name) end) end
+                    elseif rapRideName ~= nil then
+                        -- cari nama kunci di plot (tanpa peduli skor).
+                        for _, pet in ipairs(pets:GetChildren()) do
+                            if tostring(pet.Name) == tostring(rapRideName) then
+                                local rp = pet:FindFirstChild("RidePrompt", true)
+                                if rp and rp:IsA("ProximityPrompt") and rp.Parent then
+                                    bestPet = pet bestLoc = "plot"
+                                    pcall(function() local _, _, sc = rapPetScore(pet) bestScore = sc end)
+                                    break
+                                end
+                            end
+                        end
+                        if bestPet == nil then rapRideName = nil end -- kunci hilang (pet dihapus), scan fresh di bawah
+                    end
+                    if bestPet == nil then
+                    -- BEST = speed tertinggi (cuma jalan kalau belum ada kunci).
                     for _, pet in ipairs(pets:GetChildren()) do
                         local rp = pet:FindFirstChild("RidePrompt", true)
                         if rp and rp:IsA("ProximityPrompt") and rp.Parent then
@@ -4486,9 +4507,11 @@ function rapPickupTick()
                             if sc > bestScore or (sc == bestScore and curSeat0 ~= nil and pet == curSeat0) then bestScore = sc bestPet = pet bestLoc = "plot" end
                         end
                     end
-                    -- tas: lewati kalau sudah duduk (10-Okt): hemat 1.3 dtk + anti pindah pet tiap telur.
+                    end -- tutup if bestPet == nil (scan fresh)
+                    if bestPet and rapRideName == nil then pcall(function() rapRideName = tostring(bestPet.Name) end) end
+                    -- tas: lewati kalau sudah duduk ATAU kunci nama sudah ketemu (10-Okt): anti pindah pet.
                     -- tas: nilai Tool pet (bukan telur). Tanpa equip/place dulu, cuma baca atribut.
-                    if curSeat0 == nil then
+                    if curSeat0 == nil and bestPet == nil then
                     pcall(function()
                         local bp = LocalPlayer:FindFirstChild("Backpack")
                         if bp then for _, t in ipairs(bp:GetChildren()) do
@@ -4550,7 +4573,8 @@ function rapPickupTick()
                         end)
                         rapCurRideScore = nil
                         -- NAMA stabil (10-Okt): model pet bisa instance baru tiap pindah; nama tetap. Duduk di nama yg sama = diam.
-                        if bestPet and curSeatModel and (curSeatModel == bestPet or tostring(curSeatModel.Name) == tostring(bestPet.Name)) then
+                        -- SEAT (10-Okt): bestLoc seat = tetap diam walau instance/nama berubah.
+                        if bestPet and curSeatModel and (bestLoc == "seat" or curSeatModel == bestPet or tostring(curSeatModel.Name) == tostring(bestPet.Name)) then
                             rapStay = true
                         elseif curSeatModel ~= nil then
                             pcall(function()
