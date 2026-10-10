@@ -4343,6 +4343,7 @@ function rapPickupTick()
     rapBusy = true rapBusyT = os.clock()
     local okTick, resTick = pcall(function()
     local function done(n) rapBusy = false if n == 1 then rapLockName = nil end return n end
+    -- OFF = STOP (10-Okt): tiap jeda dicek lagi di bawah; off di tengah telur = batal langsung.
     -- SATU telur per tick: ambil sampai berhasil baru lanjut ke telur lain.
     -- Tidak pernah place telur (itu tugas rapFlag.placedEgg / rapPlaceEggs).
     local cand = nil
@@ -4407,6 +4408,7 @@ function rapPickupTick()
     local prompt = cand.prompt
     if not prompt or not prompt.Parent then return done(0) end
     -- 1. NAIK BEST (tas + plot). Skor: SPEED dulu, Weight seri.
+    if not rapFlag.pickup then return done(0) end
     local bestPetRef = nil
     -- SKOR SPEED-KERAS (10-Okt): pindai SEMUA attr + ValueBase yg namanya mengandung speed/spd/vel/walk.
     -- Biang lama: cuma attr persis "Speed" + ValueBase persis "speed" -> semua 0 -> menang yg duluan (pet jelek).
@@ -4488,11 +4490,21 @@ function rapPickupTick()
                         end)
                         if not isPetSeat then curSeat0 = nil end
                     end
-                    -- DUDUK = PAKAI ITU (10-Okt): yg ditunggangi (keluar folder plot) = best. Tanpa scan, tanpa pindah.
+                    -- DUDUK = LANGSUNG (10-Okt): yg ditunggangi = best. Scan cepat cuma cari yg JELAS lebih bagus (+5%); tak ada = diam, langsung ke telur.
                     if curSeat0 ~= nil then
                         bestPet = curSeat0 bestLoc = "seat"
                         pcall(function() local _, _, sc = rapPetScore(curSeat0) bestScore = sc end)
                         if rapRideName == nil then pcall(function() rapRideName = tostring(curSeat0.Name) end) end
+                        -- upgrade: cuma pindah kalau ada yg skornya >5% di atas tunggangan (tanpa gerak, tanpa prompt).
+                        pcall(function()
+                            for _, pet in ipairs(pets:GetChildren()) do
+                                local rp = pet:FindFirstChild("RidePrompt", true)
+                                if rp and rp:IsA("ProximityPrompt") and rp.Parent then
+                                    local _, _, sc = rapPetScore(pet)
+                                    if sc > bestScore * 1.05 + 1 then bestScore = sc bestPet = pet bestLoc = "plot" end
+                                end
+                            end
+                        end)
                     elseif rapRideName ~= nil then
                         -- cari nama kunci di plot (tanpa peduli skor).
                         for _, pet in ipairs(pets:GetChildren()) do
@@ -4719,6 +4731,7 @@ function rapPickupTick()
             end)
         end
     -- GERBANG LUNAK (10-Okt): 1x cek cepat. Gagal tetap LANJUT ke telur.
+    if not rapFlag.pickup then return done(0) end
     local rapRode = false
     do
         pcall(function()
@@ -4740,12 +4753,14 @@ function rapPickupTick()
         if bl and os.clock() < bl then return done(0) end
     end
     rapHandled[prompt] = true
+    if not rapFlag.pickup then return done(0) end
     rapLockName = cand.name rapLockSince = os.clock()
     do
         local stop = cand.pos + Vector3.new(0, 4, 3)
         rapForceTeleport(stop) task.wait(0.1)
     end
     -- 3. TURUN SEBENTAR -> ambil 2x -> NAIK LAGI (pet ikut teleport, prompt-nya dekat).
+    if not rapFlag.pickup then return done(0) end
     do
         pcall(function()
             local ch = LocalPlayer.Character
@@ -4754,6 +4769,7 @@ function rapPickupTick()
         end)
         task.wait(0.1)
         for grab = 1, 2 do
+            if not rapFlag.pickup then break end
             pcall(function() prompt.RequiresLineOfSight = false end)
             rapTriggerPrompt(prompt)
             task.wait(0.1)
@@ -4790,8 +4806,12 @@ function rapPickupTick()
     end
     -- 4. DIAM 20 DETIK (satu-satunya tunggu), lalu LANGSUNG balik plot tanpa diam tambahan.
     do
+        if not rapFlag.pickup then return done(0) end
         pcall(function() Window:Notify({Title="Tunggu",Description="Diam 20 dtk...",Lifetime=2}) end)
-        task.wait(20)
+        for wt = 1, 40 do
+            if not rapFlag.pickup then return done(0) end
+            task.wait(0.5)
+        end
     end
     -- DIAM di telur sampai server selesai: prompt hilang ATAU tool telur masuk char/backpack.
     -- DIPANGKAS (10-Okt): ambil 2x di atas sudah cek, langsung lanjut tanpa loop settle tambahan.
@@ -4828,6 +4848,7 @@ function rapPickupTick()
         end
     end
         -- 3. delivery: WAJIB ke plot SENDIRI (ukur ulang tiap telur), edge luar -> WALK tengah.
+    if not rapFlag.pickup then return done(0) end
     --    return 1 HANYA kalau telur benar2 hilang/masuk tas. Kalau tidak -> done(0), telur lain nunggu.
     do
         local rarB = rapRarityOf(cand.name)
@@ -5700,7 +5721,11 @@ end
 
 function rapSet(key, on, title, onMsg, offMsg)
     rapFlag[key] = on and true or nil
-    if on then rapLoopStart() end
+    if on then rapLoopStart()
+    else
+        -- OFF = STOP TOTAL (10-Okt): lepas kunci/sibuk biar aksi yg jalan batal di cek berikut, tak lanjut telur baru.
+        pcall(function() rapPickupReset() end)
+    end
     Window:Notify({ Title = title, Description = on and onMsg or offMsg, Lifetime = 3 })
 end
 
