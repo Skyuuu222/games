@@ -3986,22 +3986,59 @@ local function rapPickupTick()
             else rapTweenTo(pp, rapPlanned.glideSpeed) task.wait(0.2) end
         end
     end
-    pcall(function()
-        prompt.HoldDuration = 0
-        prompt.MaxActivationDistance = 12
-        prompt.RequiresLineOfSight = false
-    end)
+    do
+        local rar0 = rapRarityOf(cand.name)
+        local rare0 = (rar0 == "Epic" or rar0 == "Legendary" or rar0 == "Mythic" or rar0 == "Divine" or rar0 == "Ethereal")
+        if rare0 then
+            pcall(function() prompt.RequiresLineOfSight = false end)
+        else
+            pcall(function()
+                prompt.HoldDuration = 0
+                prompt.MaxActivationDistance = 12
+                prompt.RequiresLineOfSight = false
+            end)
+        end
+    end
     -- skip telur yg gagal 3x dalam 60 dtk (hindari spam kode AT-xxxx)
     do
         local bl = rapBlacklist[prompt]
         if bl and os.clock() < bl then return 0 end
     end
     rapHandled[prompt] = true
-    -- kunci karakter saat delivery supaya server tidak me-return (penyebab AT-1782/5783)
-    do local _r = rapGetRoot() if _r then pcall(function() _r.Anchored = true end) end end
-    rapTriggerPrompt(prompt)
-    task.wait(mode == "Instant" and 0.7 or 1.2)
-    do local _r = rapGetRoot() if _r then pcall(function() _r.Anchored = false end) end end
+    -- tiru manual: JANGAN anchor; telur langka pakai hold asli (HoldDuration tidak dinolkan)
+    do
+        local rar2 = rapRarityOf(cand.name)
+        local isRare = (rar2 == "Epic" or rar2 == "Legendary" or rar2 == "Mythic" or rar2 == "Divine" or rar2 == "Ethereal")
+        if not isRare then
+            rapTriggerPrompt(prompt)
+            task.wait(mode == "Instant" and 0.7 or 1.2)
+        else
+            do
+                local pp2 = rapEntityPos(prompt.Parent) or cand.pos
+                local rr2 = rapGetRoot()
+                if pp2 and rr2 and (pp2 - rr2.Position).Magnitude > 8 then
+                    if mode == "Instant" then rapTeleportTo(pp2, "Egg") else rapTweenTo(pp2, rapPlanned.glideSpeed) end
+                    task.wait(0.5)
+                end
+            end
+            pcall(function() prompt.RequiresLineOfSight = false end)
+            if type(fireproximityprompt) == "function" then
+                local hd = 0
+                pcall(function() hd = prompt.HoldDuration or 0 end)
+                pcall(function() fireproximityprompt(prompt, 0) end)
+                task.wait((tonumber(hd) or 0) + 0.6)
+                pcall(function() fireproximityprompt(prompt, 1) end)
+                task.wait(2.0)
+            else
+                local hd2 = 0
+                pcall(function() hd2 = prompt.HoldDuration or 0 end)
+                pcall(function() prompt:InputHoldBegin() end)
+                task.wait((tonumber(hd2) or 1) + 0.5)
+                pcall(function() prompt:InputHoldEnd() end)
+                task.wait(2.0)
+            end
+        end
+    end
     local gone = (prompt.Parent == nil) or (not prompt:IsDescendantOf(workspace))
     local delivered = gone
     if delivered then
@@ -4017,7 +4054,6 @@ local function rapPickupTick()
         -- prompt gagal -> coba trigger remote langsung (cadangan), tetap satu-per-satu
         local remoteOk = false
         if rapUseRemoteFallback then
-            do local _r = rapGetRoot() if _r then pcall(function() _r.Anchored = true end) end end
             local ok2 = false
             pcall(function() ok2 = rapRemotePickup(cand, prompt) end)
             if ok2 == true then remoteOk = true end
@@ -4026,7 +4062,6 @@ local function rapPickupTick()
                 local gone2 = (prompt.Parent == nil) or (not prompt:IsDescendantOf(workspace))
                 if gone2 then remoteOk = true delivered = true end
             end
-            do local _r = rapGetRoot() if _r then pcall(function() _r.Anchored = false end) end end
         end
         if remoteOk and delivered then
             rapPickedCount = rapPickedCount + 1
