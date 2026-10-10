@@ -4317,14 +4317,34 @@ local function rapPickupTick()
             pcall(function() print("[RAP-EGG] target="..tostring(cand.name).." rarity="..tostring(rapRarityOf(cand.name))) end)
             local dropped = 0
             pcall(function()
-                local ch = LocalPlayer.Character
-                local hum = ch and ch:FindFirstChildOfClass("Humanoid")
-                if hum then hum:UnequipTools() end
+                local ch0 = LocalPlayer.Character
+                local hum0 = ch0 and ch0:FindFirstChildOfClass("Humanoid")
+                local bp0 = LocalPlayer:FindFirstChild("Backpack")
+                if hum0 and bp0 and cand.name then
+                    for _, t in ipairs(bp0:GetChildren()) do
+                        if t and t:IsA("Tool") and tostring(t.Name) == tostring(cand.name) then
+                            hum0:EquipTool(t)
+                            task.wait(0.6)
+                            break
+                        end
+                    end
+                end
+                if hum0 then hum0:UnequipTools() end
                 task.wait(0.3)
-                ch = LocalPlayer.Character
+                local ch = LocalPlayer.Character
                 if ch then
                     for _, t in ipairs(ch:GetChildren()) do
                         if t and t:IsA("Tool") and tostring(t.Name):lower():find("egg") then
+                            t.Parent = workspace
+                            dropped = dropped + 1
+                            task.wait(0.3)
+                        end
+                    end
+                end
+                local bpA = LocalPlayer:FindFirstChild("Backpack")
+                if bpA and cand.name then
+                    for _, t in ipairs(bpA:GetChildren()) do
+                        if t and t:IsA("Tool") and tostring(t.Name) == tostring(cand.name) then
                             t.Parent = workspace
                             dropped = dropped + 1
                             task.wait(0.3)
