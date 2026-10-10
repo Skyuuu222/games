@@ -3431,8 +3431,11 @@ local rapEggNames = {
     "Aurora Egg", "Galaxy Egg",
     -- Ethereal
     "Black Hole Egg", "Solaris Egg", "Cherub Egg", "Volcanic Egg",
+    "Ethereal Egg",
     -- Baru (dari scan RenderedEggs)
     "Bloom Egg", "Tropical Egg", "Tidal Egg",
+    -- Varian rebirth
+    "Rebirth Egg",
 }
 
 local RAP_RARITY = {
@@ -3451,7 +3454,9 @@ local RAP_RARITY = {
     ["Aurora Egg"] = "Divine", ["Galaxy Egg"] = "Divine",
     -- Ethereal
     ["Black Hole Egg"] = "Ethereal", ["Solaris Egg"] = "Ethereal", ["Cherub Egg"] = "Ethereal", ["Volcanic Egg"] = "Ethereal",
+    ["Ethereal Egg"] = "Ethereal",
     ["Bloom Egg"] = "Epic", ["Tropical Egg"] = "Epic", ["Tidal Egg"] = "Epic",
+    ["Rebirth Egg"] = "Divine",
 }
 
 local RARITY_COLOR = {
@@ -4135,6 +4140,18 @@ local function rapFindEggName(inst)
         for _, n in ipairs(rapEggNames) do
             if cur.Name == n then return cur.Name, cur end
         end
+        -- fuzzy: "ethereal egg", "rebirth egg", dsb walau ada awalan/akhiran
+        do
+            local low = string.lower(tostring(cur.Name or ""))
+            if low:find("egg", 1, true) then
+                for _, n in ipairs(rapEggNames) do
+                    local nl = string.lower(n)
+                    if low == nl or low:find(nl, 1, true) then return n, cur end
+                end
+                if low:find("ethereal", 1, true) then return "Ethereal Egg", cur end
+                if low:find("rebirth", 1, true) then return "Rebirth Egg", cur end
+            end
+        end
         -- fallback: apapun di dalam RenderedEggs yg ujungnya "Egg" dianggap telur
         pcall(function()
             local fp = cur:GetFullName()
@@ -4143,7 +4160,16 @@ local function rapFindEggName(inst)
         end)
         if cur.Parent and cur.Parent.Name and cur.Parent.Name:find("Egg", 1, true) then
             local okF, fp2 = pcall(function() return cur.Parent:GetFullName() end)
-            if okF and fp2:find("RenderedEggs", 1, true) then return cur.Parent.Name, cur.Parent end
+            if okF and fp2:find("RenderedEggs", 1, true) then
+                local pn = tostring(cur.Parent.Name)
+                local pl = string.lower(pn)
+                for _, n in ipairs(rapEggNames) do
+                    if pl:find(string.lower(n), 1, true) then return n, cur.Parent end
+                end
+                if pl:find("ethereal", 1, true) then return "Ethereal Egg", cur.Parent end
+                if pl:find("rebirth", 1, true) then return "Rebirth Egg", cur.Parent end
+                return pn, cur.Parent
+            end
         end
         cur = cur.Parent
     end
