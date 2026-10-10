@@ -4406,15 +4406,46 @@ function rapPickupTick()
     local mode = rapPickupMode or "Tween"
     local prompt = cand.prompt
     if not prompt or not prompt.Parent then return done(0) end
-    -- URUTAN (sesuai arahan): TELEPORT dulu ke telur, LANGSUNG instan naik pet via remote,
-    -- lalu ambil + diam 20 dtk. Ride full (prompt) hanya fallback bila remote gagal.
-    -- 1. teleport ke telur dulu.
+    -- URUTAN FINAL (10-Okt): NAIK DULU baru teleport, langsung tanpa jeda.
+    -- 1. naik pet dulu (di plot, dekat). Kalau sudah duduk, skip.
     do
-        local rar0 = rapRarityOf(cand.name)
-        local rare0 = (rar0 == "Epic" or rar0 == "Legendary" or rar0 == "Mythic" or rar0 == "Divine" or rar0 == "Ethereal")
-        -- tiru manual: JANGAN ubah HoldDuration/MaxDist, cuma matikan LOS
-        pcall(function() prompt.RequiresLineOfSight = false end)
+        local seated0 = false
+        pcall(function()
+            local ch = LocalPlayer.Character
+            local hum = ch and ch:FindFirstChildOfClass("Humanoid")
+            seated0 = hum and (hum.Sit or hum.SeatPart ~= nil) or false
+        end)
+        if not seated0 then
+            pcall(function() Window:Notify({Title="Ride",Description="Naik pet...",Lifetime=2}) end)
+            pcall(function()
+                local myPlot = rapMyPlotModel
+                if not myPlot then pcall(function() rapFindMyPlot() end) myPlot = rapMyPlotModel end
+                local pets = myPlot and myPlot:FindFirstChild("Pets")
+                if pets then
+                    for _, pet in ipairs(pets:GetChildren()) do
+                        local rp = pet:FindFirstChild("RidePrompt", true)
+                        if rp and rp:IsA("ProximityPrompt") and rp.Parent then
+                            local pp = rapEntityPos(rp.Parent)
+                            if pp then rapForceTeleport(pp) task.wait(0.2) end
+                            pcall(function() rp.RequiresLineOfSight = false end)
+                            rapFire({ "Remotes", "Game", "PetRideMode" })
+                            rapFire({ "Remotes", "Game", "Mounting" })
+                            rapTriggerPrompt(rp)
+                            task.wait(0.4)
+                            local okS = false
+                            pcall(function()
+                                local ch = LocalPlayer.Character
+                                local hum = ch and ch:FindFirstChildOfClass("Humanoid")
+                                okS = hum and (hum.Sit or hum.SeatPart ~= nil) or false
+                            end)
+                            if okS then break end
+                        end
+                    end
+                end
+            end)
+        end
     end
+    -- 2. LANGSUNG teleport ke telur (tanpa jeda, seat dipertahankan).
     -- skip telur yg gagal 3x dalam 60 dtk (hindari spam kode AT-xxxx)
     do
         local bl = rapBlacklist[prompt]
@@ -4437,28 +4468,7 @@ function rapPickupTick()
             rapForceTeleport(pp) task.wait(0.2)
         end
     end
-    -- RIDE OTOMATIS pakai pemicu ASLI (hasil pindai). Gagal = baru tunggu manual.
-    do
-        local ok = false
-        pcall(function() ok = rapRideReal() end)
-        if ok then
-            Window:Notify({Title="Ride",Description="Otomatis naik, lanjut ambil!",Lifetime=2})
-        else
-            Window:Notify({Title="Ride Manual",Description="Otomatis gagal, naik pet sendiri...",Lifetime=4})
-            local wt0 = os.clock()
-            while os.clock() - wt0 < 60 do
-                local seated = false
-                pcall(function()
-                    local ch = LocalPlayer.Character
-                    local hum = ch and ch:FindFirstChildOfClass("Humanoid")
-                    seated = hum and (hum.Sit or hum.SeatPart ~= nil) or false
-                end)
-                if seated then Window:Notify({Title="Ride",Description="Sudah naik, lanjut ambil!",Lifetime=2}) break end
-                if math.floor(os.clock() - wt0) % 10 == 0 then pcall(function() Window:Notify({Title="Ride Manual",Description="Menunggu kamu naik pet...",Lifetime=2}) end) end
-                task.wait(1)
-            end
-        end
-    end
+    -- 3. ambil langsung (sudah naik + sudah di telur).
     -- SCAN 20:24: SEMUA prompt Pick Up hold=0, maxdist 16-21. Jadi langsung trigger + backup EggPickup.
     do
         pcall(function() prompt.RequiresLineOfSight = false end)
