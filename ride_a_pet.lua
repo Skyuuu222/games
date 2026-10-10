@@ -3930,15 +3930,26 @@ local function rapGoPlotEdge(mode)
 end
 -- WALK BENERAN (animasi): pakai Humanoid:MoveTo bertahap, bukan geser CFrame.
 -- Geser CFrame tidak memicu animasi jalan -> server anggap diam -> delivery gagal.
+local function raycastGround(root)
+    local ok, pos = pcall(function()
+        local rp = RaycastParams.new() rp.FilterType = Enum.RaycastFilterType.Exclude rp.FilterDescendantsInstances = { LocalPlayer.Character }
+        local res = workspace:Raycast(root.Position, Vector3.new(0, -60, 0), rp)
+        if res then return res.Position end return nil
+    end)
+    if ok then return pos end return nil
+end
 local function rapWalkPlotCenter()
     local c = rapPlotCenter()
     if not c then return false end
+    rapSetNoclip(false)
+    do local gg = raycastGround(root) if gg then pcall(function() root.CFrame = CFrame.new(gg + Vector3.new(0, 3.2, 0)) end) end end
     local ch = LocalPlayer.Character
     local hum = ch and ch:FindFirstChildOfClass("Humanoid")
     local root = rapGetRoot()
     if not ch or not hum or not root then return false end
     pcall(function()
-        hum.Sit = false hum.PlatformStand = false
+rapSetNoclip(false) do local gg = raycastGround(root) if gg then root.CFrame = CFrame.new(gg + Vector3.new(0, 3.2, 0)) end end
+                hum.Sit = false hum.PlatformStand = false
         if hum.WalkSpeed < 8 then hum.WalkSpeed = 16 end
         if hum.Health <= 0 then return end
         for _, v in ipairs(ch:GetDescendants()) do
