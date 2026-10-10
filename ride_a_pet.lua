@@ -4428,10 +4428,12 @@ function rapPickupTick()
             rapPickupCD = os.clock() + 1
             return done(0)
         end
-        -- b2. DROP PAKSA DI PINGGIR: drop telur, ambil lagi, baru walk.
+        -- b2. DROP DI PINGGIR (opsional, default MATI): pola drop+repick di luar plot
+        -- bisa memicu "egg delivery failed" merah dari server. Default: langsung walk bawa telur.
+        local dropped, repick = 0, 0
+        if rapPlanned and rapPlanned.edgeDrop then
         do
             pcall(function() Window:Notify({Title="Drop",Description="Drop telur di pinggir: "..tostring(cand.name),Lifetime=2}) end)
-            local dropped = 0
             pcall(function()
                 -- equip target ke TANGAN dulu (tombol Drop butuh dipegang)
                 local ch0 = LocalPlayer.Character
@@ -4535,7 +4537,6 @@ function rapPickupTick()
             end)
             pcall(function() Window:Notify({Title="Egg",Description=tostring(cand.name).." ("..tostring(rapRarityOf(cand.name))..")",Lifetime=3}) end)
             task.wait(0.15)
-            local repick = 0
             pcall(function()
                 local rr = rapGetRoot()
                 if rr then
@@ -4575,8 +4576,9 @@ function rapPickupTick()
             pcall(function() Window:Notify({Title="Pickup",Description=(repick>0 and "Telur diambil lagi" or "Tak ada telur di dekat pinggir"),Lifetime=3}) end)
             task.wait(0.2)
         end
-        -- b. TERBUKTI virtual (toolEggDiTas=0): tidak ada yg bisa di-drop. Langsung walk.
-        -- c. WALK (tanpa teleport) dari edge ke tengah plot sendiri
+        end
+        -- c. WALK BENERAN bawa telur dari edge (110 stud) ke tengah plot sendiri.
+        -- Tidak ada remote tebakan yg ditembak di sini (hindari AT-xxxx merah).
         Window:Notify({ Title = "Delivery", Description = "Jalan ke tengah plot...", Lifetime = 2 })
         local walkOk = rapWalkPlotCenter()
         Window:Notify({ Title = "Walk", Description = walkOk and "Sampai tengah plot" or "GAGAL jalan ke tengah", Lifetime = 3 })
@@ -6064,6 +6066,15 @@ SecAutoEgg:Dropdown({
     Items = { "Instant", "Tween" },
     Default = "Instant",
     Callback = function(v) rapPickupMode = v or "Instant" end,
+})
+
+SecAutoEgg:Toggle({
+    Name = "Drop Di Pinggir (Berisiko)",
+    Default = false,
+    Callback = function(enabled)
+        rapPlanned.edgeDrop = enabled and true or false
+        Window:Notify({ Title = "Pinggir", Description = enabled and "Drop+repick di pinggir AKTIF (bisa error merah)." or "Drop pinggir MATI: langsung jalan bawa telur (aman).", Lifetime = 3 })
+    end,
 })
 
 -- Daftar telur urut rarity (nama polos, tanpa tanda kurung)
