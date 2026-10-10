@@ -3620,7 +3620,7 @@ end
 
 -- ANTI-CHEAT SAFE: utamakan input LEGIT (InputHoldBegin/hold asli), bukan fireproximityprompt
 -- dari jauh. fireproximityprompt hanya cadangan bila executor mendukung & sudah dekat.
-rapSafeTrigger = (rapSafeTrigger == nil) and true or rapSafeTrigger
+rapSafeTrigger = false -- DIHAPUS UI: paksa bebas (sistem baru butuh teleport)
 function rapTriggerPrompt(p)
     if not p or not p.Parent then return false end
     local ok = false
@@ -5109,12 +5109,25 @@ end
 -- Teleport PAKSA (CFrame langsung) untuk leg telur->plot setelah 20 dtk + ride.
 -- Anti-cheat baru lolos bila sudah naik pet + tunggu. Jangan pakai untuk gerak lain.
 function rapForceTeleport(pos)
-    local root = rapGetRoot()
-    if not root or not pos then return false end
-    local ok = pcall(function()
-        root.CFrame = CFrame.new(pos + Vector3.new(0, 4, 0))
-    end)
-    return ok
+    if not pos then return false end
+    local okAll = false
+    for attempt = 1, 3 do
+        pcall(function()
+            local ch = LocalPlayer.Character
+            local hum = ch and ch:FindFirstChildOfClass("Humanoid")
+            local root = rapGetRoot()
+            if not ch or not root then return end
+            if hum then hum.Sit = false hum.PlatformStand = false pcall(function() root.Anchored = false end) end
+            for _, v in ipairs(ch:GetDescendants()) do
+                if v:IsA("BasePart") then pcall(function() v.Anchored = false end) end
+            end
+            root.CFrame = CFrame.new(pos + Vector3.new(0, 4, 0))
+        end)
+        task.wait(0.25)
+        local rr = rapGetRoot()
+        if rr and (rr.Position - pos).Magnitude <= 25 then okAll = true break end
+    end
+    return okAll
 end
 function rapClaimFuseTick()
     if not (rapPlanned and rapPlanned.autoClaimFuse) then return 0 end
@@ -6039,14 +6052,7 @@ SecAutoEgg:Toggle({
     end,
 })
 
-SecAutoEgg:Toggle({
-    Name = "Mode Aman (Anti-Cheat)",
-    Default = true,
-    Callback = function(enabled)
-        rapSafeTrigger = enabled and true or false
-        Window:Notify({ Title = "Anti-Cheat", Description = enabled and "Mode AMAN: input legit + jarak dekat." or "Mode BEBAS: fireprompt + jarak jauh (berisiko).", Lifetime = 3 })
-    end,
-})
+-- Mode Aman UI DIHAPUS (10-Okt): sistem baru butuh teleport langsung. Paksa bebas.
 
 SecAutoEgg:Toggle({
     Name = "Auto Farm Rebirth Egg",
@@ -6064,14 +6070,7 @@ SecAutoEgg:Dropdown({
     Callback = function(v) rapPickupMode = v or "Instant" end,
 })
 
-SecAutoEgg:Toggle({
-    Name = "Drop Di Pinggir (Berisiko)",
-    Default = false,
-    Callback = function(enabled)
-        rapPlanned.edgeDrop = enabled and true or false
-        Window:Notify({ Title = "Pinggir", Description = enabled and "Drop+repick di pinggir AKTIF (bisa error merah)." or "Drop pinggir MATI: langsung jalan bawa telur (aman).", Lifetime = 3 })
-    end,
-})
+-- Drop Pinggir UI DIHAPUS (10-Okt): delivery langsung ke sarang, tanpa drop.
 
 -- Daftar telur urut rarity (nama polos, tanpa tanda kurung)
 local rapEggSorted = {}
