@@ -3431,6 +3431,8 @@ local rapEggNames = {
     "Aurora Egg", "Galaxy Egg",
     -- Ethereal
     "Black Hole Egg", "Solaris Egg", "Cherub Egg", "Volcanic Egg",
+    -- Baru (dari scan RenderedEggs)
+    "Bloom Egg", "Tropical Egg", "Tidal Egg",
 }
 
 local RAP_RARITY = {
@@ -3449,6 +3451,7 @@ local RAP_RARITY = {
     ["Aurora Egg"] = "Divine", ["Galaxy Egg"] = "Divine",
     -- Ethereal
     ["Black Hole Egg"] = "Ethereal", ["Solaris Egg"] = "Ethereal", ["Cherub Egg"] = "Ethereal", ["Volcanic Egg"] = "Ethereal",
+    ["Bloom Egg"] = "Epic", ["Tropical Egg"] = "Epic", ["Tidal Egg"] = "Epic",
 }
 
 local RARITY_COLOR = {
@@ -3907,10 +3910,20 @@ end
 -- ============================== AUTO PICKUP TELUR ==============================
 local function rapFindEggName(inst)
     local cur = inst
-    for _ = 1, 6 do
+    for _ = 1, 8 do
         if not cur or not cur.Parent then break end
         for _, n in ipairs(rapEggNames) do
             if cur.Name == n then return cur.Name, cur end
+        end
+        -- fallback: apapun di dalam RenderedEggs yg ujungnya "Egg" dianggap telur
+        pcall(function()
+            local fp = cur:GetFullName()
+            if fp:find("RenderedEggs", 1, true) and cur.Name:find("Egg", 1, true) then
+            end
+        end)
+        if cur.Parent and cur.Parent.Name and cur.Parent.Name:find("Egg", 1, true) then
+            local okF, fp2 = pcall(function() return cur.Parent:GetFullName() end)
+            if okF and fp2:find("RenderedEggs", 1, true) then return cur.Parent.Name, cur.Parent end
         end
         cur = cur.Parent
     end
@@ -3990,7 +4003,7 @@ local function rapPickupTick()
         local rar0 = rapRarityOf(cand.name)
         local rare0 = (rar0 == "Epic" or rar0 == "Legendary" or rar0 == "Mythic" or rar0 == "Divine" or rar0 == "Ethereal")
         if rare0 then
-            pcall(function() prompt.RequiresLineOfSight = false end)
+            pcall(function() prompt.RequiresLineOfSight = false prompt.MaxActivationDistance = 17 end)
         else
             pcall(function()
                 prompt.HoldDuration = 0
@@ -4079,7 +4092,11 @@ local function rapPickupTick()
     end
     -- 3. balik ke plot sendiri setiap 1 telur sukses (kedua mode sama)
     if rapReturnRanch then
-        task.wait(1.0)
+        do
+            local rarB = rapRarityOf(cand.name)
+            local rareB = (rarB == "Epic" or rarB == "Legendary" or rarB == "Mythic" or rarB == "Divine" or rarB == "Ethereal")
+            task.wait(rareB and 2.5 or 1.0)
+        end
         rapGoPlot(false)
         task.wait(0.5)
     end
