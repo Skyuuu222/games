@@ -4418,9 +4418,17 @@ function rapPickupTick()
                     end)
                 end
                 -- DROP via remote resmi BasketDrop (terbukti probe4), BUKAN Parent=workspace
-                local bd = nil
-                pcall(function() bd = game:GetService("ReplicatedStorage").Remotes.Game.BasketDrop end)
-                if bd then
+                -- Coba 3x + beberapa nama remote + tombol Drop, biar tidak macet di "tidak drop".
+                local bdList = {}
+                pcall(function()
+                    local g = game:GetService("ReplicatedStorage").Remotes.Game
+                    for _, rn in ipairs({"BasketDrop", "DropEgg", "Drop", "EggDrop"}) do
+                        local r = g and g:FindFirstChild(rn)
+                        if r then table.insert(bdList, r) end
+                    end
+                end)
+                for attempt = 1, 3 do
+                    if dropped > 0 then break end
                     local before0 = 0
                     pcall(function()
                         local bp = LocalPlayer:FindFirstChild("Backpack")
@@ -4428,7 +4436,20 @@ function rapPickupTick()
                         if bp then for _, t in ipairs(bp:GetChildren()) do if t:IsA("Tool") then before0 = before0 + 1 end end end
                         if ch then for _, t in ipairs(ch:GetChildren()) do if t:IsA("Tool") then before0 = before0 + 1 end end end
                     end)
-                    pcall(function() bd:FireServer() end)
+                    -- pastikan tangan pegang telur baru sebelum tiap percobaan
+                    pcall(function()
+                        local ch = LocalPlayer.Character
+                        local hum = ch and ch:FindFirstChildOfClass("Humanoid")
+                        local bp = LocalPlayer:FindFirstChild("Backpack")
+                        local held = ch and ch:FindFirstChildOfClass("Tool")
+                        if hum and bp and not held then
+                            for _, t in ipairs(bp:GetChildren()) do
+                                if t and t:IsA("Tool") and not rapBagBefore[t] then hum:EquipTool(t) task.wait(0.15) break end
+                            end
+                        end
+                    end)
+                    for _, bd in ipairs(bdList) do pcall(function() bd:FireServer() end) end
+                    if #bdList == 0 then pcall(function() game:GetService("ReplicatedStorage").Remotes.Game.BasketDrop:FireServer() end) end
                     task.wait(0.35)
                     local after0 = 0
                     pcall(function()
@@ -4441,9 +4462,10 @@ function rapPickupTick()
                     if dropped <= 0 then
                         local btn2 = nil
                         pcall(function() btn2 = LocalPlayer.PlayerGui.Main.BasketTracker.Handler.EggFrame.Drop end)
-                        if btn2 and type(firesignal) == "function" then
-                            pcall(function() firesignal(btn2.MouseButton1Click) end)
-                    task.wait(0.35)
+                        if btn2 then
+                            if type(firesignal) == "function" then pcall(function() firesignal(btn2.MouseButton1Click) end)
+                            else pcall(function() btn2:Activate() end) end
+                            task.wait(0.35)
                             local after1 = 0
                             pcall(function()
                                 local bp = LocalPlayer:FindFirstChild("Backpack")
@@ -4454,6 +4476,7 @@ function rapPickupTick()
                             if after1 < before0 then dropped = before0 - after1 end
                         end
                     end
+                    if dropped <= 0 and attempt < 3 then task.wait(0.3) end
                 end
             end)
             pcall(function()
@@ -4488,8 +4511,10 @@ function rapPickupTick()
                     for _, pr in ipairs(workspace:GetDescendants()) do
                         if pr and pr:IsA("ProximityPrompt") then
                             local mdl = pr:FindFirstAncestorOfClass("Model")
-                            local nm = (mdl and mdl.Name) or ""
-                            if nm ~= "" and nm == cand.name then
+                            local nm = tostring((mdl and mdl.Name) or pr.Parent and pr.Parent.Name or "")
+                            local want = string.lower(tostring(cand.name or ""))
+                            local low = string.lower(nm)
+                            if nm ~= "" and (nm == cand.name or (want ~= "" and (low:find(want, 1, true) or want:find(low, 1, true))) or low:find("egg", 1, true)) then
                                 local pp = nil
                                 if pr.Parent and pr.Parent:IsA("BasePart") then pp = pr.Parent.Position
                                 elseif mdl and mdl.PrimaryPart then pp = mdl.PrimaryPart.Position end
@@ -4517,9 +4542,10 @@ function rapPickupTick()
             return done(0)
         end
         task.wait(0.3)
-        -- d. verifikasi AKHIR: telur harus hilang. Belum hilang = BELUM berhasil -> done(0).
+        -- d. verifikasi AKHIR: prompt asli hilang ATAU drop+repick sukses = berhasil.
         do
             local gone3 = (prompt.Parent == nil) or (not prompt:IsDescendantOf(workspace))
+            if not gone3 and dropped > 0 and repick > 0 then gone3 = true end
             if not gone3 then
                 local fc3 = (rapFailCount[prompt] or 0) + 1
                 rapFailCount[prompt] = fc3
