@@ -3378,7 +3378,7 @@ local rapEggFilterSet = {}
 local rapRarityFilterSet = {}
 local rapMutationFilterSet = {}
 local rapPickedCount = 0
-local rapPickupMode = "Biasa"
+local rapPickupMode = "Tween"
 local rapReturnRanch = true
 local rapEggCapacity = 5
 local rapEggsCarried = 0
@@ -3682,6 +3682,42 @@ local function rapTeleportTo(pos, label)
     root.CFrame = CFrame.new(pos + Vector3.new(0, 4, 0))
     return true
 end
+-- Noclip + Tween fly (untuk mode Tween Auto Egg Collector)
+local rapNoclip = false
+local rapNoclipConn = nil
+local function rapSetNoclip(on)
+    rapNoclip = on and true or false
+    pcall(function() if rapNoclipConn then rapNoclipConn:Disconnect() rapNoclipConn = nil end end)
+    if rapNoclip then
+        pcall(function()
+            rapNoclipConn = game:GetService("RunService").Stepped:Connect(function()
+                local ch = LocalPlayer.Character
+                if ch then for _, v in ipairs(ch:GetDescendants()) do if v:IsA("BasePart") then v.CanCollide = false end end end
+            end)
+        end)
+    end
+end
+local function rapTweenTo(pos, speed)
+    local root = rapGetRoot()
+    if not root or not pos then return false end
+    rapSetNoclip(true)
+    local dist = (root.Position - pos).Magnitude
+    local spd = tonumber(speed) or tonumber(rapPlanned.glideSpeed) or 1000
+    if spd < 50 then spd = 50 end
+    local t = math.max(0.3, dist / spd)
+    local done = false
+    pcall(function()
+        local tw = game:GetService("TweenService"):Create(root, TweenInfo.new(t, Enum.EasingStyle.Linear), { CFrame = CFrame.new(pos + Vector3.new(0, 4, 0)) })
+        tw:Play()
+        tw.Completed:Wait()
+        done = true
+    end)
+    if not done then
+        -- fallback jalan biasa bila tween gagal
+        pcall(function() rapMoveTo(pos, math.max(4, t)) end)
+    end
+    return (rapGetRoot() and ((rapGetRoot().Position - pos).Magnitude <= 22)) or done
+end
 
 -- ============================== RANCH (AUTO DETECT) ==============================
 local rapRanchPos = nil rapPlotPos = nil
@@ -3855,92 +3891,49 @@ local function rapMoveTo(pos, maxWait)
 end
 
 local function rapPickupTick()
-    local candidates = {}
-    local seen = {}
+    -- SATU telur per tick: ambil sampai berhasil baru lanjut ke telur lain.
+    -- Tidak pernah place telur (itu tugas rapFlag.placedEgg / rapPlaceEggs).
+    local cand = nil
     pcall(function()
+        local root0 = rapGetRoot()
+        local myPos = root0 and root0.Position
+        local bestD = nil
         for _, d in ipairs(rapTickList()) do
             if d:IsA("ProximityPrompt") and tostring(d.ActionText) == "Pick Up" then
-                local nm = rapFindEggName(d)
-                if nm and rapMatchFilter(nm, d) and not seen[tostring(d)] then
-                    seen[tostring(d)] = true
-                    local pos = rapEntityPos(d.Parent) or rapEntityPos(d)
-                    if pos then
-                        table.insert(candidates, { name = nm, part = d.Parent, pos = pos, prompt = d })
+                if not rapHandled[d] then
+                    local nm = rapFindEggName(d)
+                    if nm and rapMatchFilter(nm, d) then
+                        local pos = rapEntityPos(d.Parent) or rapEntityPos(d)
+                        if pos then
+                            local dist = myPos and (pos - myPos).Magnitude or 0
+                            if not bestD or dist < bestD then bestD = dist cand = { name = nm, pos = pos, prompt = d } end
+                        end
                     end
                 end
             end
         end
     end)
-
-    -- Tidak ada telur lagi: kalau masih bawa telur, balik ke ranch
-    if #candidates == 0 then
-        if rapEggsCarried > 0 then
-            rapGoPlot(false)
-            rapEggsCarried = 0
-        end
-        return 0
-    end
-
-    local root = rapGetRoot()
-    local myPos = root and root.Position
-
-    local best, bestDist
-    for _, c in ipairs(candidates) do
-        local dist = myPos and (c.pos - myPos).Magnitude or 0
-        if not bestDist or dist < bestDist then best, bestDist = c, dist end
-    end
-    if not best then return 0 end
-
-    local arrived = false
-    if rapPickupMode == "Instant" then
-        rapTeleportTo(best.pos, "Egg")
-        task.wait(0.15)
-        arrived = true
-    elseif bestDist > 10 then
-        arrived = rapMoveTo(best.pos, 5)
-    else
-        arrived = true
-    end
-    if not arrived then return 0 end
-
-    root = rapGetRoot()
-    if not root then return 0 end
-
-    -- Prompt yang sudah dikumpulkan di pemindaian pertama; tidak perlu memindai
-    -- seluruh workspace untuk kedua kalinya.
-    local prompt = best.prompt
-    local promptDist = bestDist or 0
-    if not prompt or not prompt.Parent then return 0 end
-
+    if not cand then return 0 end
     if os.clock() < rapPickupCD then return 0 end
-    if rapHandled[prompt] then return 0 end
-
-    local eggName = rapFindEggName(prompt) or "Egg"
-    local eggPart = prompt.Parent
-    local beforePos = root.Position
-
-    -- Dekati telur (mode Biasa = jalan, bukan teleport) supaya server tetap sah.
-    local eggPos = eggPart and rapEntityPos(eggPart)
-    if rapPickupMode == "Instant" then
-        if eggPos then rapTeleportTo(eggPos, "Egg") end
+    local mode = rapPickupMode or "Tween"
+    local prompt = cand.prompt
+    if not prompt or not prompt.Parent then return 0 end
+    -- 1. pergi ke telur
+    if mode == "Instant" then
+        rapSetNoclip(false)
+        rapTeleportTo(cand.pos, "Egg")
+        task.wait(0.35)
+    else
+        rapTweenTo(cand.pos, rapPlanned.glideSpeed)
         task.wait(0.2)
-    elseif eggPos and promptDist and promptDist > 9 then
-        rapMoveTo(eggPos, 4)
-        task.wait(0.15)
     end
-
-    -- Wajib dekat dulu (server menolak delivery dari jauh -> "Egg Was Returned")
+    -- 2. pastikan dekat (server tolak dari jauh)
     do
-        local pp = rapEntityPos(prompt.Parent) or rapEntityPos(prompt)
+        local pp = rapEntityPos(prompt.Parent) or cand.pos
         local rr = rapGetRoot()
         if pp and rr and (pp - rr.Position).Magnitude > 12 then
-            if rapPickupMode == "Instant" then
-                rapTeleportTo(pp, "Egg")
-                task.wait(0.35)
-            else
-                if not rapMoveTo(pp, 5) then return 0 end
-                task.wait(0.2)
-            end
+            if mode == "Instant" then rapTeleportTo(pp, "Egg") task.wait(0.35)
+            else rapTweenTo(pp, rapPlanned.glideSpeed) task.wait(0.2) end
         end
     end
     pcall(function()
@@ -3948,57 +3941,33 @@ local function rapPickupTick()
         prompt.MaxActivationDistance = 12
         prompt.RequiresLineOfSight = false
     end)
-
-    -- Tandai SEBELUM menembak supaya loop tidak menembak telur yang sama dua kali.
     rapHandled[prompt] = true
     rapTriggerPrompt(prompt)
-
-    -- Tunggu server menyelesaikan pengiriman telur. JANGAN ganggu proses ini
-    -- (dulu loop langsung teleport ke ranch -> server balas "egg delivery failed").
-    local goneWait = (rapPickupMode == "Instant") and 0.25 or 0.8
-    task.wait(goneWait)
+    task.wait(mode == "Instant" and 0.4 or 0.9)
     local gone = (prompt.Parent == nil) or (not prompt:IsDescendantOf(workspace))
-    local curRoot = rapGetRoot()
-    local moved = curRoot and (curRoot.Position - beforePos).Magnitude or 0
-
-    -- Server memindahkan karakter (ke ranch) ATAU telur hilang = terkirim sukses.
-    local delivered = gone or moved > 20
-
+    local delivered = gone
     if delivered then
-        -- JANGAN hancurkan telur/prompt client-side: biarkan server yang hapus.
-        -- Menghancurkan sendiri bikin server balas "Egg Delivery Failed".
-        rapHandled[prompt] = true
         rapPickedCount = rapPickedCount + 1
         rapEggsCarried = rapEggsCarried + 1
-        rapPickupCD = os.clock() + 1.5
-        pcall(function() rapWHEgg(rapRarityOf(eggName), eggName, rapFindMutation(eggName)) end)
-        local rar = rapRarityOf(eggName)
-        if rar == "Epic" or rar == "Legendary" or rar == "Mythic"
-            or rapEggsCarried >= rapEggCapacity then
-            Window:Notify({
-                Title = "Telur Didapat",
-                Description = ("[%s] %s (bawa %d, total %d)"):format(rar, eggName, rapEggsCarried, rapPickedCount),
-                Lifetime = 3,
-            })
+        rapPickupCD = os.clock() + 1.2
+        pcall(function() rapWHEgg(rapRarityOf(cand.name), cand.name, rapFindMutation(cand.name)) end)
+        local rar = rapRarityOf(cand.name)
+        if rar == "Epic" or rar == "Legendary" or rar == "Mythic" or rar == "Divine" or rar == "Ethereal" then
+            Window:Notify({ Title = "Telur Didapat", Description = ("[%s] %s (total %d)"):format(rar, cand.name, rapPickedCount), Lifetime = 3 })
         end
     else
-        -- Gagal terkirim (server return): lepas tanda + jeda lebih lama, jangan spam.
         rapHandled[prompt] = nil
-        rapPickupCD = os.clock() + 3
+        rapPickupCD = os.clock() + 2.5
+        return 0
     end
-
-    -- Balik ke ranch SETELAH pengiriman benar-benar selesai.
-    if rapReturnRanch and rapEggsCarried >= rapEggCapacity then
-        task.wait(0.8)
+    -- 3. balik ke plot sendiri setiap 1 telur sukses (kedua mode sama)
+    if rapReturnRanch then
+        task.wait(0.4)
         rapGoPlot(false)
-        rapEggsCarried = 0
-        Window:Notify({
-            Title = "Plot",
-            Description = ("Balik ke ranch setelah %d telur (total %d)."):format(rapEggCapacity, rapPickedCount),
-            Lifetime = 3,
-        })
+        task.wait(0.4)
     end
-    return delivered and 1 or 0
+    if mode ~= "Instant" then rapSetNoclip(false) end
+    return 1
 end
 
 -- ============================== AUTO SELL (RARITY + WEIGHT) ==============================
@@ -5329,7 +5298,7 @@ SecAutoEgg:Dropdown({
 })
 
 SecAutoEgg:Slider({
-    Name = "Glide Speed (st/s)",
+    Name = "Tween Speed (st/s)",
     Default = 1000,
     Minimum = 100,
     Maximum = 5000,
@@ -5452,10 +5421,10 @@ SecPlace:Toggle({
 
 -- Engine lama yang dipertahankan
 SecAutoEgg:Dropdown({
-    Name = "Mode Auto Pickup",
-    Items = { "Biasa", "Instant" },
-    Default = "Biasa",
-    Callback = function(v) rapPickupMode = v or "Biasa" end,
+    Name = "Mode Ambil Telur",
+    Items = { "Tween", "Instant" },
+    Default = "Tween",
+    Callback = function(v) rapPickupMode = v or "Tween" end,
 })
 
 SecAutoEgg:Toggle({
@@ -5466,22 +5435,7 @@ SecAutoEgg:Toggle({
     end,
 })
 
-SecAutoEgg:Toggle({
-    Name = "Auto Skip Growth (Semua Pet)",
-    Default = false,
-    Callback = function(enabled)
-        rapSet("grow", enabled, "Skip Growth", "Melewati pertumbuhan pet otomatis.", "Skip growth dimatikan.")
-    end,
-})
-
-SecAutoEgg:Toggle({
-    Name = "Auto Feed Pet",
-    Default = false,
-    Callback = function(enabled)
-        rapSet("feed", enabled, "Auto Feed", "Memberi makan pet otomatis.", "Auto feed dimatikan.")
-    end,
-})
-local SecTele = TabMainRAP:Section({ Name = "Teleport", Side = 2 })
+local SecTele = TabMainRAP:Section({ Name = "Teleport", Side = 1 })
 SecTele:Header({ Name = ZypheraxLib:Gradient("Teleport Cepat", Color3.fromRGB(240, 190, 100), Color3.fromRGB(255, 160, 120)) })
 
 SecTele:Dropdown({
