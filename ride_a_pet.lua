@@ -4302,13 +4302,6 @@ local function rapPickupTick()
             rapHandled[prompt] = nil
         end
     end
-    -- GATE: telur belum di tangan/tas = JANGAN ke plot (drop pasti gagal). Stop, coba lagi next tick.
-    if not hasEggTool then
-        Window:Notify({ Title = "Belum Dapat", Description = tostring(cand.name).." belum di tangan, tidak ke plot.", Lifetime = 3 })
-        pcall(function() print("[RAP-EGG] BELUM-DAPAT target="..tostring(cand.name).." -> diam di telur, tidak drop") end)
-        rapPickupCD = os.clock() + 2
-        return done(0)
-    end
         -- 3. delivery: WAJIB ke plot SENDIRI (ukur ulang tiap telur), edge luar -> WALK tengah.
     --    return 1 HANYA kalau telur benar2 hilang/masuk tas. Kalau tidak -> done(0), telur lain nunggu.
     do
