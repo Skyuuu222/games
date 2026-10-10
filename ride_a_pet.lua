@@ -3822,10 +3822,59 @@ local function rapIsMyPlot(inst)
 end
 
 local rapEdgeMargin = 25
+local function rapIsMine(inst)
+    if not inst then return false end
+    local me = player.Name:lower()
+    local ok, owned = pcall(function()
+        for _, k in ipairs({ "Owner", "OwnerName", "PlotOwner", "Plot_Owner" }) do
+            local v = inst.GetAttribute and inst:GetAttribute(k)
+            if v and tostring(v):lower():find(me:sub(1, 4), 1, true) then return true end
+        end
+        if inst.GetAttribute and inst:GetAttribute("UserId") == player.UserId then return true end
+        local nm = tostring(inst.Name or ""):lower()
+        if nm:find(me, 1, true) then return true end
+        return false
+    end)
+    return ok and owned or false
+end
+local rapMyPlotModel = nil
+local function rapFindMyPlot()
+    local found, foundPos = nil, nil
+    pcall(function()
+        local fresh = workspace:GetDescendants()
+        for _, d in ipairs(fresh) do
+            if d:IsA("Model") or d:IsA("BasePart") then
+                local low = tostring(d.Name):lower()
+                local hit = false
+                for _, pat in ipairs(RANCH_PATTERNS) do
+                    if low:find(pat, 1, true) then hit = true break end
+                end
+                if hit then
+                    if rapIsMine(d) or rapIsMine(d.Parent) or rapIsMine(d.Parent and d.Parent.Parent) then
+                        local p = rapEntityPos(d)
+                        if p then found, foundPos = d, p break end
+                    end
+                    if not found then
+                        local p2 = rapEntityPos(d)
+                        if p2 then
+                            local rp0 = rapGetRoot()
+                            if rp0 and (p2 - rp0.Position).Magnitude < 150 and not found then
+                                found, foundPos = d, p2
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end)
+    if found then rapMyPlotModel = found end
+    return found, foundPos
+end
 local function rapPlotHalf()
     local half = 45
     pcall(function()
-        for _, d in ipairs(rapTickList()) do
+        local fresh2 = workspace:GetDescendants()
+        for _, d in ipairs(fresh2) do
             if d:IsA("Model") or d:IsA("BasePart") then
                 local low = tostring(d.Name):lower()
                 for _, pat in ipairs(RANCH_PATTERNS) do
@@ -3856,9 +3905,15 @@ end
 local function rapGoPlotEdge(mode)
     local e = rapPlotEdge()
     if not e then return false end
-    if mode == "Instant" then rapSetNoclip(false) rapTeleportTo(e, "Edge")
-    else rapTweenTo(e, rapPlanned.glideSpeed) end
-    return true
+    for attempt = 1, 3 do
+        if mode == "Instant" then rapSetNoclip(false) rapTeleportTo(e, "Edge")
+        else rapTweenTo(e, rapPlanned.glideSpeed) end
+        task.wait(mode == "Instant" and 0.6 or 1.0)
+        local rr = rapGetRoot()
+        if rr and (rr.Position - e).Magnitude <= 30 then return true end
+    end
+    local rr2 = rapGetRoot()
+    return rr2 and ((rr2.Position - e).Magnitude <= 60) or false
 end
 -- jalan kaki ke tengah plot (tanpa teleport) supaya server daftarkan masuk region + selesaikan delivery
 local function rapWalkPlotCenter()
@@ -4006,7 +4061,11 @@ local function rapMoveTo(pos, maxWait)
     return (root.Position - pos).Magnitude <= 20
 end
 
+local rapBusy = false
 local function rapPickupTick()
+    if rapBusy then return 0 end
+    rapBusy = true
+    local function done(n) rapBusy = false return n end
     -- SATU telur per tick: ambil sampai berhasil baru lanjut ke telur lain.
     -- Tidak pernah place telur (itu tugas rapFlag.placedEgg / rapPlaceEggs).
     local cand = nil
@@ -4029,11 +4088,11 @@ local function rapPickupTick()
             end
         end
     end)
-    if not cand then return 0 end
-    if os.clock() < rapPickupCD then return 0 end
+    if not cand then return done(0) end
+    if os.clock() < rapPickupCD then return done(0) end
     local mode = rapPickupMode or "Tween"
     local prompt = cand.prompt
-    if not prompt or not prompt.Parent then return 0 end
+    if not prompt or not prompt.Parent then return done(0) end
     -- 1. pergi ke telur
     if mode == "Instant" then
         rapSetNoclip(false)
@@ -4068,7 +4127,7 @@ local function rapPickupTick()
     -- skip telur yg gagal 3x dalam 60 dtk (hindari spam kode AT-xxxx)
     do
         local bl = rapBlacklist[prompt]
-        if bl and os.clock() < bl then return 0 end
+        if bl and os.clock() < bl then return done(0) end
     end
     rapHandled[prompt] = true
     -- tiru manual: JANGAN anchor; telur langka pakai hold asli (HoldDuration tidak dinolkan)
@@ -4176,70 +4235,110 @@ local function rapPickupTick()
             rapFailCount[prompt] = fc
             if fc >= 3 then rapBlacklist[prompt] = os.clock() + 60 rapFailCount[prompt] = 0 end
             rapPickupCD = os.clock() + 2.5
-            return 0
+            return done(0)
         end
     end
-    -- 3. delivery via pinggir plot: edge -> drop/tunggu -> ambil lagi -> tengah
-    if rapReturnRanch then
-        do
-            local rarB = rapRarityOf(cand.name)
-            local rareB = (rarB == "Epic" or rarB == "Legendary" or rarB == "Mythic" or rarB == "Divine" or rarB == "Ethereal")
-            -- a. ke pinggir plot dulu (jangan tengah, server return kalau langsung tengah)
-            rapGoPlotEdge(mode)
-            task.wait(rareB and 2.0 or 1.2)
-            -- b. telur ini virtual (bukan Tool) -> tidak ada yg bisa di-drop manual.
-            --    delivery selesai saat karakter MASUK region plot. Makanya: teleport cuma
-            --    sampai LUAR plot, ke tengahnya WAJIB jalan kaki (tanpa teleport).
-            --    Paksa drop tool telur yg nyangkut di karakter supaya jatuh di edge.
-            pcall(function()
-                local ch2 = LocalPlayer.Character
-                local er2 = rapGetRoot()
-                local dropPos = er2 and er2.Position or nil
-                local hum2 = ch2 and ch2:FindFirstChildOfClass("Humanoid")
-                if hum2 then pcall(function() hum2:UnequipTools() end) end
-                task.wait(0.3)
-                local bp2 = LocalPlayer:FindFirstChild("Backpack")
-                for _, par in ipairs({ ch2, bp2 }) do
-                    if par then
-                        for _, t in ipairs(par:GetChildren()) do
-                            if t:IsA("Tool") and tostring(t.Name):find("Egg", 1, true) then
-                                t.Parent = workspace
-                                pcall(function()
-                                    if dropPos and t:IsA("Tool") then
-                                        local h = t:FindFirstChild("Handle")
-                                        if h and h:IsA("BasePart") then
-                                            h.CFrame = CFrame.new(dropPos + Vector3.new(math.random(-4, 4), 3, math.random(-4, 4)))
-                                            h.CanCollide = false
-                                            h.Anchored = false
-                                        end
+        -- 3. delivery: WAJIB ke plot SENDIRI (ukur ulang tiap telur), edge luar -> WALK tengah.
+    --    return 1 HANYA kalau telur benar2 hilang/masuk tas. Kalau tidak -> done(0), telur lain nunggu.
+    do
+        local rarB = rapRarityOf(cand.name)
+        local rareB = (rarB == "Epic" or rarB == "Legendary" or rarB == "Mythic" or rarB == "Divine" or rarB == "Ethereal")
+        -- a. ukur ulang plot sendiri tiap telur (bukan cache lama)
+        pcall(function() rapFindMyPlot() end)
+        local edgeOk = rapGoPlotEdge(mode)
+        if not edgeOk then
+            Window:Notify({ Title = "Plot", Description = "Gagal ke dekat plot, telur ditahan (tidak ambil yg lain).", Lifetime = 3 })
+            rapPickupCD = os.clock() + 3
+            return done(0)
+        end
+        -- b. drop: telur yg masih di tangan/backpack = Tool Egg -> jatuhkan di edge.
+        --    telur virtual (sudah masuk data) tidak ada Tool -> lewati, langsung walk.
+        local dropped = false
+        pcall(function()
+            local ch2 = LocalPlayer.Character
+            local bp2 = LocalPlayer:FindFirstChild("Backpack")
+            local er2 = rapGetRoot()
+            local dropPos = er2 and er2.Position or nil
+            local hum2 = ch2 and ch2:FindFirstChildOfClass("Humanoid")
+            if hum2 then pcall(function() hum2:UnequipTools() end) end
+            task.wait(0.3)
+            for _, par in ipairs({ ch2, bp2 }) do
+                if par then
+                    for _, t in ipairs(par:GetChildren()) do
+                        if t:IsA("Tool") and tostring(t.Name):find("Egg", 1, true) then
+                            t.Parent = workspace
+                            dropped = true
+                            pcall(function()
+                                if dropPos then
+                                    local h = t:FindFirstChild("Handle")
+                                    if h and h:IsA("BasePart") then
+                                        h.CFrame = CFrame.new(dropPos + Vector3.new(0, 3, 0))
+                                        h.CanCollide = false
+                                        h.Anchored = false
                                     end
-                                end)
-                            end
+                                end
+                            end)
                         end
                     end
                 end
-            end)
+            end
+        end)
+        if dropped then
             task.wait(1.0)
-                        -- c. TIDAK ada drop manual (telur virtual) -> langsung WALK ke tengah plot.
-            --    jalan kaki max 25 dtk; server mendeteksi masuk region dan menyelesaikan delivery.
-            rapWalkPlotCenter()
-            task.wait(1.2)
-            -- d. verifikasi: telur harus sudah hilang / masuk tas. Kalau masih Returned,
-            --    berarti server menolak dari awal (bukan salah jalan) -> blacklist + cooldown.
-            do
-                local gone3 = (prompt.Parent == nil) or (not prompt:IsDescendantOf(workspace))
-                if not gone3 then
-                    local fc3 = (rapFailCount[prompt] or 0) + 1
-                    rapFailCount[prompt] = fc3
-                    if fc3 >= 2 then rapBlacklist[prompt] = os.clock() + 60 rapFailCount[prompt] = 0 end
-                    Window:Notify({ Title = "Egg Returned", Description = tostring(cand.name) .. " di-return server (coba manual).", Lifetime = 3 })
+            -- ambil lagi yg jatuh di edge (scan FRESH radius 40)
+            local gotBack = false
+            pcall(function()
+                local er = rapGetRoot()
+                if er then
+                    local bp, bd = nil, 40
+                    local fresh = workspace:GetDescendants()
+                    for _, d in ipairs(fresh) do
+                        if d:IsA("ProximityPrompt") and tostring(d.ActionText) == "Pick Up" then
+                            local pp3 = rapEntityPos(d.Parent) or rapEntityPos(d)
+                            if pp3 then
+                                local dd = (pp3 - er.Position).Magnitude
+                                if dd <= bd then bd = dd bp = d end
+                            end
+                        end
+                    end
+                    if bp then
+                        pcall(function()
+                            bp.HoldDuration = 0
+                            bp.MaxActivationDistance = 17
+                            bp.RequiresLineOfSight = false
+                        end)
+                        rapTriggerPrompt(bp)
+                        task.wait(1.2)
+                        if bp.Parent == nil or (not bp:IsDescendantOf(workspace)) then gotBack = true end
+                    else
+                        gotBack = true
+                    end
                 end
+            end)
+            if not gotBack then
+                Window:Notify({ Title = "Drop", Description = "Telur jatuh belum keambil lagi, tidak lanjut telur lain.", Lifetime = 3 })
+                rapPickupCD = os.clock() + 3
+                return done(0)
+            end
+        end
+        -- c. WALK (tanpa teleport) dari edge ke tengah plot sendiri
+        rapWalkPlotCenter()
+        task.wait(rareB and 1.5 or 1.0)
+        -- d. verifikasi AKHIR: telur harus hilang. Belum hilang = BELUM berhasil -> done(0).
+        do
+            local gone3 = (prompt.Parent == nil) or (not prompt:IsDescendantOf(workspace))
+            if not gone3 then
+                local fc3 = (rapFailCount[prompt] or 0) + 1
+                rapFailCount[prompt] = fc3
+                if fc3 >= 2 then rapBlacklist[prompt] = os.clock() + 60 rapFailCount[prompt] = 0 end
+                Window:Notify({ Title = "Egg Returned", Description = tostring(cand.name) .. " belum delivery, telur lain menunggu.", Lifetime = 3 })
+                rapPickupCD = os.clock() + 3
+                return done(0)
             end
         end
     end
-
     if mode ~= "Instant" then rapSetNoclip(false) end
-    return 1
+    return done(1)
 end
 
 -- ============================== AUTO SELL (RARITY + WEIGHT) ==============================
