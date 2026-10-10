@@ -4320,13 +4320,13 @@ local function rapPickupTick()
             rapPickupCD = os.clock() + 3
             return done(0)
         end
-                -- b2. DROP PAKSA DI PINGGIR (permintaan user): drop telur, ambil lagi, baru walk.
         -- b2. DROP PAKSA DI PINGGIR: drop telur, ambil lagi, baru walk.
         do
             pcall(function() Window:Notify({Title="Drop",Description="Drop telur di pinggir: "..tostring(cand.name),Lifetime=2}) end)
             pcall(function() print("[RAP-EGG] target="..tostring(cand.name).." rarity="..tostring(rapRarityOf(cand.name))) end)
             local dropped = 0
             pcall(function()
+                -- equip target ke TANGAN dulu (tombol Drop butuh dipegang)
                 local ch0 = LocalPlayer.Character
                 local hum0 = ch0 and ch0:FindFirstChildOfClass("Humanoid")
                 local bp0 = LocalPlayer:FindFirstChild("Backpack")
@@ -4334,35 +4334,50 @@ local function rapPickupTick()
                     for _, t in ipairs(bp0:GetChildren()) do
                         if t and t:IsA("Tool") and tostring(t.Name) == tostring(cand.name) then
                             hum0:EquipTool(t)
-                            task.wait(0.6)
+                            task.wait(0.8)
                             break
                         end
                     end
                 end
-                if hum0 then hum0:UnequipTools() end
-                task.wait(0.3)
-                local ch = LocalPlayer.Character
-                if ch then
-                    for _, t in ipairs(ch:GetChildren()) do
-                        if t and t:IsA("Tool") and tostring(t.Name):lower():find("egg") then
-                            t.Parent = workspace
-                            dropped = dropped + 1
-                            task.wait(0.3)
-                        end
-                    end
-                end
-                local bpA = LocalPlayer:FindFirstChild("Backpack")
-                if bpA and cand.name then
-                    for _, t in ipairs(bpA:GetChildren()) do
-                        if t and t:IsA("Tool") and tostring(t.Name) == tostring(cand.name) then
-                            t.Parent = workspace
-                            dropped = dropped + 1
-                            task.wait(0.3)
+                -- DROP via remote resmi BasketDrop (terbukti probe4), BUKAN Parent=workspace
+                local bd = nil
+                pcall(function() bd = game:GetService("ReplicatedStorage").Remotes.Game.BasketDrop end)
+                if bd then
+                    local before0 = 0
+                    pcall(function()
+                        local bp = LocalPlayer:FindFirstChild("Backpack")
+                        local ch = LocalPlayer.Character
+                        if bp then for _, t in ipairs(bp:GetChildren()) do if t:IsA("Tool") then before0 = before0 + 1 end end end
+                        if ch then for _, t in ipairs(ch:GetChildren()) do if t:IsA("Tool") then before0 = before0 + 1 end end end
+                    end)
+                    pcall(function() bd:FireServer() end)
+                    task.wait(1.0)
+                    local after0 = 0
+                    pcall(function()
+                        local bp = LocalPlayer:FindFirstChild("Backpack")
+                        local ch = LocalPlayer.Character
+                        if bp then for _, t in ipairs(bp:GetChildren()) do if t:IsA("Tool") then after0 = after0 + 1 end end end
+                        if ch then for _, t in ipairs(ch:GetChildren()) do if t:IsA("Tool") then after0 = after0 + 1 end end end
+                    end)
+                    if after0 < before0 then dropped = before0 - after0 end
+                    if dropped <= 0 then
+                        local btn2 = nil
+                        pcall(function() btn2 = LocalPlayer.PlayerGui.Main.BasketTracker.Handler.EggFrame.Drop end)
+                        if btn2 and type(firesignal) == "function" then
+                            pcall(function() firesignal(btn2.MouseButton1Click) end)
+                            task.wait(1.0)
+                            local after1 = 0
+                            pcall(function()
+                                local bp = LocalPlayer:FindFirstChild("Backpack")
+                                local ch = LocalPlayer.Character
+                                if bp then for _, t in ipairs(bp:GetChildren()) do if t:IsA("Tool") then after1 = after1 + 1 end end end
+                                if ch then for _, t in ipairs(ch:GetChildren()) do if t:IsA("Tool") then after1 = after1 + 1 end end end
+                            end)
+                            if after1 < before0 then dropped = before0 - after1 end
                         end
                     end
                 end
             end)
-            task.wait(0.6)
             pcall(function()
                 local msg = (dropped > 0) and ("Ter-drop "..dropped..", ambil lagi...") or "Virtual (tak ada Tool) - ambil ulang..."
                 Window:Notify({Title="Drop",Description=msg,Lifetime=3})
