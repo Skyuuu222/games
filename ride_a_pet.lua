@@ -4425,233 +4425,51 @@ function rapPickupTick()
         -- a. plot di-cache 60 dtk (scan full tiap telur = DIAM lama). Rejoin = global reset, otomatis cari baru.
         if not rapPlotPos or os.clock() - rapPlotCacheT > 60 then pcall(function() rapFindMyPlot() end) rapPlotCacheT = os.clock() end
         pcall(function() rapFindMyPlot() end)
-        Window:Notify({ Title = "Delivery", Description = "Ke dekat plot: " .. tostring(cand.name), Lifetime = 2 })
-        local edgeOk = rapGoPlotEdge(mode)
-        do
-            local rrE = rapGetRoot()
-            local ee = rapPlotEdge()
-            local cc = rapPlotCenter()
-            local dd = (rrE and ee) and math.floor((rrE.Position - ee).Magnitude) or -1
-            local dc = (rrE and cc) and math.floor((rrE.Position - cc).Magnitude) or -1
-            Window:Notify({ Title = "Edge", Description = (edgeOk and "Drop jauh" or "GAGAL drop jauh") .. " (dari tengah " .. tostring(dc) .. " stud)", Lifetime = 3 })
-        end
-        if not edgeOk then
-            Window:Notify({ Title = "Plot", Description = "Gagal ke dekat plot, telur ditahan (tidak ambil yg lain).", Lifetime = 3 })
-            rapPickupCD = os.clock() + 1
-            return done(0)
-        end
-        -- b2. DROP DI PINGGIR (opsional, default MATI): pola drop+repick di luar plot
-        -- bisa memicu "egg delivery failed" merah dari server. Default: langsung walk bawa telur.
+        -- DELIVERY LANGSUNG KE SARANG (SCAN 20:54: Place ada di Nests.1-4).
+        -- Telur pickup masuk TAS (B:), jadi: equip telur -> ke PlacePromptAnchor -> tekan Place. Tanpa drop pinggir.
         local dropped, repick = 0, 0
-        if rapPlanned and rapPlanned.edgeDrop then
         do
-            pcall(function() Window:Notify({Title="Drop",Description="Drop telur di pinggir: "..tostring(cand.name),Lifetime=2}) end)
-            pcall(function()
-                -- equip target ke TANGAN dulu (tombol Drop butuh dipegang)
-                local ch0 = LocalPlayer.Character
-                local hum0 = ch0 and ch0:FindFirstChildOfClass("Humanoid")
-                local bp0 = LocalPlayer:FindFirstChild("Backpack")
-                if hum0 and bp0 and cand.name then -- HANYA yg baru diambil, stok lama rapBagBefore dilewati
-                    local want = string.lower(tostring(cand.name))
-                    for _, t in ipairs(bp0:GetChildren()) do
-                        if t and t:IsA("Tool") and not rapBagBefore[t] then
-                            local tn = string.lower(tostring(t.Name))
-                            if tn == want or tn:find(want, 1, true) or want:find(tn, 1, true) or tn:find("egg", 1, true) then
-                                hum0:EquipTool(t)
-                                    task.wait(0.15)
-                                break
-                            end
-                        end
-                    end
-                    -- kalau masih di backpack, paksa equip telur baru manapun
-                    pcall(function()
-                        local ch = LocalPlayer.Character
-                        local held = ch and ch:FindFirstChildOfClass("Tool")
-                        if not held then
-                            for _, t in ipairs(bp0:GetChildren()) do
-                                if t and t:IsA("Tool") and not rapBagBefore[t] then hum0:EquipTool(t) task.wait(0.15) break end
-                            end
-                        end
-                    end)
-                end
-                -- DROP via remote resmi BasketDrop (terbukti probe4), BUKAN Parent=workspace
-                -- Coba 3x + beberapa nama remote + tombol Drop, biar tidak macet di "tidak drop".
-                local bdList = {}
-                pcall(function()
-                    local g = game:GetService("ReplicatedStorage").Remotes.Game
-                    for _, rn in ipairs({"BasketDrop", "DropEgg", "Drop", "EggDrop"}) do
-                        local r = g and g:FindFirstChild(rn)
-                        if r then table.insert(bdList, r) end
-                    end
-                end)
-                for attempt = 1, 3 do
-                    if dropped > 0 then break end
-                    local before0 = 0
-                    pcall(function()
-                        local bp = LocalPlayer:FindFirstChild("Backpack")
-                        local ch = LocalPlayer.Character
-                        if bp then for _, t in ipairs(bp:GetChildren()) do if t:IsA("Tool") then before0 = before0 + 1 end end end
-                        if ch then for _, t in ipairs(ch:GetChildren()) do if t:IsA("Tool") then before0 = before0 + 1 end end end
-                    end)
-                    -- pastikan tangan pegang telur baru sebelum tiap percobaan
-                    pcall(function()
-                        local ch = LocalPlayer.Character
-                        local hum = ch and ch:FindFirstChildOfClass("Humanoid")
-                        local bp = LocalPlayer:FindFirstChild("Backpack")
-                        local held = ch and ch:FindFirstChildOfClass("Tool")
-                        if hum and bp and not held then
-                            for _, t in ipairs(bp:GetChildren()) do
-                                if t and t:IsA("Tool") and not rapBagBefore[t] then hum:EquipTool(t) task.wait(0.15) break end
-                            end
-                        end
-                    end)
-                    for _, bd in ipairs(bdList) do pcall(function() bd:FireServer() end) end
-                    if #bdList == 0 then pcall(function() game:GetService("ReplicatedStorage").Remotes.Game.BasketDrop:FireServer() end) end
-                    task.wait(0.35)
-                    local after0 = 0
-                    pcall(function()
-                        local bp = LocalPlayer:FindFirstChild("Backpack")
-                        local ch = LocalPlayer.Character
-                        if bp then for _, t in ipairs(bp:GetChildren()) do if t:IsA("Tool") then after0 = after0 + 1 end end end
-                        if ch then for _, t in ipairs(ch:GetChildren()) do if t:IsA("Tool") then after0 = after0 + 1 end end end
-                    end)
-                    if after0 < before0 then dropped = before0 - after0 end
-                    if dropped <= 0 then
-                        local btn2 = nil
-                        pcall(function() btn2 = LocalPlayer.PlayerGui.Main.BasketTracker.Handler.EggFrame.Drop end)
-                        if btn2 then
-                            if type(firesignal) == "function" then pcall(function() firesignal(btn2.MouseButton1Click) end)
-                            else pcall(function() btn2:Activate() end) end
-                            task.wait(0.35)
-                            local after1 = 0
-                            pcall(function()
-                                local bp = LocalPlayer:FindFirstChild("Backpack")
-                                local ch = LocalPlayer.Character
-                                if bp then for _, t in ipairs(bp:GetChildren()) do if t:IsA("Tool") then after1 = after1 + 1 end end end
-                                if ch then for _, t in ipairs(ch:GetChildren()) do if t:IsA("Tool") then after1 = after1 + 1 end end end
-                            end)
-                            if after1 < before0 then dropped = before0 - after1 end
-                        end
-                    end
-                    if dropped <= 0 and attempt < 3 then task.wait(0.3) end
-                end
-            end)
-            pcall(function()
-                local msg = (dropped > 0) and ("Ter-drop "..dropped..", ambil lagi...") or "Virtual (tak ada Tool) - ambil ulang..."
-                Window:Notify({Title="Drop",Description=msg,Lifetime=3})
-            end)
-            pcall(function()
-                local ch2 = LocalPlayer.Character
-                local bp2 = LocalPlayer:FindFirstChild("Backpack")
-                local s2 = "tas="
-                if ch2 then for _, t in ipairs(ch2:GetChildren()) do if t:IsA("Tool") then s2 = s2.."C:"..t.Name..";" end end end
-                if bp2 then for _, t in ipairs(bp2:GetChildren()) do if t:IsA("Tool") then s2 = s2.."B:"..t.Name..";" end end end
-            end)
-            pcall(function() Window:Notify({Title="Egg",Description=tostring(cand.name).." ("..tostring(rapRarityOf(cand.name))..")",Lifetime=3}) end)
-            task.wait(0.15)
-            pcall(function()
-                local rr = rapGetRoot()
-                if rr then
-                    for _, tl in ipairs(workspace:GetChildren()) do
-                        if tl and tl:IsA("Tool") and tostring(tl.Name):lower():find("egg") then
-                            local hd0 = tl:FindFirstChild("Handle")
-                            local tp0 = (hd0 and hd0.Position) or rr.Position
-                            if (tp0 - rr.Position).Magnitude <= 40 then
-                                pcall(function() local h2 = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Humanoid") if h2 then h2:EquipTool(tl) end end)
-                                task.wait(0.15)
-                                pcall(function() local hrp2 = rapGetRoot() local hd2 = tl:FindFirstChild("Handle") if hrp2 and hd2 and type(firetouchinterest) == "function" then firetouchinterest(hrp2, hd2, 0) task.wait(0.05) firetouchinterest(hrp2, hd2, 1) end end)
-                                repick = repick + 1
-                            end
-                        end
-                    end
-                    for _, pr in ipairs(workspace:GetDescendants()) do
-                        if pr and pr:IsA("ProximityPrompt") then
-                            local mdl = pr:FindFirstAncestorOfClass("Model")
-                            local nm = tostring((mdl and mdl.Name) or pr.Parent and pr.Parent.Name or "")
-                            local want = string.lower(tostring(cand.name or ""))
-                            local low = string.lower(nm)
-                            if nm ~= "" and (nm == cand.name or (want ~= "" and (low:find(want, 1, true) or want:find(low, 1, true))) or low:find("egg", 1, true)) then
-                                local pp = nil
-                                if pr.Parent and pr.Parent:IsA("BasePart") then pp = pr.Parent.Position
-                                elseif mdl and mdl.PrimaryPart then pp = mdl.PrimaryPart.Position end
-                                if pp and (pp - rr.Position).Magnitude <= 40 then
-                                    if type(fireproximityprompt) == "function" then fireproximityprompt(pr, 1) else pr:InputHoldBegin() task.wait(0.1) pr:InputHoldEnd() end
-                                    repick = repick + 1
-                                    task.wait(0.15)
-                                    break
-                                end
-                            end
-                        end
-                    end
-                end
-            end)
-            pcall(function() Window:Notify({Title="Pickup",Description=(repick>0 and "Telur diambil lagi" or "Tak ada telur di dekat pinggir"),Lifetime=3}) end)
-            task.wait(0.2)
-        end
-        end
-        -- c. WALK bawa telur ke SARANG (Nests) plot sendiri, bukan tengah kosong.
-        -- SCAN 20:24: di tengah plot TIDAK ada prompt Place/Deposit (cuma Ride/Name/Feed).
-        -- Delivery asli = taruh telur di Nest. Tanpa ini timer habis = egg delivery failed merah.
-        Window:Notify({ Title = "Delivery", Description = "Ke sarang: " .. tostring(cand.name), Lifetime = 2 })
-        local walkOk = rapWalkPlotCenter()
-        do
+            pcall(function() rapFindMyPlot() end)
+            local myPlot = rapMyPlotModel
+            local nests = myPlot and myPlot:FindFirstChild("Nests")
+            if not nests then Window:Notify({Title="Sarang",Description="Nests tak ketemu",Lifetime=3}) rapPickupCD=os.clock()+1 return done(0) end
+            local bp0 = LocalPlayer:FindFirstChild("Backpack")
+            local ch0 = LocalPlayer.Character
+            local hum0 = ch0 and ch0:FindFirstChildOfClass("Humanoid")
+            local want = string.lower(tostring(cand.name or ""))
+            local eggTool = nil
+            if bp0 then for _,t in ipairs(bp0:GetChildren()) do if t and t:IsA("Tool") then local tn=string.lower(tostring(t.Name)) if tn==want or tn:find(want,1,true) or want:find(tn,1,true) or tn:find("egg",1,true) then eggTool=t break end end end end
+            if eggTool and hum0 then pcall(function() hum0:EquipTool(eggTool) end) task.wait(0.3) end
             local placedNest = false
-            pcall(function()
-                local myPlot = rapMyPlotModel
-                local nests = myPlot and myPlot:FindFirstChild("Nests")
-                if nests then
-                    local rr = rapGetRoot()
-                    local best, bestD = nil, nil
-                    for _, pr in ipairs(workspace:GetDescendants()) do
+            local slots = nests:GetChildren()
+            table.sort(slots, function(a,b) return tostring(a.Name) < tostring(b.Name) end)
+            for _, slot in ipairs(slots) do
+                if placedNest then break end
+                local anchor = slot:FindFirstChild("PlacePromptAnchor", true) or slot
+                local pp = rapEntityPos(anchor) or rapEntityPos(slot)
+                if pp then
+                    if mode == "Instant" then rapTeleportTo(pp, "Nest") else rapTweenTo(pp, 1000) end
+                    task.wait(0.35)
+                    for _, pr in ipairs(anchor:GetDescendants()) do
                         if pr:IsA("ProximityPrompt") then
-                            local act = tostring(pr.ActionText or ""):lower() .. " " .. tostring(pr.ObjectText or ""):lower()
-                            if act:find("place", 1, true) or act:find("hatch", 1, true) or act:find("deposit", 1, true) or act:find("store", 1, true) then
-                                local inside = pr:IsDescendantOf(nests)
-                                if inside then
-                                    local pp = rapEntityPos(pr.Parent) or rapEntityPos(pr)
-                                    if pp then
-                                        local d = rr and (pp - rr.Position).Magnitude or 0
-                                        if not bestD or d < bestD then bestD = d best = pr end
-                                    end
-                                end
-                            end
-                        end
-                    end
-                    if best then
-                        local bp = rapEntityPos(best.Parent) or rapEntityPos(best)
-                        if bp and mode == "Instant" then rapTeleportTo(bp, "Nest") else rapTweenTo(bp, 1000) end
-                        task.wait(0.4)
-                        pcall(function() best.HoldDuration = 0 best.RequiresLineOfSight = false end)
-                        rapTriggerPrompt(best)
-                        task.wait(0.6)
-                        placedNest = true
-                    else
-                        -- sarang penuh / tak ada prompt: equip telur lalu coba tiap slot Nest (tekan prompt apapun di Nests)
-                        for _, slot in ipairs(nests:GetChildren()) do
-                            local pp2 = rapEntityPos(slot)
-                            if pp2 then
-                                if mode == "Instant" then rapTeleportTo(pp2, "Nest") else rapTweenTo(pp2, 800) end
-                                task.wait(0.3)
-                                for _, pr in ipairs(slot:GetDescendants()) do
-                                    if pr:IsA("ProximityPrompt") then
-                                        pcall(function() pr.HoldDuration = 0 pr.RequiresLineOfSight = false end)
-                                        rapTriggerPrompt(pr)
-                                        task.wait(0.4)
-                                    end
-                                end
+                            local txt = tostring(pr.ActionText or ""):lower() .. " " .. tostring(pr.ObjectText or ""):lower()
+                            if txt:find("place",1,true) or txt:find("hatch",1,true) or txt:find("deposit",1,true) then
+                                rapTriggerPrompt(pr)
+                                task.wait(0.5)
                                 placedNest = true
                                 break
                             end
                         end
                     end
+                    if not placedNest then
+                        local pr2 = anchor:IsA("ProximityPrompt") and anchor or nil
+                        if not pr2 then pcall(function() pr2 = anchor:FindFirstChildOfClass("ProximityPrompt") end) end
+                        if pr2 then rapTriggerPrompt(pr2) task.wait(0.5) placedNest = true end
+                    end
                 end
-            end)
-            if placedNest then walkOk = true end
-        end
-        Window:Notify({ Title = "Walk", Description = walkOk and "Telur ditaruh di sarang" or "GAGAL ke sarang", Lifetime = 3 })
-        if not walkOk then
-            rapPickupCD = os.clock() + 1
-            return done(0)
+            end
+            Window:Notify({Title="Sarang",Description=placedNest and ("Ditaruh: "..tostring(cand.name)) or "GAGAL taruh di sarang",Lifetime=3})
+            if not placedNest then rapPickupCD = os.clock() + 1 return done(0) end
         end
         task.wait(0.3)
         -- d. verifikasi AKHIR: prompt asli hilang ATAU drop+repick sukses = berhasil.
