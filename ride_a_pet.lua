@@ -3431,7 +3431,9 @@ local rapEggNames = {
     "Aurora Egg", "Galaxy Egg",
     -- Ethereal
     "Black Hole Egg", "Solaris Egg", "Cherub Egg", "Volcanic Egg",
-    "Ethereal Egg",
+    "Ethereal Egg", "Blackhole Egg",
+    -- Event / varian (dari scan RenderedEggs asli)
+    "Halloween Egg",
     -- Baru (dari scan RenderedEggs)
     "Bloom Egg", "Tropical Egg", "Tidal Egg",
     -- Varian rebirth
@@ -3454,7 +3456,7 @@ local RAP_RARITY = {
     ["Aurora Egg"] = "Divine", ["Galaxy Egg"] = "Divine",
     -- Ethereal
     ["Black Hole Egg"] = "Ethereal", ["Solaris Egg"] = "Ethereal", ["Cherub Egg"] = "Ethereal", ["Volcanic Egg"] = "Ethereal",
-    ["Ethereal Egg"] = "Ethereal",
+    ["Ethereal Egg"] = "Ethereal", ["Blackhole Egg"] = "Ethereal", ["Halloween Egg"] = "Epic",
     ["Bloom Egg"] = "Epic", ["Tropical Egg"] = "Epic", ["Tidal Egg"] = "Epic",
     ["Rebirth Egg"] = "Divine",
 }
@@ -3616,18 +3618,31 @@ function rapMatchFilter(name, inst)
     return true
 end
 
+-- ANTI-CHEAT SAFE: utamakan input LEGIT (InputHoldBegin/hold asli), bukan fireproximityprompt
+-- dari jauh. fireproximityprompt hanya cadangan bila executor mendukung & sudah dekat.
+rapSafeTrigger = (rapSafeTrigger == nil) and true or rapSafeTrigger
 function rapTriggerPrompt(p)
-    if type(fireproximityprompt) == "function" then
-        pcall(fireproximityprompt, p, 0)
-        return true
-    end
+    if not p or not p.Parent then return false end
+    local ok = false
+    -- 1. LEGIT: hold asli sesuai HoldDuration game (tidak dinolkan)
     pcall(function()
-        local dur = p.HoldDuration or 0
+        local dur = tonumber(p.HoldDuration) or 0
+        p.RequiresLineOfSight = false
         p:InputHoldBegin()
         task.wait(dur + 0.15)
         p:InputHoldEnd()
+        ok = true
     end)
-    return true
+    if ok then return true end
+    -- 2. Cadangan executor (terdeteksi anti-cheat kalau dari jauh)
+    if type(fireproximityprompt) == "function" then
+        local rr = rapGetRoot()
+        local pp = rapEntityPos(p.Parent) or rapEntityPos(p)
+        if rr and pp and (pp - rr.Position).Magnitude > 15 then return false end
+        pcall(fireproximityprompt, p, 0)
+        return true
+    end
+    return false
 end
 
 function rapPassBatch(matchFn, batch)
@@ -3638,12 +3653,27 @@ function rapPassBatch(matchFn, batch)
                 local act = tostring(d.ActionText or "")
                 if matchFn(act, d) then
                     pcall(function()
-                        d.HoldDuration = 0
-                        d.MaxActivationDistance = 500
                         d.RequiresLineOfSight = false
+                        -- SAFE: jangan nolkan HoldDuration / besarkan MaxDistance (red flag anti-cheat).
+                        -- Hanya longgarkan jarak bila mode tidak-safe.
+                        if not rapSafeTrigger then
+                            d.HoldDuration = 0
+                            d.MaxActivationDistance = 500
+                        end
                     end)
-                    rapTriggerPrompt(d)
-                    n = n + 1
+                    -- SAFE: hanya trigger yg dekat (<=15 stud), yg jauh dilewati
+                    if rapSafeTrigger then
+                        local rr = rapGetRoot()
+                        local pp = rapEntityPos(d.Parent) or rapEntityPos(d)
+                        if rr and pp and (pp - rr.Position).Magnitude > 15 then
+                        else
+                            rapTriggerPrompt(d)
+                            n = n + 1
+                        end
+                    else
+                        rapTriggerPrompt(d)
+                        n = n + 1
+                    end
                     if n >= batch then break end
                 end
             end
@@ -3884,6 +3914,26 @@ function rapFindMyPlot()
     end)
     if found then rapMyPlotModel = found end
     if foundPos then rapPlotPos = foundPos rapRanchPos = foundPos end
+    -- SCAN 20:24: path plot = Workspace.Plots.Plot (nama sama semua). Kalau Owner tak cocok,
+    -- pakai plot TERDEKAT sebagai fallback biar delivery tetap jalan.
+    if not found then
+        pcall(function()
+            local plots = workspace:FindFirstChild("Plots")
+            local rr = rapGetRoot()
+            local best, bestD = nil, nil
+            if plots then
+                for _, p in ipairs(plots:GetChildren()) do
+                    local pp = rapEntityPos(p)
+                    if pp then
+                        local d = rr and (pp - rr.Position).Magnitude or 0
+                        if not bestD or d < bestD then bestD = d best = p foundPos = pp end
+                    end
+                end
+            end
+            if best then rapMyPlotModel = best end
+            if foundPos then rapPlotPos = foundPos rapRanchPos = foundPos found = rapMyPlotModel end
+        end)
+    end
     return found, foundPos
 end
 function rapPlotHalf()
@@ -4215,14 +4265,29 @@ function rapPickupTick()
         local myPos = root0 and root0.Position
         local bestD = nil
         for _, d in ipairs(rapTickList()) do
+            -- SCAN 20:24: prompt asli Pick Up ada di Workspace.RenderedEggs.<Nama>.<part>.Pickup,
+            -- ObjectText = nama telur asli (White Egg, Blackhole Egg...), HoldDuration=0, maxdist~16-21.
+            -- Hanya ambil dari RenderedEggs; abaikan prompt Hatch/Skip di Plot.
             if d:IsA("ProximityPrompt") and tostring(d.ActionText) == "Pick Up" then
                 if not rapHandled[d] then
-                    local nm = rapFindEggName(d)
-                    if nm and rapMatchFilter(nm, d) then
-                        local pos = rapEntityPos(d.Parent) or rapEntityPos(d)
-                        if pos then
-                            local dist = myPos and (pos - myPos).Magnitude or 0
-                            if not bestD or dist < bestD then bestD = dist cand = { name = nm, pos = pos, prompt = d } end
+                    local fp = ""
+                    pcall(function() fp = d:GetFullName() end)
+                    if not fp:find("RenderedEggs", 1, true) then
+                    else
+                        local objT = ""
+                        pcall(function() objT = tostring(d.ObjectText or "") end)
+                        local nm = (objT ~= "" and objT) or rapFindEggName(d)
+                        -- normalisasi varian scan: Blackhole Egg (satu kata) dll
+                        if nm then
+                            local low = string.lower(nm)
+                            if low:find("blackhole", 1, true) then nm = "Blackhole Egg" end
+                        end
+                        if nm and rapMatchFilter(nm, d) then
+                            local pos = rapEntityPos(d.Parent) or rapEntityPos(d)
+                            if pos then
+                                local dist = myPos and (pos - myPos).Magnitude or 0
+                                if not bestD or dist < bestD then bestD = dist cand = { name = nm, pos = pos, prompt = d } end
+                            end
                         end
                     end
                 end
@@ -4277,38 +4342,16 @@ function rapPickupTick()
     end
     rapHandled[prompt] = true
     rapLockName = cand.name rapLockSince = os.clock()
-    -- tiru manual: JANGAN anchor; telur langka pakai hold asli (HoldDuration tidak dinolkan)
+    -- SCAN 20:24: SEMUA prompt Pick Up hold=0, maxdist 16-21. Jadi langsung trigger + backup EggPickup.
     do
-        local rar2 = rapRarityOf(cand.name)
-        local isRare = (rar2 == "Epic" or rar2 == "Legendary" or rar2 == "Mythic" or rar2 == "Divine" or rar2 == "Ethereal")
-        if not isRare then
-            do local hd0 = 0.2 pcall(function() hd0 = prompt.HoldDuration or 0.2 end) if type(fireproximityprompt) == "function" then pcall(function() fireproximityprompt(prompt, 0) end) task.wait((tonumber(hd0) or 0.2) + 0.2) pcall(function() fireproximityprompt(prompt, 1) end) else rapTriggerPrompt(prompt) end task.wait(0.4) end
-        else
-            do
-                local pp2 = rapEntityPos(prompt.Parent) or cand.pos
-                local rr2 = rapGetRoot()
-                if pp2 and rr2 and (pp2 - rr2.Position).Magnitude > 8 then
-                    if mode == "Instant" then rapTeleportTo(pp2, "Egg") else rapTweenTo(pp2, rapPlanned.glideSpeed) end
-                    task.wait(0.5)
-                end
-            end
-            pcall(function() prompt.RequiresLineOfSight = false end)
-            if type(fireproximityprompt) == "function" then
-                local hd = 0
-                pcall(function() hd = prompt.HoldDuration or 0 end)
-                pcall(function() fireproximityprompt(prompt, 0) end)
-                task.wait((tonumber(hd) or 0) + 0.2)
-                pcall(function() fireproximityprompt(prompt, 1) end)
-                task.wait(0.8)
-            else
-                local hd2 = 0
-                pcall(function() hd2 = prompt.HoldDuration or 0 end)
-                pcall(function() prompt:InputHoldBegin() end)
-                task.wait((tonumber(hd2) or 1) + 0.2)
-                pcall(function() prompt:InputHoldEnd() end)
-                task.wait(0.8)
-            end
-        end
+        pcall(function() prompt.RequiresLineOfSight = false end)
+        rapTriggerPrompt(prompt)
+        task.wait(0.3)
+        pcall(function()
+            local m = rapEggModelOf(prompt)
+            rapFire({"Remotes", "Game", "EggPickup"}, m)
+        end)
+        task.wait(0.3)
     end
     -- DIAM di telur sampai server selesai: prompt hilang ATAU tool telur masuk char/backpack.
     do
@@ -5995,6 +6038,15 @@ SecAutoEgg:Toggle({
                 rapFilterText(rapEggFilterSet, "Semua"),
                 rapFilterText(rapMutationFilterSet, "Semua")),
             "Auto farm eggs dimatikan.")
+    end,
+})
+
+SecAutoEgg:Toggle({
+    Name = "Mode Aman (Anti-Cheat)",
+    Default = true,
+    Callback = function(enabled)
+        rapSafeTrigger = enabled and true or false
+        Window:Notify({ Title = "Anti-Cheat", Description = enabled and "Mode AMAN: input legit + jarak dekat." or "Mode BEBAS: fireprompt + jarak jauh (berisiko).", Lifetime = 3 })
     end,
 })
 
