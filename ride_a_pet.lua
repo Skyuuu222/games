@@ -3918,9 +3918,10 @@ end
 local function rapGoPlotEdge(mode)
     local e = rapPlotEdge()
     if not e then return false end
-    for attempt = 1, 3 do`r`n        rapSetNoclip(false) rapTeleportTo(e, "Edge") -- SELALU teleport (tween bikin stop-stop)`r`n        task.wait(0.6)
-        local rr = rapGetRoot()
-        if rr and (rr.Position - e).Magnitude <= 30 then return true end
+    for attempt = 1, 3 do
+        rapSetNoclip(false) rapTeleportTo(e, "Edge")
+        task.wait(0.6)
+        if rapGetRoot() and (rapGetRoot().Position - e).Magnitude <= 30 then return true end
     end
     local rr2 = rapGetRoot()
     return rr2 and ((rr2.Position - e).Magnitude <= 60) or false
@@ -4310,8 +4311,82 @@ local function rapPickupTick()
             return done(0)
         end
                 -- b2. DROP PAKSA DI PINGGIR (permintaan user): drop telur, ambil lagi, baru walk.
-        do pcall(function() Window:Notify({Title="Drop",Description="Drop telur di pinggir plot...",Lifetime=2}) end) local dropped=0 pcall(function() local ch=LocalPlayer.Character; pcall(function() LocalPlayer.Character.Humanoid:UnequipTools() end) task.wait(0.2); ch=LocalPlayer.Character; if ch then for _,t in ipairs(ch:GetChildren()) do if t and t:IsA("Tool") then local nm=(t.Name or ""):lower(); if nm:find("egg") then pcall(function() t.Parent=workspace end) dropped=dropped+1 task.wait(0.3) end end end end end) task.wait(0.6) pcall(function() Window:Notify({Title="Drop",Description=(dropped>0 and ("Ter-drop, ambil lagi...") or "Virtual (tak ada Tool) - ambil ulang..."),Lifetime=3}) end) pcall(function() local rr=rapGetRoot(); if rr then for _,pr in ipairs(workspace:GetDescendants()) do if pr and pr:IsA("ProximityPrompt") then local mdl=pr:FindFirstAncestorOfClass("Model"); local nm=mdl and mdl.Name or ""; if nm~="" and cand.name~="" and (nm==cand.name) then local pp=nil; pcall(function() if pr.Parent and pr.Parent:IsA("BasePart") then pp=pr.Parent.Position elseif mdl and mdl.PrimaryPart then pp=mdl.PrimaryPart.Position end end) if pp and (pp-rr.Position).Magnitude<=40 then pcall(function() fireproximityprompt(pr,1) end) task.wait(0.6) break end end end end end end) task.wait(0.8) end -- LOG EGG
-        do pcall(function() print("[RAP-EGG] target="..tostring(cand.name).." rarity="..tostring(rapRarityOf(cand.name)).." pos="..tostring(cand.pos)) end) local _ch=LocalPlayer.Character local _bp=LocalPlayer:FindFirstChild("Backpack") local _s="tas=" pcall(function() if _ch then for _,t in ipairs(_ch:GetChildren()) do if t:IsA("Tool") then _s=_s.."C:"..t.Name..";" end end end if _bp then for _,t in ipairs(_bp:GetChildren()) do if t:IsA("Tool") then _s=_s.."B:"..t.Name..";" end end end print("[RAP-EGG] ".._s) end) Window:Notify({Title="Egg",Description=tostring(cand.name).." ("..tostring(rapRarityOf(cand.name))..")",Lifetime=3}) end
+        -- b2. DROP PAKSA DI PINGGIR: drop telur, ambil lagi, baru walk.
+        do
+            pcall(function() Window:Notify({Title="Drop",Description="Drop telur di pinggir: "..tostring(cand.name),Lifetime=2}) end)
+            pcall(function() print("[RAP-EGG] target="..tostring(cand.name).." rarity="..tostring(rapRarityOf(cand.name))) end)
+            local dropped = 0
+            pcall(function()
+                local ch = LocalPlayer.Character
+                local hum = ch and ch:FindFirstChildOfClass("Humanoid")
+                if hum then hum:UnequipTools() end
+                task.wait(0.3)
+                ch = LocalPlayer.Character
+                if ch then
+                    for _, t in ipairs(ch:GetChildren()) do
+                        if t and t:IsA("Tool") and tostring(t.Name):lower():find("egg") then
+                            t.Parent = workspace
+                            dropped = dropped + 1
+                            task.wait(0.3)
+                        end
+                    end
+                end
+            end)
+            task.wait(0.6)
+            pcall(function()
+                local msg = (dropped > 0) and ("Ter-drop "..dropped..", ambil lagi...") or "Virtual (tak ada Tool) - ambil ulang..."
+                Window:Notify({Title="Drop",Description=msg,Lifetime=3})
+                print("[RAP-EGG] dropped="..tostring(dropped))
+            end)
+            pcall(function()
+                local ch2 = LocalPlayer.Character
+                local bp2 = LocalPlayer:FindFirstChild("Backpack")
+                local s2 = "tas="
+                if ch2 then for _, t in ipairs(ch2:GetChildren()) do if t:IsA("Tool") then s2 = s2.."C:"..t.Name..";" end end end
+                if bp2 then for _, t in ipairs(bp2:GetChildren()) do if t:IsA("Tool") then s2 = s2.."B:"..t.Name..";" end end end
+                print("[RAP-EGG] "..s2)
+            end)
+            pcall(function() Window:Notify({Title="Egg",Description=tostring(cand.name).." ("..tostring(rapRarityOf(cand.name))..")",Lifetime=3}) end)
+            task.wait(0.5)
+            local repick = 0
+            pcall(function()
+                local rr = rapGetRoot()
+                if rr then
+                    for _, tl in ipairs(workspace:GetChildren()) do
+                        if tl and tl:IsA("Tool") and tostring(tl.Name):lower():find("egg") then
+                            local hd0 = tl:FindFirstChild("Handle")
+                            local tp0 = (hd0 and hd0.Position) or rr.Position
+                            if (tp0 - rr.Position).Magnitude <= 40 then
+                                pcall(function() local h2 = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Humanoid") if h2 then h2:EquipTool(tl) end end)
+                                task.wait(0.4)
+                                pcall(function() local hrp2 = rapGetRoot() local hd2 = tl:FindFirstChild("Handle") if hrp2 and hd2 and type(firetouchinterest) == "function" then firetouchinterest(hrp2, hd2, 0) task.wait(0.2) firetouchinterest(hrp2, hd2, 1) end end)
+                                task.wait(0.5)
+                                repick = repick + 1
+                            end
+                        end
+                    end
+                    for _, pr in ipairs(workspace:GetDescendants()) do
+                        if pr and pr:IsA("ProximityPrompt") then
+                            local mdl = pr:FindFirstAncestorOfClass("Model")
+                            local nm = (mdl and mdl.Name) or ""
+                            if nm ~= "" and nm == cand.name then
+                                local pp = nil
+                                if pr.Parent and pr.Parent:IsA("BasePart") then pp = pr.Parent.Position
+                                elseif mdl and mdl.PrimaryPart then pp = mdl.PrimaryPart.Position end
+                                if pp and (pp - rr.Position).Magnitude <= 40 then
+                                    if type(fireproximityprompt) == "function" then fireproximityprompt(pr, 1) else pr:InputHoldBegin() task.wait(0.3) pr:InputHoldEnd() end
+                                    repick = repick + 1
+                                    task.wait(0.8)
+                                    break
+                                end
+                            end
+                        end
+                    end
+                end
+            end)
+            pcall(function() print("[RAP-EGG] repick="..tostring(repick)) Window:Notify({Title="Pickup",Description=(repick>0 and "Telur diambil lagi" or "Tak ada telur di dekat pinggir"),Lifetime=3}) end)
+            task.wait(0.8)
+        end
         -- b. TERBUKTI virtual (toolEggDiTas=0): tidak ada yg bisa di-drop. Langsung walk.
         -- c. WALK (tanpa teleport) dari edge ke tengah plot sendiri
         Window:Notify({ Title = "Delivery", Description = "Jalan ke tengah plot...", Lifetime = 2 })
