@@ -4479,6 +4479,15 @@ function rapPickupTick()
                         local seat0 = hum0 and hum0.SeatPart or nil
                         curSeat0 = seat0 and seat0:FindFirstAncestorOfClass("Model") or nil
                     end)
+                    -- SEAT VALID (10-Okt): cuma model ber-prompt Ride (pet) yg dihitung tunggangan. Duduk di kursi biasa = abaikan, scan fresh.
+                    if curSeat0 ~= nil then
+                        local isPetSeat = false
+                        pcall(function()
+                            if curSeat0:FindFirstChild("RidePrompt", true) then isPetSeat = true
+                            elseif rapRideName ~= nil and tostring(curSeat0.Name) == tostring(rapRideName) then isPetSeat = true end
+                        end)
+                        if not isPetSeat then curSeat0 = nil end
+                    end
                     -- DUDUK = PAKAI ITU (10-Okt): yg ditunggangi (keluar folder plot) = best. Tanpa scan, tanpa pindah.
                     if curSeat0 ~= nil then
                         bestPet = curSeat0 bestLoc = "seat"
@@ -4607,8 +4616,63 @@ function rapPickupTick()
                         bestPetRef = bestPet -- ref buat naik-lagi habis ambil, tapi tak perlu ride ulang sekarang
                     end
                     -- tanpa kunci (10-Okt): tiap telur pilih speed tertinggi fresh, off/on tetap sama selama pet tak berubah.
-                    if bestLoc ~= "tas" and not rapStay then
+                    if not rapStay and (bestPet ~= nil or bestLoc == "tas") then
                     do
+                    -- DARURAT (10-Okt): bestPet hilang (place gagal / prompt tak ketemu) = ambil pet APAPUN yg ada prompt. Diam = bug.
+                    if bestPet == nil then
+                        pcall(function()
+                            local mp = rapMyPlotModel
+                            local ps = mp and mp:FindFirstChild("Pets")
+                            if ps then
+                                for _, pet in ipairs(ps:GetChildren()) do
+                                    local rp = pet:FindFirstChild("RidePrompt", true)
+                                    if rp and rp:IsA("ProximityPrompt") and rp.Parent then bestPet = pet bestLoc = "plot" break end
+                                end
+                            end
+                        end)
+                        if bestPet == nil and bestLoc == "tas" and bestTool and bestTool.Parent then
+                            -- TAS RETRY (10-Okt): place tadi gagal / prompt belum muncul. Place sekali lagi lalu scan (kunci nama dulu, asal ada juga boleh).
+                            pcall(function()
+                                local ch = LocalPlayer.Character
+                                local hum = ch and ch:FindFirstChildOfClass("Humanoid")
+                                if hum then hum:EquipTool(bestTool) end
+                            end)
+                            task.wait(0.3)
+                            pcall(function()
+                                rapFire({ "Remotes", "Game", "PlacePet" }, bestTool)
+                                rapFire({ "Remotes", "Game", "PetPlace" }, bestTool)
+                                rapFire({ "Remotes", "Game", "PlacePet" })
+                                rapFire({ "Remotes", "Game", "PetPlace" })
+                            end)
+                            task.wait(0.4)
+                            pcall(function()
+                                local mp2 = rapMyPlotModel
+                                local ps2 = mp2 and mp2:FindFirstChild("Pets")
+                                if ps2 then
+                                    for _, pet in ipairs(ps2:GetChildren()) do
+                                        local rp = pet:FindFirstChild("RidePrompt", true)
+                                        if rp and rp:IsA("ProximityPrompt") and rp.Parent then
+                                            if rapRideName == nil or tostring(pet.Name) == tostring(rapRideName) then bestPet = pet bestLoc = "plot" break end
+                                        end
+                                    end
+                                    if bestPet == nil then
+                                        for _, pet in ipairs(ps2:GetChildren()) do
+                                            local rp = pet:FindFirstChild("RidePrompt", true)
+                                            if rp and rp:IsA("ProximityPrompt") and rp.Parent then bestPet = pet bestLoc = "plot" break end
+                                        end
+                                    end
+                                end
+                            end)
+                            pcall(function()
+                                local ch = LocalPlayer.Character
+                                local hum = ch and ch:FindFirstChildOfClass("Humanoid")
+                                if hum then hum:UnequipTools() end
+                            end)
+                        end
+                        if bestPet == nil then
+                            pcall(function() Window:Notify({ Title = "Ride", Description = "Pet tak ketemu di plot+tas.", Lifetime = 3 }) end)
+                        end
+                    end
                     -- (plot) lanjut ride via prompt di bawah.
                     -- notif dimatikan (10-Okt): hemat waktu render.
                     bestPetRef = bestPet
@@ -4650,7 +4714,7 @@ function rapPickupTick()
                         if okS then break end
                     end
                     end -- tutup do ride plot
-                    end -- tutup if bestLoc ~= "tas"
+                    end -- tutup if ride (seat/tas/plot)
                     end -- tutup if pets
             end)
         end
