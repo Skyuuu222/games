@@ -3858,7 +3858,7 @@ function rapIsMyPlot(inst)
     return rapRanchPos
 end
 
-local rapEdgeMargin = 18
+local rapEdgeMargin = 42
 function rapIsMine(inst)
     if not inst then return false end
     local me = player.Name:lower()
@@ -3957,7 +3957,7 @@ end
 function rapPlotEdge()
     local c = rapPlotCenter()
     if not c then return nil end
-    local off = math.min(rapPlotHalf() + rapEdgeMargin, 70)
+    local off = math.min(rapPlotHalf() + rapEdgeMargin, 110)
     local r0 = rapGetRoot()
     local dir = Vector3.new(1, 0, 1)
     if r0 then local d = r0.Position - c d = Vector3.new(d.X, 0, d.Z) if d.Magnitude > 5 then dir = d / d.Magnitude end end
@@ -3988,11 +3988,11 @@ function rapWalkPlotCenter()
     local c = rapPlotCenter()
     if not c then return false end
     rapSetNoclip(false)
-    do local gg = raycastGround(root) if gg then pcall(function() root.CFrame = CFrame.new(gg + Vector3.new(0, 3.2, 0)) end) end end
     local ch = LocalPlayer.Character
     local hum = ch and ch:FindFirstChildOfClass("Humanoid")
     local root = rapGetRoot()
     if not ch or not hum or not root then return false end
+    do local gg = raycastGround(root) if gg then pcall(function() root.CFrame = CFrame.new(gg + Vector3.new(0, 3.2, 0)) end) end end
     pcall(function()
 rapSetNoclip(false) do local gg = raycastGround(root) if gg then root.CFrame = CFrame.new(gg + Vector3.new(0, 3.2, 0)) end end
                 hum.Sit = false hum.PlatformStand = false
