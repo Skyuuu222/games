@@ -4256,6 +4256,7 @@ local function rapPickupTick()
     end)
     local gotEgg = hasEggTool
     local delivered = gotEgg
+    if delivered then
         rapPickedCount = rapPickedCount + 1
         rapEggsCarried = rapEggsCarried + 1
         rapPickupCD = os.clock() + 1.2
