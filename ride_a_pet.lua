@@ -3928,48 +3928,61 @@ local function rapGoPlotEdge(mode)
     local rr2 = rapGetRoot()
     return rr2 and ((rr2.Position - e).Magnitude <= 60) or false
 end
--- jalan via Heartbeat (dijamin gerak): unanchor tiap step + geser 16 st/dtk ke tengah.
+-- WALK BENERAN (animasi): pakai Humanoid:MoveTo bertahap, bukan geser CFrame.
+-- Geser CFrame tidak memicu animasi jalan -> server anggap diam -> delivery gagal.
 local function rapWalkPlotCenter()
     local c = rapPlotCenter()
-    if not c then Window:Notify({ Title = "Walk", Description = "center plot nil", Lifetime = 2 }) return false end
+    if not c then return false end
+    local ch = LocalPlayer.Character
+    local hum = ch and ch:FindFirstChildOfClass("Humanoid")
     local root = rapGetRoot()
-    if not root then Window:Notify({ Title = "Walk", Description = "root nil", Lifetime = 2 }) return false end
+    if not ch or not hum or not root then return false end
     pcall(function()
-        local chW = LocalPlayer.Character
-        if chW then for _, v in ipairs(chW:GetDescendants()) do if v:IsA("BasePart") then v.CanCollide = false end end end
-        local hum = chW and chW:FindFirstChildOfClass("Humanoid")
-        if hum then hum.Sit = false if hum.WalkSpeed < 8 then hum.WalkSpeed = 16 end pcall(function() hum:ChangeState(Enum.HumanoidStateType.Running) end) end
+        hum.Sit = false hum.PlatformStand = false
+        if hum.WalkSpeed < 8 then hum.WalkSpeed = 16 end
+        if hum.Health <= 0 then return end
+        for _, v in ipairs(ch:GetDescendants()) do
+            if v:IsA("BasePart") then v.CanCollide = false pcall(function() v.Anchored = false end) end
+        end
+        pcall(function() hum:ChangeState(Enum.HumanoidStateType.Running) end)
     end)
-    local dist0 = math.floor((root.Position - c).Magnitude)
-    Window:Notify({ Title = "Walk", Description = "jalan " .. tostring(dist0) .. " stud ke tengah...", Lifetime = 3 })
-    local doneW, t0 = false, os.clock()
-    local conn = nil
-    pcall(function()
-        conn = game:GetService("RunService").Heartbeat:Connect(function(dt)
-            local r = rapGetRoot()
-            if not r or not r.Parent then return end
-            pcall(function() r.Anchored = false end)
-            local cur = r.Position
-            local d = Vector3.new(c.X - cur.X, 0, c.Z - cur.Z)
-            local m = d.Magnitude
-            if m <= 8 then doneW = true return end
-            local step = math.min(16 * math.max(dt, 0.016), m)
-            local dir = d / (m + 0.001)
-            local np = cur + dir * step
-            r.CFrame = CFrame.new(np.X, cur.Y, np.Z)
-        end)
-    end)
-    pcall(function()
-        local chW3 = LocalPlayer.Character
-        local hum3 = chW3 and chW3:FindFirstChildOfClass("Humanoid")
-        if hum3 then hum3:MoveTo(Vector3.new(c.X, root.Position.Y, c.Z)) end
-    end)
-    while not doneW and os.clock() - t0 < 30 do task.wait(0.2) end
-    pcall(function() if conn then conn:Disconnect() end end)
+    Window:Notify({ Title = "Walk", Description = "jalan beneran " .. tostring(math.floor((root.Position - c).Magnitude)) .. " stud...", Lifetime = 3 })
+    local t0 = os.clock()
+    local lastD = (root.Position - c).Magnitude
+    local stuckT = os.clock()
+    while os.clock() - t0 < 40 do
+        ch = LocalPlayer.Character hum = ch and ch:FindFirstChildOfClass("Humanoid") root = rapGetRoot()
+        if not ch or not hum or not root or hum.Health <= 0 then break end
+        pcall(function() hum.Sit = false root.Anchored = false end)
+        local cur = root.Position
+        local d = Vector3.new(c.X - cur.X, 0, c.Z - cur.Z)
+        local m = d.Magnitude
+        if m <= 12 then break end
+        local wp = cur + (d / (m + 0.001)) * math.min(30, m)
+        wp = Vector3.new(wp.X, cur.Y, wp.Z)
+        pcall(function() hum:MoveTo(wp) end)
+        local w0 = os.clock()
+        while os.clock() - w0 < 4 do
+            task.wait(0.2)
+            local r2 = rapGetRoot()
+            if not r2 then break end
+            local m2 = Vector3.new(c.X - r2.Position.X, 0, c.Z - r2.Position.Z).Magnitude
+            if m2 <= 12 then break end
+            if (r2.Position - wp).Magnitude <= 6 then break end
+        end
+        local r3 = rapGetRoot()
+        local m3 = r3 and Vector3.new(c.X - r3.Position.X, 0, c.Z - r3.Position.Z).Magnitude or 9999
+        if m3 < lastD - 2 then lastD = m3 stuckT = os.clock()
+        elseif os.clock() - stuckT > 4 then
+            pcall(function() hum.Jump = true end)
+            task.wait(0.5)
+            stuckT = os.clock()
+        end
+    end
     local rf = rapGetRoot()
-    local dd = rf and math.floor((rf.Position - c).Magnitude) or -1
+    local dd = rf and math.floor(Vector3.new(c.X - rf.Position.X, 0, c.Z - rf.Position.Z).Magnitude) or -1
     Window:Notify({ Title = "Walk", Description = "sisa " .. tostring(dd) .. " stud", Lifetime = 3 })
-    return rf and ((rf.Position - c).Magnitude <= 16) or false
+    return rf and (Vector3.new(c.X - rf.Position.X, 0, c.Z - rf.Position.Z).Magnitude <= 16) or false
 end
 local function rapGoPlot(notify)
     local pos = rapPlotPos or rapRanchPos or rapRefreshRanch()
@@ -4313,7 +4326,8 @@ local function rapPickupTick()
             for _, par in ipairs({ ch2, bp2 }) do
                 if par then
                     for _, t in ipairs(par:GetChildren()) do
-                        if t:IsA("Tool") and tostring(t.Name):find("Egg", 1, true) then
+                        local tn = tostring(t.Name)
+                        if t:IsA("Tool") and (tn == cand.name or tn:find(cand.name, 1, true) or cand.name:find(tn, 1, true) or tn:find("Egg", 1, true)) then
                             t.Parent = workspace
                             dropped = true
                             pcall(function()
@@ -4341,7 +4355,7 @@ local function rapPickupTick()
                     local bp, bd = nil, 40
                     local fresh = workspace:GetDescendants()
                     for _, d in ipairs(fresh) do
-                        if d:IsA("ProximityPrompt") and tostring(d.ActionText) == "Pick Up" then
+                        if d:IsA("ProximityPrompt") and tostring(d.ActionText) == "Pick Up" and rapFindEggName(d) == cand.name then
                             local pp3 = rapEntityPos(d.Parent) or rapEntityPos(d)
                             if pp3 then
                                 local dd = (pp3 - er.Position).Magnitude
