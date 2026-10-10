@@ -3839,7 +3839,6 @@ local function rapIsMine(inst)
     return ok and owned or false
 end
 local rapMyPlotModel = nil
-local rapMyPlotModel = nil
 -- Plot: Workspace.Plots.Plot + Data.Owner (ObjectValue/StringValue menunjuk pemain).
 -- Otomatis tiap server: cocokkan Owner==LocalPlayer, TANPA set manual.
 local function rapPlotOwnerOf(plot)
@@ -3856,10 +3855,11 @@ local function rapPlotOwnerOf(plot)
     return own
 end
 local function rapOwnerIsMe(plot)
+    local me = LocalPlayer or Player
     local o = rapPlotOwnerOf(plot)
-    if o == nil then return false end
-    if typeof(o) == "Instance" then return o == player end
-    return tostring(o) == player.Name or tostring(o) == player.DisplayName
+    if o == nil or me == nil then return false end
+    if typeof(o) == "Instance" then return o == me end
+    return tostring(o) == me.Name or tostring(o) == me.DisplayName
 end
 local function rapFindMyPlot()
     local found, foundPos = nil, nil
