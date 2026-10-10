@@ -3718,6 +3718,56 @@ local function rapTweenTo(pos, speed)
     end
     return (rapGetRoot() and ((rapGetRoot().Position - pos).Magnitude <= 22)) or done
 end
+-- Fallback trigger remote: untuk telur yg gagal via prompt (Egg Delivery Failed / Returned).
+-- Dicoba HANYA setelah prompt gagal, satu-per-satu, tetap hormati filter.
+local rapFailCount = {}
+local rapBlacklist = {}
+local rapUseRemoteFallback = true
+local RAP_PICKUP_REMOTES = {
+    {"Remotes", "Game", "EggPickup"},
+    {"Remotes", "Game", "PickupPet"},
+    {"Remotes", "Game", "PetCollect"},
+    {"Remotes", "Game", "ClaimEgg"},
+    {"Remotes", "Game", "EggArrivalClaim"},
+    {"Remotes", "Game", "Hatch"},
+}
+local function rapEggModelOf(prompt)
+    local cur = prompt and prompt.Parent
+    for _ = 1, 8 do
+        if not cur then break end
+        for _, n in ipairs(rapEggNames) do
+            if cur.Name == n then return cur end
+        end
+        cur = cur.Parent
+    end
+    return prompt and prompt.Parent or nil
+end
+local function rapRemotePickup(cand, prompt)
+    local model = rapEggModelOf(prompt)
+    local eggName = cand and cand.name or ""
+    local argSets = { { model }, { eggName }, { model, eggName }, {} }
+    for _, names in ipairs(RAP_PICKUP_REMOTES) do
+        local r = rapPath(ReplicatedStorage, names)
+        if r then
+            for _, args in ipairs(argSets) do
+                local ok = pcall(function()
+                    if r:IsA("RemoteEvent") then
+                        if #args > 0 then r:FireServer(unpack(args)) else r:FireServer() end
+                    elseif r:IsA("RemoteFunction") then
+                        if #args > 0 then r:InvokeServer(unpack(args)) else r:InvokeServer() end
+                    end
+                end)
+                if ok then
+                    task.wait(0.8)
+                    local gone = (not prompt) or (prompt.Parent == nil) or (not prompt:IsDescendantOf(workspace))
+                    if gone then return true, table.concat(names, "/") end
+                end
+            end
+        end
+    end
+    return false, nil
+end
+
 
 -- ============================== RANCH (AUTO DETECT) ==============================
 local rapRanchPos = nil rapPlotPos = nil
@@ -3941,9 +3991,17 @@ local function rapPickupTick()
         prompt.MaxActivationDistance = 12
         prompt.RequiresLineOfSight = false
     end)
+    -- skip telur yg gagal 3x dalam 60 dtk (hindari spam kode AT-xxxx)
+    do
+        local bl = rapBlacklist[prompt]
+        if bl and os.clock() < bl then return 0 end
+    end
     rapHandled[prompt] = true
+    -- kunci karakter saat delivery supaya server tidak me-return (penyebab AT-1782/5783)
+    do local _r = rapGetRoot() if _r then pcall(function() _r.Anchored = true end) end end
     rapTriggerPrompt(prompt)
-    task.wait(mode == "Instant" and 0.4 or 0.9)
+    task.wait(mode == "Instant" and 0.7 or 1.2)
+    do local _r = rapGetRoot() if _r then pcall(function() _r.Anchored = false end) end end
     local gone = (prompt.Parent == nil) or (not prompt:IsDescendantOf(workspace))
     local delivered = gone
     if delivered then
@@ -3956,15 +4014,39 @@ local function rapPickupTick()
             Window:Notify({ Title = "Telur Didapat", Description = ("[%s] %s (total %d)"):format(rar, cand.name, rapPickedCount), Lifetime = 3 })
         end
     else
-        rapHandled[prompt] = nil
-        rapPickupCD = os.clock() + 2.5
-        return 0
+        -- prompt gagal -> coba trigger remote langsung (cadangan), tetap satu-per-satu
+        local remoteOk = false
+        if rapUseRemoteFallback then
+            do local _r = rapGetRoot() if _r then pcall(function() _r.Anchored = true end) end end
+            local ok2 = false
+            pcall(function() ok2 = rapRemotePickup(cand, prompt) end)
+            if ok2 == true then remoteOk = true end
+            -- rapRemotePickup return 2 value; cek ulang telur hilang
+            do
+                local gone2 = (prompt.Parent == nil) or (not prompt:IsDescendantOf(workspace))
+                if gone2 then remoteOk = true delivered = true end
+            end
+            do local _r = rapGetRoot() if _r then pcall(function() _r.Anchored = false end) end end
+        end
+        if remoteOk and delivered then
+            rapPickedCount = rapPickedCount + 1
+            rapEggsCarried = rapEggsCarried + 1
+            rapPickupCD = os.clock() + 1.2
+            pcall(function() rapWHEgg(rapRarityOf(cand.name), cand.name, rapFindMutation(cand.name)) end)
+        else
+            rapHandled[prompt] = nil
+            local fc = (rapFailCount[prompt] or 0) + 1
+            rapFailCount[prompt] = fc
+            if fc >= 3 then rapBlacklist[prompt] = os.clock() + 60 rapFailCount[prompt] = 0 end
+            rapPickupCD = os.clock() + 2.5
+            return 0
+        end
     end
     -- 3. balik ke plot sendiri setiap 1 telur sukses (kedua mode sama)
     if rapReturnRanch then
-        task.wait(0.4)
+        task.wait(1.0)
         rapGoPlot(false)
-        task.wait(0.4)
+        task.wait(0.5)
     end
     if mode ~= "Instant" then rapSetNoclip(false) end
     return 1
@@ -5432,6 +5514,14 @@ SecAutoEgg:Toggle({
     Default = true,
     Callback = function(enabled)
         rapReturnRanch = enabled and true or false
+    end,
+})
+
+SecAutoEgg:Toggle({
+    Name = "Pakai Trigger Remote (Cadangan Gagal Pick Up)",
+    Default = true,
+    Callback = function(enabled)
+        rapUseRemoteFallback = enabled and true or false
     end,
 })
 
