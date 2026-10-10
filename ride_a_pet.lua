@@ -4231,7 +4231,7 @@ local function rapPickupTick()
         local rarW2 = rapRarityOf(cand.name)
         local rareW2 = (rarW2 == "Epic" or rarW2 == "Legendary" or rarW2 == "Mythic" or rarW2 == "Divine" or rarW2 == "Ethereal")
         local t0 = os.clock()
-        local lim = rareW2 and 6 or 3
+        local lim = rareW2 and 2.5 or 1.2
         while os.clock() - t0 < lim do
             if prompt.Parent == nil or (not prompt:IsDescendantOf(workspace)) then break end
             local hasEgg = false
@@ -4336,7 +4336,7 @@ local function rapPickupTick()
                     for _, t in ipairs(bp0:GetChildren()) do
                         if t and t:IsA("Tool") and tostring(t.Name) == tostring(cand.name) and not rapBagBefore[t] then
                             hum0:EquipTool(t)
-                            task.wait(0.8)
+                                    task.wait(0.15)
                             break
                         end
                     end
@@ -4353,7 +4353,7 @@ local function rapPickupTick()
                         if ch then for _, t in ipairs(ch:GetChildren()) do if t:IsA("Tool") then before0 = before0 + 1 end end end
                     end)
                     pcall(function() bd:FireServer() end)
-                    task.wait(1.0)
+                    task.wait(0.35)
                     local after0 = 0
                     pcall(function()
                         local bp = LocalPlayer:FindFirstChild("Backpack")
@@ -4367,7 +4367,7 @@ local function rapPickupTick()
                         pcall(function() btn2 = LocalPlayer.PlayerGui.Main.BasketTracker.Handler.EggFrame.Drop end)
                         if btn2 and type(firesignal) == "function" then
                             pcall(function() firesignal(btn2.MouseButton1Click) end)
-                            task.wait(1.0)
+                    task.wait(0.35)
                             local after1 = 0
                             pcall(function()
                                 local bp = LocalPlayer:FindFirstChild("Backpack")
@@ -4394,7 +4394,7 @@ local function rapPickupTick()
                 print("[RAP-EGG] "..s2)
             end)
             pcall(function() Window:Notify({Title="Egg",Description=tostring(cand.name).." ("..tostring(rapRarityOf(cand.name))..")",Lifetime=3}) end)
-            task.wait(0.5)
+            task.wait(0.15)
             local repick = 0
             pcall(function()
                 local rr = rapGetRoot()
@@ -4405,9 +4405,9 @@ local function rapPickupTick()
                             local tp0 = (hd0 and hd0.Position) or rr.Position
                             if (tp0 - rr.Position).Magnitude <= 40 then
                                 pcall(function() local h2 = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Humanoid") if h2 then h2:EquipTool(tl) end end)
-                                task.wait(0.4)
-                                pcall(function() local hrp2 = rapGetRoot() local hd2 = tl:FindFirstChild("Handle") if hrp2 and hd2 and type(firetouchinterest) == "function" then firetouchinterest(hrp2, hd2, 0) task.wait(0.2) firetouchinterest(hrp2, hd2, 1) end end)
-                                task.wait(0.5)
+                                task.wait(0.15)
+                                pcall(function() local hrp2 = rapGetRoot() local hd2 = tl:FindFirstChild("Handle") if hrp2 and hd2 and type(firetouchinterest) == "function" then firetouchinterest(hrp2, hd2, 0) task.wait(0.05) firetouchinterest(hrp2, hd2, 1) end end)
+            task.wait(0.15)
                                 repick = repick + 1
                             end
                         end
@@ -4421,9 +4421,9 @@ local function rapPickupTick()
                                 if pr.Parent and pr.Parent:IsA("BasePart") then pp = pr.Parent.Position
                                 elseif mdl and mdl.PrimaryPart then pp = mdl.PrimaryPart.Position end
                                 if pp and (pp - rr.Position).Magnitude <= 40 then
-                                    if type(fireproximityprompt) == "function" then fireproximityprompt(pr, 1) else pr:InputHoldBegin() task.wait(0.3) pr:InputHoldEnd() end
+                                    if type(fireproximityprompt) == "function" then fireproximityprompt(pr, 1) else pr:InputHoldBegin() task.wait(0.1) pr:InputHoldEnd() end
                                     repick = repick + 1
-                                    task.wait(0.8)
+                                    task.wait(0.15)
                                     break
                                 end
                             end
@@ -4432,7 +4432,7 @@ local function rapPickupTick()
                 end
             end)
             pcall(function() print("[RAP-EGG] repick="..tostring(repick)) Window:Notify({Title="Pickup",Description=(repick>0 and "Telur diambil lagi" or "Tak ada telur di dekat pinggir"),Lifetime=3}) end)
-            task.wait(0.8)
+            task.wait(0.2)
         end
         -- b. TERBUKTI virtual (toolEggDiTas=0): tidak ada yg bisa di-drop. Langsung walk.
         -- c. WALK (tanpa teleport) dari edge ke tengah plot sendiri
