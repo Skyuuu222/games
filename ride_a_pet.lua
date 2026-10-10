@@ -4423,7 +4423,7 @@ function rapPickupTick()
                     if d:IsA("ValueBase") and tostring(d.Name):lower() == "speed" then sp = tonumber(d.Value) or 0 break end
                 end
             end) end
-            return wt, sp, (wt or 0) * 1000000000 + (sp or 0)
+            return wt, sp, (sp or 0) * 1000000 + (wt or 0)
         end
     end
         -- SELALU bandingkan (10-Okt): kalau sudah duduk di pet JELEK, turun + pindah ke best. Tanpa ini best tak pernah dipakai.
@@ -4500,6 +4500,12 @@ function rapPickupTick()
                                 if b2 then bestPet = b2 bestLoc = "plot" end
                             end
                         end)
+                        -- TANGAN KOSONG (10-Okt): habis place, lepas tool pet biar pickup telur tak kehalang tool di tangan.
+                        pcall(function()
+                            local ch = LocalPlayer.Character
+                            local hum = ch and ch:FindFirstChildOfClass("Humanoid")
+                            if hum then hum:UnequipTools() end
+                        end)
                     end
                     -- BANDINGKAN (10-Okt): sudah naik best (toleransi 1%) = diam. Naik pet jelek = turun, lanjut naik best.
                     local rapStay = false
@@ -4512,10 +4518,7 @@ function rapPickupTick()
                             pcall(function()
                                 local ch = LocalPlayer.Character
                                 local hum = ch and ch:FindFirstChildOfClass("Humanoid")
-                                if hum and (hum.Sit or hum.SeatPart ~= nil) then
-                                    hum.Sit = false
-                                    pcall(function() hum:ChangeState(Enum.HumanoidStateType.Jumping) end)
-                                end
+                                if hum and (hum.Sit or hum.SeatPart ~= nil) then hum.Sit = false end
                             end)
                             task.wait(0.4)
                         end
@@ -6374,7 +6377,7 @@ SecAutoEgg:Button({
                             if d:IsA("ValueBase") and tostring(d.Name):lower() == "speed" then sp = tonumber(d.Value) or 0 break end
                         end
                     end)
-                    return wt, sp, wt * 1000000000 + sp
+                    return wt, sp, sp * 1000000 + wt
                 end
                 local function push(pet, loc)
                     local wt, sp, sc = scoreOf(pet)
