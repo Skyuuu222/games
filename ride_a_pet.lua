@@ -4417,21 +4417,7 @@ function rapPickupTick()
             seated0 = hum and (hum.Sit or hum.SeatPart ~= nil) or false
         end)
         if not seated0 then
-            -- a. server-side best dulu (tanpa teleport, tanpa tebak ukuran)
-            pcall(function()
-                rapFire({ "Remotes", "Game", "RideBestPet" })
-                rapFire({ "Remotes", "Game", "EquipBestPet" })
-                rapFire({ "Remotes", "Game", "PetRideMode" })
-                rapFire({ "Remotes", "Game", "Mounting" })
-            end)
-            task.wait(0.5)
-            pcall(function()
-                local ch = LocalPlayer.Character
-                local hum = ch and ch:FindFirstChildOfClass("Humanoid")
-                seated0 = hum and (hum.Sit or hum.SeatPart ~= nil) or false
-            end)
-            -- b. fallback prompt: 1 pet terbesar di plot sendiri
-            if not seated0 then
+            -- PROMPT SAJA (10-Okt): remote RideBestPet DICABUT (bikin pickup macet). Naik via prompt pet terbesar.
             pcall(function()
                 local myPlot = rapMyPlotModel
                 if not myPlot then pcall(function() rapFindMyPlot() end) myPlot = rapMyPlotModel end
@@ -4441,16 +4427,27 @@ function rapPickupTick()
                     for _, pet in ipairs(pets:GetChildren()) do
                         local rp = pet:FindFirstChild("RidePrompt", true)
                         if rp and rp:IsA("ProximityPrompt") and rp.Parent then
-                            local sc = 0
+                            -- BEST ASLI (hasil deteksi user): Weight attr dulu, seri = Speed value tertinggi.
+                            -- Unicorn Volted (Speed 493235) > Shocked (328823) walau Weight sama 11.99.
+                            local wt, sp = 0, 0
+                            pcall(function() wt = tonumber(pet:GetAttribute("Weight")) or 0 end)
                             pcall(function()
-                                if pet:IsA("Model") then
-                                    local s = pet:GetExtentsSize()
-                                    sc = s.X + s.Y + s.Z
-                                else
-                                    local p0 = rapEntityPos(pet)
-                                    sc = p0 and 1 or 0
+                                for _, d in ipairs(pet:GetDescendants()) do
+                                    if d:IsA("ValueBase") and tostring(d.Name):lower() == "speed" then
+                                        sp = tonumber(d.Value) or 0
+                                        break
+                                    end
                                 end
                             end)
+                            local sc = wt * 1000000000 + sp
+                            if sc <= 0 then
+                                pcall(function()
+                                    if pet:IsA("Model") then
+                                        local s = pet:GetExtentsSize()
+                                        sc = (s.X + s.Y + s.Z) / 1000000000
+                                    end
+                                end)
+                            end
                             if sc > bestScore then bestScore = sc bestPet = pet end
                         end
                     end
@@ -4477,7 +4474,6 @@ function rapPickupTick()
                     end
                 end
             end)
-            end
         end
     end
     -- GERBANG LUNAK (10-Okt): cek duduk 2x (jeda 0.4 dtk, seat butuh waktu weld). Gagal tetap LANJUT
@@ -6275,6 +6271,40 @@ SecAutoEgg:Toggle({
         else
             rapSet("pickup", false, "Auto Farm Eggs", "", "Auto farm eggs dimatikan.")
         end
+    end,
+})
+
+SecAutoEgg:Button({
+    Name = "Deteksi Best Pet (Lihat Kandidat)",
+    Callback = function()
+        -- CODE TERPISAH deteksi best pet: tampilkan semua pet + atributnya, TANPA naik/tanpa ganggu farm.
+        task.spawn(function()
+            local lines = {}
+            pcall(function()
+                local myPlot = rapMyPlotModel
+                if not myPlot then pcall(function() rapFindMyPlot() end) myPlot = rapMyPlotModel end
+                local pets = myPlot and myPlot:FindFirstChild("Pets")
+                if pets then
+                    for _, pet in ipairs(pets:GetChildren()) do
+                        local attrs = {}
+                        pcall(function()
+                            for k, v in pairs(pet:GetAttributes()) do table.insert(attrs, k.."="..tostring(v)) end
+                        end)
+                        local vals = {}
+                        pcall(function()
+                            for _, d in ipairs(pet:GetDescendants()) do
+                                if d:IsA("ValueBase") then table.insert(vals, d.Name.."="..tostring(d.Value)) end
+                            end
+                        end)
+                        local sz = "?"
+                        pcall(function() if pet:IsA("Model") then local s = pet:GetExtentsSize() sz = string.format("%.1f", s.X+s.Y+s.Z) end end)
+                        table.insert(lines, tostring(pet.Name).." | size="..sz.." | att:["..table.concat(attrs,","):sub(1,120).."] | val:["..table.concat(vals,","):sub(1,120).."]")
+                    end
+                end
+            end)
+            local msg = (#lines > 0 and table.concat(lines, "\n"):sub(1, 450) or "pet tak ketemu")
+            Window:Notify({Title="Kandidat Best Pet",Description=msg,Lifetime=10})
+        end)
     end,
 })
 
