@@ -3911,8 +3911,8 @@ local function rapGoPlotEdge(mode)
     local e = rapPlotEdge()
     if not e then return false end
     for attempt = 1, 3 do
-        rapSetNoclip(false) rapTeleportTo(e, "Edge")
-        task.wait(0.6)
+        if mode == "Instant" then rapSetNoclip(false) rapTeleportTo(e, "Edge") else rapTweenTo(e, tonumber(rapPlanned and rapPlanned.glideSpeed) or 1000) end
+        task.wait(0.35)
         if rapGetRoot() and (rapGetRoot().Position - e).Magnitude <= 30 then return true end
     end
     local rr2 = rapGetRoot()
@@ -4166,19 +4166,20 @@ local function rapPickupTick()
     local mode = rapPickupMode or "Tween"
     local prompt = cand.prompt
     if not prompt or not prompt.Parent then return done(0) end
-    -- 1. pergi ke telur: TELEPORT LANGSUNG (seperti dulu, tidak tween-stop-stop)
+    -- 1. pergi ke telur: JANGAN DIUBAH-UBAH (versi BAGUS 10-Okt). Instant=teleport, Tween=tween mulus.
     do
         local away = Vector3.new(0, 0, 7)
         do local rrS=rapGetRoot() if rrS then local d0=cand.pos-rrS.Position d0=Vector3.new(d0.X,0,d0.Z) if d0.Magnitude>1 then away=(-d0/d0.Magnitude)*7 end end end
         local stop = cand.pos + Vector3.new(away.X, 4, away.Z)
-        rapSetNoclip(false) rapTeleportTo(stop, "Egg") task.wait(0.25)
+        if mode == "Instant" then rapSetNoclip(false) rapTeleportTo(stop, "Egg") task.wait(0.25)
+        else rapTweenTo(stop, tonumber(rapPlanned and rapPlanned.glideSpeed) or 1000) end
     end
     -- 2. pastikan dekat (server tolak dari jauh)
     do
         local pp = rapEntityPos(prompt.Parent) or cand.pos
         local rr = rapGetRoot()
         if pp and rr and (pp - rr.Position).Magnitude > 12 then
-            rapTeleportTo(pp, "Egg") task.wait(0.2)
+            if mode == "Instant" then rapTeleportTo(pp, "Egg") task.wait(0.2) else rapTweenTo(pp, tonumber(rapPlanned and rapPlanned.glideSpeed) or 1000) end
         end
     end
     do
@@ -4305,7 +4306,6 @@ local function rapPickupTick()
         -- b2. DROP PAKSA DI PINGGIR: drop telur, ambil lagi, baru walk.
         do
             pcall(function() Window:Notify({Title="Drop",Description="Drop telur di pinggir: "..tostring(cand.name),Lifetime=2}) end)
-            pcall(function() print("[RAP-EGG] target="..tostring(cand.name).." rarity="..tostring(rapRarityOf(cand.name))) end)
             local dropped = 0
             pcall(function()
                 -- equip target ke TANGAN dulu (tombol Drop butuh dipegang)
@@ -4363,7 +4363,6 @@ local function rapPickupTick()
             pcall(function()
                 local msg = (dropped > 0) and ("Ter-drop "..dropped..", ambil lagi...") or "Virtual (tak ada Tool) - ambil ulang..."
                 Window:Notify({Title="Drop",Description=msg,Lifetime=3})
-                print("[RAP-EGG] dropped="..tostring(dropped))
             end)
             pcall(function()
                 local ch2 = LocalPlayer.Character
@@ -4371,7 +4370,6 @@ local function rapPickupTick()
                 local s2 = "tas="
                 if ch2 then for _, t in ipairs(ch2:GetChildren()) do if t:IsA("Tool") then s2 = s2.."C:"..t.Name..";" end end end
                 if bp2 then for _, t in ipairs(bp2:GetChildren()) do if t:IsA("Tool") then s2 = s2.."B:"..t.Name..";" end end end
-                print("[RAP-EGG] "..s2)
             end)
             pcall(function() Window:Notify({Title="Egg",Description=tostring(cand.name).." ("..tostring(rapRarityOf(cand.name))..")",Lifetime=3}) end)
             task.wait(0.15)
@@ -4410,7 +4408,7 @@ local function rapPickupTick()
                     end
                 end
             end)
-            pcall(function() print("[RAP-EGG] repick="..tostring(repick)) Window:Notify({Title="Pickup",Description=(repick>0 and "Telur diambil lagi" or "Tak ada telur di dekat pinggir"),Lifetime=3}) end)
+            pcall(function() Window:Notify({Title="Pickup",Description=(repick>0 and "Telur diambil lagi" or "Tak ada telur di dekat pinggir"),Lifetime=3}) end)
             task.wait(0.2)
         end
         -- b. TERBUKTI virtual (toolEggDiTas=0): tidak ada yg bisa di-drop. Langsung walk.
