@@ -4451,12 +4451,25 @@ function rapPickupTick()
                 local pets = myPlot and myPlot:FindFirstChild("Pets")
                 if pets then
                     -- SKOR BERSAMA tas+plot (10-Okt): helper rapPetScore pakai Weight -> Speed (+attr Speed).
-                    local bestPet, bestScore, bestLoc, bestTool = nil, -1, nil, nil
+                    local bestPet, bestScore, bestLoc, bestTool, bestToolKey = nil, -1, nil, nil, nil
+                    -- KUNCI BEST (10-Okt): sekali ketemu, jangan gonta-ganti tiap on/off. Kunci = PetKey attr (unik per pet).
+                    local function rapPetKey(pet)
+                        local k = nil
+                        pcall(function() k = pet:GetAttribute("PetKey") end)
+                        if k == nil or k == "" then
+                            local _, sp = 0, 0
+                            pcall(function() local a,b = rapPetScore(pet) sp = b end)
+                            k = tostring(pet.Name).."|"..tostring(sp)
+                        end
+                        return tostring(k)
+                    end
                     for _, pet in ipairs(pets:GetChildren()) do
                         local rp = pet:FindFirstChild("RidePrompt", true)
                         if rp and rp:IsA("ProximityPrompt") and rp.Parent then
                             local _, _, sc = rapPetScore(pet)
-                            if sc > bestScore then bestScore = sc bestPet = pet bestLoc = "plot" end
+                            if rapBestLockKey ~= nil and rapPetKey(pet) ~= rapBestLockKey then
+                                -- bukan yang dikunci: lewati, kecuali skornya jauh lebih baik (toleransi: abaikan)
+                            elseif sc > bestScore then bestScore = sc bestPet = pet bestLoc = "plot" end
                         end
                     end
                     -- tas: nilai Tool pet (bukan telur). Tanpa equip/place dulu, cuma baca atribut.
@@ -4465,7 +4478,17 @@ function rapPickupTick()
                         if bp then for _, t in ipairs(bp:GetChildren()) do
                             if t and t:IsA("Tool") and not tostring(t.Name):lower():find("egg", 1, true) then
                                 local _, _, sc = rapPetScore(t)
-                                if sc > 0 and sc > bestScore then bestScore = sc bestTool = t bestLoc = "tas" end
+                                local tk = nil
+                                pcall(function() tk = t:GetAttribute("PetKey") end)
+                                if tk == nil or tk == "" then
+                                    local _, sb = 0, 0
+                                    pcall(function() local a,b = rapPetScore(t) sb = b end)
+                                    tk = tostring(t.Name).."|"..tostring(sb)
+                                end
+                                tk = tostring(tk)
+                                if rapBestLockKey == nil or tk == rapBestLockKey then
+                                    if sc > 0 and sc > bestScore then bestScore = sc bestTool = t bestLoc = "tas" bestToolKey = tk end
+                                end
                             end
                         end end
                     end)
@@ -4536,18 +4559,51 @@ function rapPickupTick()
                             Window:Notify({Title="Best Pet",Description=tostring(bestPet.Name),Lifetime=3})
                         end
                     end)
+                    -- kunci permanen sesi ini: best pertama menang, off/on tak ganti-ganti lagi.
+                    pcall(function()
+                        if rapBestLockKey == nil and bestPet then
+                            local k = nil
+                            pcall(function() k = bestPet:GetAttribute("PetKey") end)
+                            if k == nil or k == "" then
+                                local _, sb = 0, 0
+                                pcall(function() local a,b = rapPetScore(bestPet) sb = b end)
+                                k = tostring(bestPet.Name).."|"..tostring(sb)
+                            end
+                            rapBestLockKey = tostring(k)
+                        elseif rapBestLockKey == nil and bestToolKey then
+                            rapBestLockKey = tostring(bestToolKey)
+                        end
+                    end)
                     bestPetRef = bestPet
+                    -- RIDE INSTAN (10-Okt): tembak remote dulu dari jauh (tanpa teleport, tanpa tekan E).
+                    -- Berhasil = lanjut (cepat). Gagal = fallback prompt 1x.
                     for try = 1, 2 do
                         if not bestPet then break end
-                        local rp = bestPet:FindFirstChild("RidePrompt", true)
-                        local pp = rp and rp.Parent and rapEntityPos(rp.Parent)
-                        if pp then rapForceTeleport(pp) task.wait(0.15) end
-                        if rp then
-                            pcall(function() rp.RequiresLineOfSight = false end)
+                        local okS0 = false
+                        pcall(function()
+                            local ch = LocalPlayer.Character
+                            local hum = ch and ch:FindFirstChildOfClass("Humanoid")
+                            okS0 = hum and (hum.Sit or hum.SeatPart ~= nil) or false
+                        end)
+                        if okS0 then break end
+                        if try == 1 then
+                            -- percobaan 1: remote saja, tanpa gerak, tanpa E.
                             rapFire({ "Remotes", "Game", "PetRideMode" })
                             rapFire({ "Remotes", "Game", "Mounting" })
-                            rapTriggerPrompt(rp)
-                            task.wait(0.3)
+                            rapFire({ "Remotes", "Game", "Mount" })
+                            task.wait(0.4)
+                        else
+                            -- fallback: teleport + prompt 1x (tanpa hold E lama).
+                            local rp = bestPet:FindFirstChild("RidePrompt", true)
+                            local pp = rp and rp.Parent and rapEntityPos(rp.Parent)
+                            if pp then rapForceTeleport(pp) task.wait(0.15) end
+                            if rp then
+                                pcall(function() rp.RequiresLineOfSight = false end)
+                                rapFire({ "Remotes", "Game", "PetRideMode" })
+                                rapFire({ "Remotes", "Game", "Mounting" })
+                                rapTriggerPrompt(rp)
+                                task.wait(0.2)
+                            end
                         end
                         local okS = false
                         pcall(function()
