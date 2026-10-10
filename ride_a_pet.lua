@@ -4406,9 +4406,26 @@ function rapPickupTick()
     local mode = rapPickupMode or "Tween"
     local prompt = cand.prompt
     if not prompt or not prompt.Parent then return done(0) end
-    -- 1. BEST PET via SERVER (10-Okt): remote RideBestPet/EquipBestPet yang tahu best beneran.
-    -- Prompt fallback tetap ke 1 pet terbesar bila remote belum weld.
+    -- 1. NAIK BEST (tas + plot) via prompt. Skor: Weight -> Speed.
     local bestPetRef = nil
+    if rapPetScore == nil then
+        function rapPetScore(pet)
+            local wt, sp = 0, 0
+            pcall(function()
+                wt = tonumber(pet:GetAttribute("Weight")) or tonumber(pet:GetAttribute("weight")) or 0
+            end)
+            pcall(function()
+                local a = pet:GetAttribute("Speed") or pet:GetAttribute("speed")
+                if tonumber(a) then sp = tonumber(a) end
+            end)
+            if sp <= 0 then pcall(function()
+                for _, d in ipairs(pet:GetDescendants()) do
+                    if d:IsA("ValueBase") and tostring(d.Name):lower() == "speed" then sp = tonumber(d.Value) or 0 break end
+                end
+            end) end
+            return wt, sp, (wt or 0) * 1000000000 + (sp or 0)
+        end
+    end
     do
         local seated0 = false
         pcall(function()
@@ -4423,25 +4440,60 @@ function rapPickupTick()
                 if not myPlot then pcall(function() rapFindMyPlot() end) myPlot = rapMyPlotModel end
                 local pets = myPlot and myPlot:FindFirstChild("Pets")
                 if pets then
-                    local bestPet, bestScore = nil, -1
+                    -- SKOR BERSAMA tas+plot (10-Okt): helper rapPetScore pakai Weight -> Speed (+attr Speed).
+                    local bestPet, bestScore, bestLoc, bestTool = nil, -1, nil, nil
                     for _, pet in ipairs(pets:GetChildren()) do
                         local rp = pet:FindFirstChild("RidePrompt", true)
                         if rp and rp:IsA("ProximityPrompt") and rp.Parent then
-                            -- SKOR ASLI (deteksi user): Weight -> Speed.
-                            local wt, sp = 0, 0
-                            pcall(function() wt = tonumber(pet:GetAttribute("Weight")) or 0 end)
-                            pcall(function()
-                                for _, d in ipairs(pet:GetDescendants()) do
-                                    if d:IsA("ValueBase") and tostring(d.Name):lower() == "speed" then
-                                        sp = tonumber(d.Value) or 0
-                                        break
-                                    end
-                                end
-                            end)
-                            local sc = wt * 1000000000 + sp
-                            if sc > bestScore then bestScore = sc bestPet = pet end
+                            local _, _, sc = rapPetScore(pet)
+                            if sc > bestScore then bestScore = sc bestPet = pet bestLoc = "plot" end
                         end
                     end
+                    -- tas: nilai Tool pet (bukan telur). Tanpa equip/place dulu, cuma baca atribut.
+                    pcall(function()
+                        local bp = LocalPlayer:FindFirstChild("Backpack")
+                        if bp then for _, t in ipairs(bp:GetChildren()) do
+                            if t and t:IsA("Tool") and not tostring(t.Name):lower():find("egg", 1, true) then
+                                local _, _, sc = rapPetScore(t)
+                                if sc > 0 and sc > bestScore then bestScore = sc bestTool = t bestLoc = "tas" end
+                            end
+                        end end
+                    end)
+                    -- best ada di TAS: equip tool itu -> place ke plot -> cari lagi modelnya di plot.
+                    if bestLoc == "tas" and bestTool and bestTool.Parent then
+                        pcall(function()
+                            local ch = LocalPlayer.Character
+                            local hum = ch and ch:FindFirstChildOfClass("Humanoid")
+                            if hum then hum:EquipTool(bestTool) end
+                        end)
+                        task.wait(0.5)
+                        pcall(function()
+                            rapFire({ "Remotes", "Game", "PlacePet" }, bestTool)
+                            rapFire({ "Remotes", "Game", "PetPlace" }, bestTool)
+                            rapFire({ "Remotes", "Game", "PlacePet" })
+                            rapFire({ "Remotes", "Game", "PetPlace" })
+                            pcall(function() rapPassBatch(function(a) return a == "Place" end, 1) end)
+                        end)
+                        task.wait(0.8)
+                        pcall(function()
+                            local mp = rapMyPlotModel
+                            local ps = mp and mp:FindFirstChild("Pets")
+                            if ps then
+                                local b2, s2 = nil, -1
+                                for _, pet in ipairs(ps:GetChildren()) do
+                                    local rp = pet:FindFirstChild("RidePrompt", true)
+                                    if rp and rp:IsA("ProximityPrompt") and rp.Parent then
+                                        local _, _, sc = rapPetScore(pet)
+                                        if sc > s2 then s2 = sc b2 = pet end
+                                    end
+                                end
+                                if b2 then bestPet = b2 bestLoc = "plot" end
+                            end
+                        end)
+                    end
+                    if bestLoc ~= "tas" then
+                    do
+                    -- (plot) lanjut ride via prompt di bawah.
                     bestPetRef = bestPet
                     for try = 1, 2 do
                         if not bestPet then break end
@@ -4463,7 +4515,9 @@ function rapPickupTick()
                         end)
                         if okS then break end
                     end
-                end
+                    end -- tutup do ride plot
+                    end -- tutup if bestLoc ~= "tas"
+                    end -- tutup if pets
             end)
         end
     end
