@@ -5933,6 +5933,16 @@ local function rapSetMulti(setName, val, on)
     if setName == "placeMutation" then rapPlanned.placeMutationSet = rapPlanned.placeMutationSet or {} set = rapPlanned.placeMutationSet end
     if on then set[val] = true else set[val] = nil end
 end
+local function rapSetList(setName, list)
+    local set = (setName == "rarity") and rapRarityFilterSet
+        or (setName == "mutation") and rapMutationFilterSet
+        or (setName == "placeRarity") and (function() rapPlanned.placeRaritySet = rapPlanned.placeRaritySet or {} return rapPlanned.placeRaritySet end)()
+        or (setName == "placeEgg") and (function() rapPlanned.placeEggSet = rapPlanned.placeEggSet or {} return rapPlanned.placeEggSet end)()
+        or (setName == "placeMutation") and (function() rapPlanned.placeMutationSet = rapPlanned.placeMutationSet or {} return rapPlanned.placeMutationSet end)()
+        or rapEggFilterSet
+    for k in pairs(set) do set[k] = nil end
+    for _, v in ipairs(list or {}) do if v and v ~= "" then set[v] = true end end
+end
 rapPlanned = rapPlanned or {}
 
 SecAutoEgg:Toggle({
@@ -5964,10 +5974,6 @@ SecAutoEgg:Dropdown({
     Callback = function(v) rapPickupMode = v or "Instant" end,
 })
 
-SecAutoEgg:Label({ Name = "Rarity (multi: centang banyak)" })
-do for _, r in ipairs(RARITY_LIST) do local rn = r SecAutoEgg:Toggle({ Name = rn, Default = false, Callback = function(on) rapSetMulti("rarity", rn, on) end }) end end
-SecAutoEgg:Button({ Name = "Reset Filter (Semua)", Callback = function() for _, s in ipairs({rapRarityFilterSet, rapEggFilterSet, rapMutationFilterSet}) do for k in pairs(s) do s[k] = nil end end Window:Notify({Title="Filter",Description="Filter di-reset: semua telur.",Lifetime=2}) end })
-
 -- Daftar telur urut rarity (nama polos, tanpa tanda kurung)
 local rapEggSorted = {}
 do
@@ -5983,11 +5989,10 @@ do
     end)
 end
 
-SecAutoEgg:Label({ Name = "Egg (multi: centang banyak)" })
-do for _, e in ipairs(rapEggSorted) do local en = e SecAutoEgg:Toggle({ Name = en, Default = false, Callback = function(on) rapSetMulti("egg", en, on) end }) end end
-
-SecAutoEgg:Label({ Name = "Mutation (multi: centang banyak)" })
-do for _, m in ipairs(RAP_MUTATIONS) do local mn = m SecAutoEgg:Toggle({ Name = mn, Default = false, Callback = function(on) rapSetMulti("mutation", mn, on) end }) end end
+local rapFarmRarityF = rapNewFilter(SecAutoEgg, "Rarity", RARITY_LIST, {}, function(list) rapSetList("rarity", list) end)
+local rapFarmEggF = rapNewFilter(SecAutoEgg, "Egg", rapEggSorted, {}, function(list) rapSetList("egg", list) end)
+local rapFarmMutF = rapNewFilter(SecAutoEgg, "Mutation", RAP_MUTATIONS, {}, function(list) rapSetList("mutation", list) end)
+SecAutoEgg:Button({ Name = "Reset Filter", Callback = function() for _, s in ipairs({rapRarityFilterSet, rapEggFilterSet, rapMutationFilterSet}) do for k in pairs(s) do s[k] = nil end end pcall(function() rapFarmRarityF:Set({}) rapFarmEggF:Set({}) rapFarmMutF:Set({}) end) Window:Notify({Title="Filter",Description="Filter di-reset: semua telur.",Lifetime=2}) end })
 
 SecAutoEgg:Slider({
     Name = "Tween Speed (st/s)",
@@ -6053,14 +6058,9 @@ SecPlace:Slider({
     Callback = function(value) rapEggCapacity = value end,
 })
 
-SecPlace:Label({ Name = "Place Rarity (multi)" })
-do for _, r in ipairs(RARITY_LIST) do local rn = r SecPlace:Toggle({ Name = rn, Default = false, Callback = function(on) rapSetMulti("placeRarity", rn, on) end }) end end
-
-SecPlace:Label({ Name = "Place Egg (multi)" })
-do for _, e in ipairs(rapEggSorted) do local en = e SecPlace:Toggle({ Name = en, Default = false, Callback = function(on) rapSetMulti("placeEgg", en, on) end }) end end
-
-SecPlace:Label({ Name = "Place Mutation (multi)" })
-do for _, m in ipairs(RAP_MUTATIONS) do local mn = m SecPlace:Toggle({ Name = mn, Default = false, Callback = function(on) rapSetMulti("placeMutation", mn, on) end }) end end
+local rapPlaceRarityF = rapNewFilter(SecPlace, "Rarity", RARITY_LIST, {}, function(list) rapSetList("placeRarity", list) end)
+local rapPlaceEggF = rapNewFilter(SecPlace, "Egg", rapEggSorted, {}, function(list) rapSetList("placeEgg", list) end)
+local rapPlaceMutF = rapNewFilter(SecPlace, "Mutation", RAP_MUTATIONS, {}, function(list) rapSetList("placeMutation", list) end)
 
 SecPlace:Input({
     Name = "Place Min Size (KG)",
