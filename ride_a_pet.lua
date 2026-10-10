@@ -4543,7 +4543,7 @@ function rapPickupTick()
                                 local hum = ch and ch:FindFirstChildOfClass("Humanoid")
                                 if hum and (hum.Sit or hum.SeatPart ~= nil) then hum.Sit = false end
                             end)
-                            task.wait(0.4)
+                            task.wait(0.2)
                         end
                     end
                     if rapStay then
@@ -4552,13 +4552,7 @@ function rapPickupTick()
                     if bestLoc ~= "tas" and not rapStay then
                     do
                     -- (plot) lanjut ride via prompt di bawah.
-                    pcall(function()
-                        if bestPet then
-                            local bw, bs = 0, 0
-                            pcall(function() local a,b = rapPetScore(bestPet) bw, bs = a, b end)
-                            Window:Notify({Title="Best Pet",Description=tostring(bestPet.Name),Lifetime=3})
-                        end
-                    end)
+                    -- notif dimatikan (10-Okt): hemat waktu render.
                     -- kunci permanen sesi ini: best pertama menang, off/on tak ganti-ganti lagi.
                     pcall(function()
                         if rapBestLockKey == nil and bestPet then
@@ -4575,9 +4569,9 @@ function rapPickupTick()
                         end
                     end)
                     bestPetRef = bestPet
-                    -- RIDE INSTAN (10-Okt): tembak remote dulu dari jauh (tanpa teleport, tanpa tekan E).
-                    -- Berhasil = lanjut (cepat). Gagal = fallback prompt 1x.
-                    for try = 1, 2 do
+                    -- RIDE FULL-REMOTE (10-Okt): tanpa teleport, tanpa prompt, tanpa hold E.
+                    -- Burst remote 3x cepat; prompt fallback DICABUT (itu sumber kesan tekan E + lambat).
+                    for try = 1, 3 do
                         if not bestPet then break end
                         local okS0 = false
                         pcall(function()
@@ -4586,25 +4580,12 @@ function rapPickupTick()
                             okS0 = hum and (hum.Sit or hum.SeatPart ~= nil) or false
                         end)
                         if okS0 then break end
-                        if try == 1 then
-                            -- percobaan 1: remote saja, tanpa gerak, tanpa E.
-                            rapFire({ "Remotes", "Game", "PetRideMode" })
-                            rapFire({ "Remotes", "Game", "Mounting" })
-                            rapFire({ "Remotes", "Game", "Mount" })
-                            task.wait(0.4)
-                        else
-                            -- fallback: teleport + prompt 1x (tanpa hold E lama).
-                            local rp = bestPet:FindFirstChild("RidePrompt", true)
-                            local pp = rp and rp.Parent and rapEntityPos(rp.Parent)
-                            if pp then rapForceTeleport(pp) task.wait(0.15) end
-                            if rp then
-                                pcall(function() rp.RequiresLineOfSight = false end)
-                                rapFire({ "Remotes", "Game", "PetRideMode" })
-                                rapFire({ "Remotes", "Game", "Mounting" })
-                                rapTriggerPrompt(rp)
-                                task.wait(0.2)
-                            end
-                        end
+                        rapFire({ "Remotes", "Game", "PetRideMode" })
+                        rapFire({ "Remotes", "Game", "Mounting" })
+                        rapFire({ "Remotes", "Game", "Mount" })
+                        rapFire({ "Remotes", "Game", "RidePet" }, bestPet)
+                        rapFire({ "Remotes", "Game", "RidePet" })
+                        task.wait(0.15)
                         local okS = false
                         pcall(function()
                             local ch = LocalPlayer.Character
@@ -4618,21 +4599,22 @@ function rapPickupTick()
                     end -- tutup if pets
             end)
         end
-    -- GERBANG LUNAK (10-Okt): cek duduk 2x (jeda 0.4 dtk, seat butuh waktu weld). Gagal tetap LANJUT
-    -- ke telur (ambil jalan kaki pun bisa, karena habis ini turun buat ambil). Tanpa skip telur.
+    -- GERBANG LUNAK (10-Okt): 1x cek cepat. Gagal tetap LANJUT ke telur.
     local rapRode = false
     do
-        for chk = 1, 2 do
+        pcall(function()
+            local ch = LocalPlayer.Character
+            local hum = ch and ch:FindFirstChildOfClass("Humanoid")
+            rapRode = hum and (hum.Sit or hum.SeatPart ~= nil) or false
+        end)
+        if not rapRode then task.wait(0.2)
             pcall(function()
                 local ch = LocalPlayer.Character
                 local hum = ch and ch:FindFirstChildOfClass("Humanoid")
                 rapRode = hum and (hum.Sit or hum.SeatPart ~= nil) or false
             end)
-            if rapRode then break end
-            task.wait(0.4)
         end
     end
-    -- 2. LANGSUNG 1x teleport ke telur (tanpa nudge kedua = tanpa kesan mantul), seat dipertahankan.
     -- skip telur yg gagal 3x dalam 60 dtk (hindari spam kode AT-xxxx)
     do
         local bl = rapBlacklist[prompt]
@@ -4649,10 +4631,7 @@ function rapPickupTick()
         pcall(function()
             local ch = LocalPlayer.Character
             local hum = ch and ch:FindFirstChildOfClass("Humanoid")
-            if hum and (hum.Sit or hum.SeatPart ~= nil) then
-                hum.Sit = false
-                pcall(function() hum:ChangeState(Enum.HumanoidStateType.Jumping) end)
-            end
+            if hum and (hum.Sit or hum.SeatPart ~= nil) then hum.Sit = false end
         end)
         task.wait(0.1)
         for grab = 1, 2 do
@@ -4680,25 +4659,15 @@ function rapPickupTick()
             if hasEgg or prompt.Parent == nil or (not prompt:IsDescendantOf(workspace)) then break end
         end
         -- naik lagi sebelum diam 20 dtk + teleport sarang (syarat anti-cheat).
+        -- naik lagi via REMOTE saja (tanpa prompt/hold E = tanpa kesan tekan E).
         pcall(function()
             rapFire({ "Remotes", "Game", "PetRideMode" })
             rapFire({ "Remotes", "Game", "Mounting" })
-            local ch = LocalPlayer.Character
-            if ch then
-                for _, pr in ipairs(ch:GetDescendants()) do
-                    if pr:IsA("ProximityPrompt") and tostring(pr.ActionText or ""):lower():find("ride", 1, true) then
-                        pcall(function() pr.RequiresLineOfSight = false end)
-                        rapTriggerPrompt(pr)
-                        break
-                    end
-                end
-            end
-            if bestPetRef and bestPetRef.Parent then
-                local rp = bestPetRef:FindFirstChild("RidePrompt", true)
-                if rp then rapTriggerPrompt(rp) end
-            end
+            rapFire({ "Remotes", "Game", "Mount" })
+            rapFire({ "Remotes", "Game", "RidePet" }, bestPetRef)
+            rapFire({ "Remotes", "Game", "RidePet" })
         end)
-        task.wait(0.1)
+        task.wait(0.15)
     end
     -- 4. DIAM 20 DETIK (satu-satunya tunggu), lalu LANGSUNG balik plot tanpa diam tambahan.
     do
