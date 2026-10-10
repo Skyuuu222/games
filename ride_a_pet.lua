@@ -3821,14 +3821,37 @@ local function rapIsMyPlot(inst)
     return rapRanchPos
 end
 
-local rapEdgeOffset = Vector3.new(28, 0, 28)
+local rapEdgeMargin = 25
+local function rapPlotHalf()
+    local half = 45
+    pcall(function()
+        for _, d in ipairs(rapTickList()) do
+            if d:IsA("Model") or d:IsA("BasePart") then
+                local low = tostring(d.Name):lower()
+                for _, pat in ipairs(RANCH_PATTERNS) do
+                    if low:find(pat, 1, true) then
+                        local sz = nil
+                        if d:IsA("Model") then
+                            local ok, es = pcall(function() return d:GetExtentsSize() end)
+                            if ok and es then sz = es end
+                        elseif d:IsA("BasePart") then sz = d.Size end
+                        if sz then half = math.max(half, math.max(sz.X, sz.Z) / 2) end
+                        break
+                    end
+                end
+            end
+        end
+    end)
+    return half
+end
 local function rapPlotCenter()
     return rapPlotPos or rapRanchPos or rapRefreshRanch()
 end
 local function rapPlotEdge()
     local c = rapPlotCenter()
     if not c then return nil end
-    return c + rapEdgeOffset
+    local off = rapPlotHalf() + rapEdgeMargin
+    return c + Vector3.new(off, 0, off)
 end
 local function rapGoPlotEdge(mode)
     local e = rapPlotEdge()
@@ -4032,6 +4055,17 @@ local function rapPickupTick()
     do
         local bl = rapBlacklist[prompt]
         if bl and os.clock() < bl then return 0 end
+    end
+    -- KUNCI: diam di telur sampai server selesai (gerak = Returned). Max 6 dtk langka / 3 dtk biasa.
+    do
+        local rarW = rapRarityOf(cand.name)
+        local rareW = (rarW == "Epic" or rarW == "Legendary" or rarW == "Mythic" or rarW == "Divine" or rarW == "Ethereal")
+        local t0 = os.clock()
+        local lim = rareW and 6 or 3
+        while os.clock() - t0 < lim do
+            if prompt.Parent == nil or (not prompt:IsDescendantOf(workspace)) then break end
+            task.wait(0.25)
+        end
     end
     rapHandled[prompt] = true
     -- tiru manual: JANGAN anchor; telur langka pakai hold asli (HoldDuration tidak dinolkan)
