@@ -4348,7 +4348,7 @@ local function rapPickupTick()
         end
     end)
     if not hasEggTool then pcall(function() local chV = LocalPlayer.Character if chV then for _, d in ipairs(chV:GetDescendants()) do if d:IsA("BasePart") or d:IsA("MeshPart") then local a = d:FindFirstAncestorOfClass("Model") local nm = (a and a.Name or d.Name or ""):lower() if nm:find("egg") then hasEggTool = true break end end end end end) end
-    local delivered = gotEgg
+    local delivered = gone or hasEggTool
     if delivered then
         rapPickedCount = rapPickedCount + 1
         rapEggsCarried = rapEggsCarried + 1
@@ -4395,13 +4395,27 @@ local function rapPickupTick()
                 local hum0 = ch0 and ch0:FindFirstChildOfClass("Humanoid")
                 local bp0 = LocalPlayer:FindFirstChild("Backpack")
                 if hum0 and bp0 and cand.name then -- HANYA yg baru diambil, stok lama rapBagBefore dilewati
+                    local want = string.lower(tostring(cand.name))
                     for _, t in ipairs(bp0:GetChildren()) do
-                        if t and t:IsA("Tool") and tostring(t.Name) == tostring(cand.name) and not rapBagBefore[t] then
-                            hum0:EquipTool(t)
+                        if t and t:IsA("Tool") and not rapBagBefore[t] then
+                            local tn = string.lower(tostring(t.Name))
+                            if tn == want or tn:find(want, 1, true) or want:find(tn, 1, true) or tn:find("egg", 1, true) then
+                                hum0:EquipTool(t)
                                     task.wait(0.15)
-                            break
+                                break
+                            end
                         end
                     end
+                    -- kalau masih di backpack, paksa equip telur baru manapun
+                    pcall(function()
+                        local ch = LocalPlayer.Character
+                        local held = ch and ch:FindFirstChildOfClass("Tool")
+                        if not held then
+                            for _, t in ipairs(bp0:GetChildren()) do
+                                if t and t:IsA("Tool") and not rapBagBefore[t] then hum0:EquipTool(t) task.wait(0.15) break end
+                            end
+                        end
+                    end)
                 end
                 -- DROP via remote resmi BasketDrop (terbukti probe4), BUKAN Parent=workspace
                 local bd = nil
