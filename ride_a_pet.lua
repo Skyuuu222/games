@@ -3821,6 +3821,22 @@ local function rapIsMyPlot(inst)
     return rapRanchPos
 end
 
+local rapEdgeOffset = Vector3.new(28, 0, 28)
+local function rapPlotCenter()
+    return rapPlotPos or rapRanchPos or rapRefreshRanch()
+end
+local function rapPlotEdge()
+    local c = rapPlotCenter()
+    if not c then return nil end
+    return c + rapEdgeOffset
+end
+local function rapGoPlotEdge(mode)
+    local e = rapPlotEdge()
+    if not e then return false end
+    if mode == "Instant" then rapSetNoclip(false) rapTeleportTo(e, "Edge")
+    else rapTweenTo(e, rapPlanned.glideSpeed) end
+    return true
+end
 local function rapGoPlot(notify)
     local pos = rapPlotPos or rapRanchPos or rapRefreshRanch()
     if not pos then
@@ -4090,15 +4106,58 @@ local function rapPickupTick()
             return 0
         end
     end
-    -- 3. balik ke plot sendiri setiap 1 telur sukses (kedua mode sama)
+    -- 3. delivery via pinggir plot: edge -> drop/tunggu -> ambil lagi -> tengah
     if rapReturnRanch then
         do
             local rarB = rapRarityOf(cand.name)
             local rareB = (rarB == "Epic" or rarB == "Legendary" or rarB == "Mythic" or rarB == "Divine" or rarB == "Ethereal")
-            task.wait(rareB and 2.5 or 1.0)
+            -- a. ke pinggir plot dulu (jangan tengah, server return kalau langsung tengah)
+            rapGoPlotEdge(mode)
+            task.wait(rareB and 2.0 or 1.2)
+            -- b. drop: biarkan server menyelesaikan delivery (telur jatuh di edge).
+            --    Paksa drop tool telur yg nyangkut di karakter supaya jatuh di edge.
+            pcall(function()
+                local ch2 = LocalPlayer.Character
+                if ch2 then
+                    for _, t in ipairs(ch2:GetChildren()) do
+                        if t:IsA("Tool") and tostring(t.Name):find("Egg", 1, true) then
+                            t.Parent = workspace
+                        end
+                    end
+                    local hum2 = ch2:FindFirstChildOfClass("Humanoid")
+                    if hum2 then pcall(function() hum2:UnequipTools() end) end
+                end
+            end)
+            task.wait(0.6)
+            -- c. ambil lagi telur yg jatuh di dekat edge (radius 35)
+            pcall(function()
+                local er = rapGetRoot()
+                if er then
+                    local bp, bd = nil, 35
+                    for _, d in ipairs(rapTickList()) do
+                        if d:IsA("ProximityPrompt") and tostring(d.ActionText) == "Pick Up" then
+                            local pp3 = rapEntityPos(d.Parent) or rapEntityPos(d)
+                            if pp3 then
+                                local dd = (pp3 - er.Position).Magnitude
+                                if dd <= bd then bd = dd bp = d end
+                            end
+                        end
+                    end
+                    if bp then
+                        pcall(function()
+                            bp.HoldDuration = 0
+                            bp.MaxActivationDistance = 17
+                            bp.RequiresLineOfSight = false
+                        end)
+                        rapTriggerPrompt(bp)
+                    end
+                end
+            end)
+            task.wait(1.0)
+            -- d. baru bawa ke tengah plot
+            rapGoPlot(false)
+            task.wait(0.5)
         end
-        rapGoPlot(false)
-        task.wait(0.5)
     end
     if mode ~= "Instant" then rapSetNoclip(false) end
     return 1
