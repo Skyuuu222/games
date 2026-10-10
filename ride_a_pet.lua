@@ -4171,30 +4171,14 @@ local function rapPickupTick()
         if mode == "Instant" and not rareA then
             rapSetNoclip(false) rapTeleportTo(stop, "Egg") task.wait(0.6)
         elseif rareA then
-            -- LANGKA: jangan teleport/tween jauh (server lindungi telur mahal). Hop 60 stud + jalan.
+            -- MULUS: tween langsung (tidak hop-stop-hop). Kecepatan tinggi biar cepat.
+            rapSetNoclip(true)
+            rapTweenTo(stop, math.max(tonumber(rapPlanned.glideSpeed) or 1000, 600)) task.wait(0.4)
             rapSetNoclip(false)
-            local hop = 0
-            while hop < 40 do
-                local rH = rapGetRoot()
-                if not rH then break end
-                local dd = (Vector3.new(stop.X - rH.Position.X, 0, stop.Z - rH.Position.Z)).Magnitude
-                if dd <= 10 then break end
-                if dd < 120 then
-                    pcall(function() local h = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Humanoid") if h then h.Sit = false if h.WalkSpeed < 8 then h.WalkSpeed = 16 end h:MoveTo(Vector3.new(stop.X, rH.Position.Y, stop.Z)) end end)
-                    local w0 = os.clock() while os.clock() - w0 < 10 do local r2 = rapGetRoot() if not r2 then break end if (Vector3.new(stop.X - r2.Position.X, 0, stop.Z - r2.Position.Z)).Magnitude <= 10 then break end task.wait(0.2) end
-                    break
-                else
-                    local dir = (Vector3.new(stop.X - rH.Position.X, 0, stop.Z - rH.Position.Z)) / (dd + 0.001)
-                    local np = rH.Position + dir * 60
-                    rapTweenTo(Vector3.new(np.X, stop.Y, np.Z), 300)
-                    task.wait(0.5)
-                end
-                hop = hop + 1
-            end
-        elseif dS < 150 then
-            rapSetNoclip(false)
-            pcall(function() local h = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Humanoid") if h then h.Sit = false if h.WalkSpeed < 8 then h.WalkSpeed = 16 end h:MoveTo(Vector3.new(stop.X, rrS.Position.Y, stop.Z)) end end)
-            local w0 = os.clock() while os.clock() - w0 < 12 do local r2 = rapGetRoot() if not r2 then break end if (Vector3.new(stop.X - r2.Position.X, 0, stop.Z - r2.Position.Z)).Magnitude <= 10 then break end task.wait(0.2) end
+        elseif dS < 600 then
+            -- MULUS: semua jarak pakai tween (walk 16 lambat = kelihatan stop-stop)
+            rapSetNoclip(true)
+            rapTweenTo(stop, math.max(tonumber(rapPlanned.glideSpeed) or 1000, 600))
         else
             rapTweenTo(stop, math.min(tonumber(rapPlanned.glideSpeed) or 1000, 400)) task.wait(0.4)
         end
@@ -4347,7 +4331,8 @@ local function rapPickupTick()
             return done(0)
         end
                 -- b2. DROP PAKSA DI PINGGIR (permintaan user): drop telur, ambil lagi, baru walk.
-        do pcall(function() Window:Notify({Title="Drop",Description="Drop telur di pinggir plot...",Lifetime=2}) end) local dropped=0 pcall(function() local ch=LocalPlayer.Character; pcall(function() LocalPlayer.Character.Humanoid:UnequipTools() end) task.wait(0.2); ch=LocalPlayer.Character; if ch then for _,t in ipairs(ch:GetChildren()) do if t and t:IsA("Tool") then local nm=(t.Name or ""):lower(); if nm:find("egg") then pcall(function() t.Parent=workspace end) dropped=dropped+1 task.wait(0.3) end end end end end) task.wait(0.6) pcall(function() Window:Notify({Title="Drop",Description=(dropped>0 and ("Ter-drop, ambil lagi...") or "Virtual (tak ada Tool) - ambil ulang..."),Lifetime=3}) end) pcall(function() local rr=rapGetRoot(); if rr then for _,pr in ipairs(workspace:GetDescendants()) do if pr and pr:IsA("ProximityPrompt") then local mdl=pr:FindFirstAncestorOfClass("Model"); local nm=mdl and mdl.Name or ""; if nm~="" and cand.name~="" and (nm==cand.name) then local pp=nil; pcall(function() if pr.Parent and pr.Parent:IsA("BasePart") then pp=pr.Parent.Position elseif mdl and mdl.PrimaryPart then pp=mdl.PrimaryPart.Position end end) if pp and (pp-rr.Position).Magnitude<=40 then pcall(function() fireproximityprompt(pr,1) end) task.wait(0.6) break end end end end end end) task.wait(0.8) end
+        do pcall(function() Window:Notify({Title="Drop",Description="Drop telur di pinggir plot...",Lifetime=2}) end) local dropped=0 pcall(function() local ch=LocalPlayer.Character; pcall(function() LocalPlayer.Character.Humanoid:UnequipTools() end) task.wait(0.2); ch=LocalPlayer.Character; if ch then for _,t in ipairs(ch:GetChildren()) do if t and t:IsA("Tool") then local nm=(t.Name or ""):lower(); if nm:find("egg") then pcall(function() t.Parent=workspace end) dropped=dropped+1 task.wait(0.3) end end end end end) task.wait(0.6) pcall(function() Window:Notify({Title="Drop",Description=(dropped>0 and ("Ter-drop, ambil lagi...") or "Virtual (tak ada Tool) - ambil ulang..."),Lifetime=3}) end) pcall(function() local rr=rapGetRoot(); if rr then for _,pr in ipairs(workspace:GetDescendants()) do if pr and pr:IsA("ProximityPrompt") then local mdl=pr:FindFirstAncestorOfClass("Model"); local nm=mdl and mdl.Name or ""; if nm~="" and cand.name~="" and (nm==cand.name) then local pp=nil; pcall(function() if pr.Parent and pr.Parent:IsA("BasePart") then pp=pr.Parent.Position elseif mdl and mdl.PrimaryPart then pp=mdl.PrimaryPart.Position end end) if pp and (pp-rr.Position).Magnitude<=40 then pcall(function() fireproximityprompt(pr,1) end) task.wait(0.6) break end end end end end end) task.wait(0.8) end -- LOG EGG
+        do pcall(function() print("[RAP-EGG] target="..tostring(cand.name).." rarity="..tostring(rapRarityOf(cand.name)).." pos="..tostring(cand.pos)) end) local _ch=LocalPlayer.Character local _bp=LocalPlayer:FindFirstChild("Backpack") local _s="tas=" pcall(function() if _ch then for _,t in ipairs(_ch:GetChildren()) do if t:IsA("Tool") then _s=_s.."C:"..t.Name..";" end end end if _bp then for _,t in ipairs(_bp:GetChildren()) do if t:IsA("Tool") then _s=_s.."B:"..t.Name..";" end end end print("[RAP-EGG] ".._s) end) Window:Notify({Title="Egg",Description=tostring(cand.name).." ("..tostring(rapRarityOf(cand.name))..")",Lifetime=3}) end
         -- b. TERBUKTI virtual (toolEggDiTas=0): tidak ada yg bisa di-drop. Langsung walk.
         -- c. WALK (tanpa teleport) dari edge ke tengah plot sendiri
         Window:Notify({ Title = "Delivery", Description = "Jalan ke tengah plot...", Lifetime = 2 })
