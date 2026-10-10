@@ -4481,15 +4481,7 @@ function rapPickupTick()
                         local seat0 = hum0 and hum0.SeatPart or nil
                         curSeat0 = seat0 and seat0:FindFirstAncestorOfClass("Model") or nil
                     end)
-                    -- SEAT VALID (10-Okt): cuma model ber-prompt Ride (pet) yg dihitung tunggangan. Duduk di kursi biasa = abaikan, scan fresh.
-                    if curSeat0 ~= nil then
-                        local isPetSeat = false
-                        pcall(function()
-                            if curSeat0:FindFirstChild("RidePrompt", true) then isPetSeat = true
-                            elseif rapRideName ~= nil and tostring(curSeat0.Name) == tostring(rapRideName) then isPetSeat = true end
-                        end)
-                        if not isPetSeat then curSeat0 = nil end
-                    end
+                    -- SEAT = PERCAYA (10-Okt): apapun yg diduduki = tunggangan. Validasi prompt dicabut (itu yg bikin tidak naik).
                     -- DUDUK = LANGSUNG (10-Okt): yg ditunggangi = best. Scan cepat cuma cari yg JELAS lebih bagus (+5%); tak ada = diam, langsung ke telur.
                     if curSeat0 ~= nil then
                         bestPet = curSeat0 bestLoc = "seat"
@@ -4544,6 +4536,12 @@ function rapPickupTick()
                         if rp and rp:IsA("ProximityPrompt") and rp.Parent then
                             local _, _, sc = rapPetScore(pet)
                             if sc > bestScore or (sc == bestScore and curSeat0 ~= nil and pet == curSeat0) then bestScore = sc bestPet = pet bestLoc = "plot" end
+                        end
+                    end
+                    -- DARURAT SCAN (10-Okt): tak ada prompt Ride ketemu = ambil model APAPUN di Pets (ride via remote tetap bisa).
+                    if bestPet == nil then
+                        for _, pet in ipairs(pets:GetChildren()) do
+                            if pet and pet:IsA("Model") then bestPet = pet bestLoc = "plot" break end
                         end
                     end
                     end -- tutup if bestPet == nil (scan fresh)
