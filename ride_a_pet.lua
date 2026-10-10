@@ -4160,13 +4160,21 @@ local function rapPickupTick()
     local prompt = cand.prompt
     if not prompt or not prompt.Parent then return done(0) end
     -- 1. pergi ke telur (rekaman manual: tahan pada jarak 9, jadi berhenti ~7 stud, jangan nempel)
-    if mode == "Instant" then
-        rapSetNoclip(false)
-        rapTeleportTo(cand.pos, "Egg")
-        task.wait(0.35)
-    else
-        rapTweenTo(cand.pos, rapPlanned.glideSpeed)
-        task.wait(0.2)
+    do
+        local rrS = rapGetRoot()
+        local dS = rrS and (cand.pos - rrS.Position).Magnitude or 9999
+        local away = Vector3.new(0, 0, 7)
+        if rrS then local d0 = cand.pos - rrS.Position d0 = Vector3.new(d0.X, 0, d0.Z) if d0.Magnitude > 1 then away = (-d0 / d0.Magnitude) * 7 end end
+        local stop = cand.pos + Vector3.new(away.X, 4, away.Z)
+        if mode == "Instant" then
+            rapSetNoclip(false) rapTeleportTo(stop, "Egg") task.wait(0.6)
+        elseif dS < 150 then
+            rapSetNoclip(false)
+            pcall(function() local h = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Humanoid") if h then h.Sit = false if h.WalkSpeed < 8 then h.WalkSpeed = 16 end h:MoveTo(Vector3.new(stop.X, rrS.Position.Y, stop.Z)) end end)
+            local w0 = os.clock() while os.clock() - w0 < 12 do local r2 = rapGetRoot() if not r2 then break end if (Vector3.new(stop.X - r2.Position.X, 0, stop.Z - r2.Position.Z)).Magnitude <= 10 then break end task.wait(0.2) end
+        else
+            rapTweenTo(stop, math.min(tonumber(rapPlanned.glideSpeed) or 1000, 400)) task.wait(0.4)
+        end
     end
     -- 2. pastikan dekat (server tolak dari jauh)
     do
@@ -4180,15 +4188,8 @@ local function rapPickupTick()
     do
         local rar0 = rapRarityOf(cand.name)
         local rare0 = (rar0 == "Epic" or rar0 == "Legendary" or rar0 == "Mythic" or rar0 == "Divine" or rar0 == "Ethereal")
-        if rare0 then
-            pcall(function() prompt.RequiresLineOfSight = false prompt.MaxActivationDistance = 17 end)
-        else
-            pcall(function()
-                prompt.HoldDuration = 0
-                prompt.MaxActivationDistance = 12
-                prompt.RequiresLineOfSight = false
-            end)
-        end
+        -- tiru manual: JANGAN ubah HoldDuration/MaxDist, cuma matikan LOS
+        pcall(function() prompt.RequiresLineOfSight = false end)
     end
     -- skip telur yg gagal 3x dalam 60 dtk (hindari spam kode AT-xxxx)
     do
@@ -4201,8 +4202,7 @@ local function rapPickupTick()
         local rar2 = rapRarityOf(cand.name)
         local isRare = (rar2 == "Epic" or rar2 == "Legendary" or rar2 == "Mythic" or rar2 == "Divine" or rar2 == "Ethereal")
         if not isRare then
-            rapTriggerPrompt(prompt)
-            task.wait(mode == "Instant" and 0.7 or 1.2)
+            do local hd0 = 0.2 pcall(function() hd0 = prompt.HoldDuration or 0.2 end) if type(fireproximityprompt) == "function" then pcall(function() fireproximityprompt(prompt, 0) end) task.wait((tonumber(hd0) or 0.2) + 0.5) pcall(function() fireproximityprompt(prompt, 1) end) else rapTriggerPrompt(prompt) end task.wait(mode == "Instant" and 0.7 or 1.2) end
         else
             do
                 local pp2 = rapEntityPos(prompt.Parent) or cand.pos
