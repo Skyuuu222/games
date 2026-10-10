@@ -4587,8 +4587,7 @@ function rapPickupTick()
                         end
                     end)
                     bestPetRef = bestPet
-                    -- RIDE FULL-REMOTE (10-Okt): tanpa teleport, tanpa prompt, tanpa hold E.
-                    -- Burst remote 3x cepat; prompt fallback DICABUT (itu sumber kesan tekan E + lambat).
+                    -- RIDE (10-Okt): 2x remote dari jauh; gagal -> 1x teleport+prompt kilat (tanpa hold lama).
                     for try = 1, 3 do
                         if not bestPet then break end
                         local okS0 = false
@@ -4598,12 +4597,25 @@ function rapPickupTick()
                             okS0 = hum and (hum.Sit or hum.SeatPart ~= nil) or false
                         end)
                         if okS0 then break end
-                        rapFire({ "Remotes", "Game", "PetRideMode" })
-                        rapFire({ "Remotes", "Game", "Mounting" })
-                        rapFire({ "Remotes", "Game", "Mount" })
-                        rapFire({ "Remotes", "Game", "RidePet" }, bestPet)
-                        rapFire({ "Remotes", "Game", "RidePet" })
-                        task.wait(0.15)
+                        if try < 3 then
+                            rapFire({ "Remotes", "Game", "PetRideMode" })
+                            rapFire({ "Remotes", "Game", "Mounting" })
+                            rapFire({ "Remotes", "Game", "Mount" })
+                            rapFire({ "Remotes", "Game", "RidePet" }, bestPet)
+                            rapFire({ "Remotes", "Game", "RidePet" })
+                            task.wait(0.15)
+                        else
+                            local rp = bestPet:FindFirstChild("RidePrompt", true)
+                            local pp = rp and rp.Parent and rapEntityPos(rp.Parent)
+                            if pp then rapForceTeleport(pp) task.wait(0.15) end
+                            if rp then
+                                pcall(function() rp.RequiresLineOfSight = false end)
+                                rapFire({ "Remotes", "Game", "PetRideMode" })
+                                rapFire({ "Remotes", "Game", "Mounting" })
+                                rapTriggerPrompt(rp)
+                            end
+                            task.wait(0.2)
+                        end
                         local okS = false
                         pcall(function()
                             local ch = LocalPlayer.Character
