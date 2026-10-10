@@ -3918,10 +3918,7 @@ end
 local function rapGoPlotEdge(mode)
     local e = rapPlotEdge()
     if not e then return false end
-    for attempt = 1, 3 do
-        if mode == "Instant" then rapSetNoclip(false) rapTeleportTo(e, "Edge")
-        else rapTweenTo(e, rapPlanned.glideSpeed) end
-        task.wait(mode == "Instant" and 0.6 or 1.0)
+    for attempt = 1, 3 do`r`n        rapSetNoclip(false) rapTeleportTo(e, "Edge") -- SELALU teleport (tween bikin stop-stop)`r`n        task.wait(0.6)
         local rr = rapGetRoot()
         if rr and (rr.Position - e).Magnitude <= 30 then return true end
     end
@@ -4159,37 +4156,19 @@ local function rapPickupTick()
     local mode = rapPickupMode or "Tween"
     local prompt = cand.prompt
     if not prompt or not prompt.Parent then return done(0) end
-    -- 1. pergi ke telur (rekaman manual: tahan pada jarak 9, jadi berhenti ~7 stud, jangan nempel)
+    -- 1. pergi ke telur: TELEPORT LANGSUNG (seperti dulu, tidak tween-stop-stop)
     do
-        local rrS = rapGetRoot()
-        local dS = rrS and (cand.pos - rrS.Position).Magnitude or 9999
         local away = Vector3.new(0, 0, 7)
-        if rrS then local d0 = cand.pos - rrS.Position d0 = Vector3.new(d0.X, 0, d0.Z) if d0.Magnitude > 1 then away = (-d0 / d0.Magnitude) * 7 end end
+        do local rrS=rapGetRoot() if rrS then local d0=cand.pos-rrS.Position d0=Vector3.new(d0.X,0,d0.Z) if d0.Magnitude>1 then away=(-d0/d0.Magnitude)*7 end end end
         local stop = cand.pos + Vector3.new(away.X, 4, away.Z)
-        local rarA = rapRarityOf(cand.name)
-        local rareA = (rarA == "Epic" or rarA == "Legendary" or rarA == "Mythic" or rarA == "Divine" or rarA == "Ethereal")
-        if mode == "Instant" and not rareA then
-            rapSetNoclip(false) rapTeleportTo(stop, "Egg") task.wait(0.6)
-        elseif rareA then
-            -- MULUS: tween langsung (tidak hop-stop-hop). Kecepatan tinggi biar cepat.
-            rapSetNoclip(true)
-            rapTweenTo(stop, math.max(tonumber(rapPlanned.glideSpeed) or 1000, 600)) task.wait(0.4)
-            rapSetNoclip(false)
-        elseif dS < 600 then
-            -- MULUS: semua jarak pakai tween (walk 16 lambat = kelihatan stop-stop)
-            rapSetNoclip(true)
-            rapTweenTo(stop, math.max(tonumber(rapPlanned.glideSpeed) or 1000, 600))
-        else
-            rapTweenTo(stop, math.min(tonumber(rapPlanned.glideSpeed) or 1000, 400)) task.wait(0.4)
-        end
+        rapSetNoclip(false) rapTeleportTo(stop, "Egg") task.wait(0.6)
     end
     -- 2. pastikan dekat (server tolak dari jauh)
     do
         local pp = rapEntityPos(prompt.Parent) or cand.pos
         local rr = rapGetRoot()
         if pp and rr and (pp - rr.Position).Magnitude > 12 then
-            if mode == "Instant" then rapTeleportTo(pp, "Egg") task.wait(0.35)
-            else rapTweenTo(pp, rapPlanned.glideSpeed) task.wait(0.2) end
+            rapTeleportTo(pp, "Egg") task.wait(0.35)
         end
     end
     do
