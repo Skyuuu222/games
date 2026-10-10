@@ -4138,7 +4138,7 @@ local function rapPickupTick()
     local mode = rapPickupMode or "Tween"
     local prompt = cand.prompt
     if not prompt or not prompt.Parent then return done(0) end
-    -- 1. pergi ke telur
+    -- 1. pergi ke telur (rekaman manual: tahan pada jarak 9, jadi berhenti ~7 stud, jangan nempel)
     if mode == "Instant" then
         rapSetNoclip(false)
         rapTeleportTo(cand.pos, "Egg")
