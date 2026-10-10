@@ -4750,7 +4750,7 @@ function rapPickupTick()
         local bl = rapBlacklist[prompt]
         if bl and os.clock() < bl then return done(0) end
     end
-    rapHandled[prompt] = true
+    rapHandled[prompt] = nil
     if not rapFlag.pickup then return done(0) end
     rapLockName = cand.name rapLockSince = os.clock()
     do
@@ -4917,6 +4917,7 @@ function rapPickupTick()
         end
     end
     if mode ~= "Instant" then rapSetNoclip(false) end
+    rapHandled[prompt] = true
     return done(1)
     end)
     if not okTick then
