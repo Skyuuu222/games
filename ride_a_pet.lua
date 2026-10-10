@@ -4545,8 +4545,7 @@ function rapPickupTick()
                 local anchor = slot:FindFirstChild("PlacePromptAnchor", true) or slot
                 local pp = rapEntityPos(anchor) or rapEntityPos(slot)
                 if pp then
-                    -- SISTEM BARU (syarat 20dtk+ride terpenuhi): teleport PAKSA langsung, tetap bisa.
-                    pcall(function() rapRideBest() end)
+                    -- syarat 20dtk+ride terpenuhi: teleport langsung. JANGAN ride lagi (equip pet = telur lepas).
                     rapForceTeleport(pp)
                     task.wait(0.35)
                     for _, pr in ipairs(anchor:GetDescendants()) do
@@ -5114,10 +5113,14 @@ end
 -- SISTEM BARU 10-Okt malam: ambil telur HARUS naik pet terbaik dulu, diam 20 dtk di telur, baru teleport.
 function rapRideBest()
     pcall(function() Window:Notify({Title="Ride",Description="Naik pet terbaik...",Lifetime=2}) end)
+    -- remote ride (jalan dari jauh, tanpa perlu dekat pet di plot)
     rapFire({ "Remotes", "Game", "RideBestPet" })
     rapFire({ "Remotes", "Game", "EquipBestPet" })
+    rapFire({ "Remotes", "Game", "RidePet" })
+    rapFire({ "Remotes", "Game", "EquipPet" })
     rapFire({ "Remotes", "Game", "BestPet" })
     rapFire({ "Remotes", "Game", "Mounting" })
+    rapFire({ "Remotes", "Game", "Mount" })
     rapFire({ "Remotes", "Game", "PetRideMode" })
     pcall(function()
         local ch = LocalPlayer.Character
@@ -5131,10 +5134,43 @@ function rapRideBest()
                     if w >= bestW then bestW = w best = t end
                 end
             end
-            if best then hum:EquipTool(best) task.wait(0.3) end
+            if best then
+                hum:EquipTool(best)
+                task.wait(0.8)
+                -- tekan prompt Ride di pet yg dipegang / sekitar (tanpa ubah Hold)
+                for _, pr in ipairs(workspace:GetDescendants()) do
+                    if pr:IsA("ProximityPrompt") and tostring(pr.ActionText or ""):lower():find("ride", 1, true) then
+                        local mdl = pr:FindFirstAncestorOfClass("Model")
+                        local bn = tostring(best.Name):lower()
+                        local mn = mdl and tostring(mdl.Name):lower() or ""
+                        local pn = pr.Parent and tostring(pr.Parent.Name):lower() or ""
+                        if mn:find(bn:sub(1, 4), 1, true) or bn:find(mn:sub(1, 4), 1, true) or pn:find("seat", 1, true) or pn:find("ride", 1, true) then
+                            pcall(function() pr.RequiresLineOfSight = false end)
+                            rapTriggerPrompt(pr)
+                            break
+                        end
+                    end
+                end
+            end
         end
     end)
     pcall(function() rapPassBatch(function(a) return a == "Ride" end, 1) end)
+    task.wait(0.5)
+    -- verifikasi: Sit=true ATAU SeatPart terisi = sudah naik. Kalau belum, coba sekali lagi.
+    pcall(function()
+        local ch = LocalPlayer.Character
+        local hum = ch and ch:FindFirstChildOfClass("Humanoid")
+        local seated = hum and (hum.Sit or hum.SeatPart ~= nil)
+        if not seated then
+            Window:Notify({Title="Ride",Description="Belum naik, coba lagi...",Lifetime=2})
+            rapFire({ "Remotes", "Game", "RideBestPet" })
+            rapFire({ "Remotes", "Game", "Mounting" })
+            pcall(function() rapPassBatch(function(a) return a == "Ride" end, 1) end)
+            task.wait(0.8)
+        else
+            Window:Notify({Title="Ride",Description="Sudah naik pet!",Lifetime=2})
+        end
+    end)
 end
 -- Teleport PAKSA (CFrame langsung) untuk leg telur->plot setelah 20 dtk + ride.
 -- Anti-cheat baru lolos bila sudah naik pet + tunggu. Jangan pakai untuk gerak lain.
@@ -5144,10 +5180,10 @@ function rapForceTeleport(pos)
     for attempt = 1, 3 do
         pcall(function()
             local ch = LocalPlayer.Character
-            local hum = ch and ch:FindFirstChildOfClass("Humanoid")
             local root = rapGetRoot()
             if not ch or not root then return end
-            if hum then hum.Sit = false hum.PlatformStand = false pcall(function() root.Anchored = false end) end
+            -- JANGAN sentuh Hum.Sit: teleport sambil duduk = tetap naik pet. Menyentuh Sit = turun paksa.
+            pcall(function() root.Anchored = false end)
             for _, v in ipairs(ch:GetDescendants()) do
                 if v:IsA("BasePart") then pcall(function() v.Anchored = false end) end
             end
