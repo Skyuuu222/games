@@ -3715,7 +3715,64 @@ function rapGetRoot()
     return char and char:FindFirstChild("HumanoidRootPart") or nil
 end
 
+function rapWalkTo(pos, radius, timeout)
+    if not pos then return false end
+    local ch = LocalPlayer.Character
+    local hum = ch and ch:FindFirstChildOfClass("Humanoid")
+    local root = rapGetRoot()
+    if not ch or not hum or not root then return false end
+    radius = radius or 8
+    timeout = timeout or 30
+    pcall(function()
+        hum.Sit = false hum.PlatformStand = false
+        hum.WalkSpeed = math.max(hum.WalkSpeed, tonumber(rapPlanned and rapPlanned.walkSpeed) or 32)
+        if hum.Health <= 0 then return end
+        for _, v in ipairs(ch:GetDescendants()) do
+            if v:IsA("BasePart") then v.CanCollide = false pcall(function() v.Anchored = false end) end
+        end
+        pcall(function() hum:ChangeState(Enum.HumanoidStateType.Running) end)
+    end)
+    local t0 = os.clock()
+    local lastD = (root.Position - pos).Magnitude
+    local stuckT = os.clock()
+    while os.clock() - t0 < timeout do
+        ch = LocalPlayer.Character hum = ch and ch:FindFirstChildOfClass("Humanoid") root = rapGetRoot()
+        if not ch or not hum or not root or hum.Health <= 0 then break end
+        pcall(function() hum.Sit = false root.Anchored = false end)
+        local cur = root.Position
+        local d = Vector3.new(pos.X - cur.X, 0, pos.Z - cur.Z)
+        local m = d.Magnitude
+        if m <= radius then break end
+        local wp = cur + (d / (m + 0.001)) * math.min(30, m)
+        wp = Vector3.new(wp.X, cur.Y, wp.Z)
+        pcall(function() hum:MoveTo(wp) end)
+        local w0 = os.clock()
+        while os.clock() - w0 < 3 do
+            task.wait(0.2)
+            local r2 = rapGetRoot()
+            if not r2 then break end
+            local m2 = Vector3.new(pos.X - r2.Position.X, 0, pos.Z - r2.Position.Z).Magnitude
+            if m2 <= radius then break end
+            if (r2.Position - wp).Magnitude <= 6 then break end
+        end
+        local r3 = rapGetRoot()
+        local m3 = r3 and Vector3.new(pos.X - r3.Position.X, 0, pos.Z - r3.Position.Z).Magnitude or 9999
+        if m3 < lastD - 2 then lastD = m3 stuckT = os.clock()
+        elseif os.clock() - stuckT > 3 then
+            pcall(function() hum.Jump = true end)
+            task.wait(0.5)
+            stuckT = os.clock()
+        end
+    end
+    local rf = rapGetRoot()
+    return rf and ((Vector3.new(pos.X - rf.Position.X, 0, pos.Z - rf.Position.Z)).Magnitude <= math.max(radius + 4, 14)) or false
+end
+-- ANTI-CHEAT BARU (10-Okt malam): server nolak CFrame teleport + noclip/tween fly.
+-- Mode AMAN = SEMUA gerak pakai jalan kaki legit (Humanoid:MoveTo). CFrame cuma bila Mode Aman MATI.
 function rapTeleportTo(pos, label)
+    if rapSafeTrigger then
+        return rapWalkTo(pos, 8, 30)
+    end
     local root = rapGetRoot()
     if not root or not pos then return false end
     root.CFrame = CFrame.new(pos + Vector3.new(0, 4, 0))
@@ -3737,6 +3794,9 @@ function rapSetNoclip(on)
     end
 end
 function rapTweenTo(pos, speed)
+    if rapSafeTrigger then
+        return rapWalkTo(pos, 8, 40)
+    end
     local root = rapGetRoot()
     if not root or not pos then return false end
     rapSetNoclip(true)
@@ -4323,6 +4383,8 @@ function rapPickupTick()
     local mode = rapPickupMode or "Tween"
     local prompt = cand.prompt
     if not prompt or not prompt.Parent then return done(0) end
+    -- SISTEM BARU: naik pet terbaik DULU sebelum ke telur (syarat anti-cheat baru).
+    pcall(function() rapRideBest() end)
     -- 1. pergi ke telur: JANGAN DIUBAH-UBAH (versi BAGUS 10-Okt). Instant=teleport, Tween=tween mulus.
     do
         local away = Vector3.new(0, 0, 7)
@@ -4362,6 +4424,19 @@ function rapPickupTick()
             rapFire({"Remotes", "Game", "EggPickup"}, m)
         end)
         task.wait(0.3)
+    end
+    -- SISTEM BARU: pastikan masih naik pet + DIAM 20 DETIK di tempat telur, baru boleh teleport.
+    -- Tanpa ini anti-cheat baru nolak teleport (delivery error merah).
+    pcall(function() rapRideBest() end)
+    do
+        local waitS = 20
+        Window:Notify({Title="Tunggu",Description="Diam 20 dtk di telur (syarat anti-cheat)...",Lifetime=3})
+        local wt0 = os.clock()
+        while os.clock() - wt0 < waitS do
+            local sisa = math.ceil(waitS - (os.clock() - wt0))
+            if sisa % 5 == 0 then pcall(function() Window:Notify({Title="Tunggu",Description="Sabar... "..tostring(sisa).." dtk lagi",Lifetime=2}) end) task.wait(1.1)
+            else task.wait(0.5) end
+        end
     end
     -- DIAM di telur sampai server selesai: prompt hilang ATAU tool telur masuk char/backpack.
     do
@@ -4448,7 +4523,9 @@ function rapPickupTick()
                 local anchor = slot:FindFirstChild("PlacePromptAnchor", true) or slot
                 local pp = rapEntityPos(anchor) or rapEntityPos(slot)
                 if pp then
-                    if mode == "Instant" then rapTeleportTo(pp, "Nest") else rapTweenTo(pp, 1000) end
+                    -- SISTEM BARU (syarat 20dtk+ride terpenuhi): teleport PAKSA langsung, tetap bisa.
+                    pcall(function() rapRideBest() end)
+                    rapForceTeleport(pp)
                     task.wait(0.35)
                     for _, pr in ipairs(anchor:GetDescendants()) do
                         if pr:IsA("ProximityPrompt") then
@@ -5004,6 +5081,41 @@ function rapPlaceBestTick()
     rapFire({ "Remotes", "Game", "PetPlace" })
     pcall(function() rapPassBatch(function(a) return a == "Place" end, 2) end)
     return 1
+end
+-- SISTEM BARU 10-Okt malam: ambil telur HARUS naik pet terbaik dulu, diam 20 dtk di telur, baru teleport.
+function rapRideBest()
+    pcall(function() Window:Notify({Title="Ride",Description="Naik pet terbaik...",Lifetime=2}) end)
+    rapFire({ "Remotes", "Game", "RideBestPet" })
+    rapFire({ "Remotes", "Game", "EquipBestPet" })
+    rapFire({ "Remotes", "Game", "BestPet" })
+    rapFire({ "Remotes", "Game", "Mounting" })
+    rapFire({ "Remotes", "Game", "PetRideMode" })
+    pcall(function()
+        local ch = LocalPlayer.Character
+        local hum = ch and ch:FindFirstChildOfClass("Humanoid")
+        local bp = LocalPlayer:FindFirstChild("Backpack")
+        if hum and bp then
+            local best, bestW = nil, -1
+            for _, t in ipairs(bp:GetChildren()) do
+                if t and t:IsA("Tool") and not tostring(t.Name):lower():find("egg") then
+                    local w = rapGetItemWeight(t) or 0
+                    if w >= bestW then bestW = w best = t end
+                end
+            end
+            if best then hum:EquipTool(best) task.wait(0.3) end
+        end
+    end)
+    pcall(function() rapPassBatch(function(a) return a == "Ride" end, 1) end)
+end
+-- Teleport PAKSA (CFrame langsung) untuk leg telur->plot setelah 20 dtk + ride.
+-- Anti-cheat baru lolos bila sudah naik pet + tunggu. Jangan pakai untuk gerak lain.
+function rapForceTeleport(pos)
+    local root = rapGetRoot()
+    if not root or not pos then return false end
+    local ok = pcall(function()
+        root.CFrame = CFrame.new(pos + Vector3.new(0, 4, 0))
+    end)
+    return ok
 end
 function rapClaimFuseTick()
     if not (rapPlanned and rapPlanned.autoClaimFuse) then return 0 end
