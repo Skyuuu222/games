@@ -4056,17 +4056,6 @@ local function rapPickupTick()
         local bl = rapBlacklist[prompt]
         if bl and os.clock() < bl then return 0 end
     end
-    -- KUNCI: diam di telur sampai server selesai (gerak = Returned). Max 6 dtk langka / 3 dtk biasa.
-    do
-        local rarW = rapRarityOf(cand.name)
-        local rareW = (rarW == "Epic" or rarW == "Legendary" or rarW == "Mythic" or rarW == "Divine" or rarW == "Ethereal")
-        local t0 = os.clock()
-        local lim = rareW and 6 or 3
-        while os.clock() - t0 < lim do
-            if prompt.Parent == nil or (not prompt:IsDescendantOf(workspace)) then break end
-            task.wait(0.25)
-        end
-    end
     rapHandled[prompt] = true
     -- tiru manual: JANGAN anchor; telur langka pakai hold asli (HoldDuration tidak dinolkan)
     do
@@ -4102,8 +4091,44 @@ local function rapPickupTick()
             end
         end
     end
+    -- DIAM di telur sampai server selesai: prompt hilang ATAU tool telur masuk char/backpack.
+    do
+        local rarW2 = rapRarityOf(cand.name)
+        local rareW2 = (rarW2 == "Epic" or rarW2 == "Legendary" or rarW2 == "Mythic" or rarW2 == "Divine" or rarW2 == "Ethereal")
+        local t0 = os.clock()
+        local lim = rareW2 and 6 or 3
+        while os.clock() - t0 < lim do
+            if prompt.Parent == nil or (not prompt:IsDescendantOf(workspace)) then break end
+            local hasEgg = false
+            pcall(function()
+                local chW = LocalPlayer.Character
+                local bpW = LocalPlayer:FindFirstChild("Backpack")
+                local function hasEggIn(par)
+                    if not par then return false end
+                    for _, t in ipairs(par:GetChildren()) do
+                        if (t:IsA("Tool")) and tostring(t.Name):find("Egg", 1, true) then return true end
+                    end
+                    return false
+                end
+                if hasEggIn(chW) or hasEggIn(bpW) then hasEgg = true end
+            end)
+            if hasEgg then break end
+            task.wait(0.25)
+        end
+    end
     local gone = (prompt.Parent == nil) or (not prompt:IsDescendantOf(workspace))
-    local delivered = gone
+    local hasEggTool = false
+    pcall(function()
+        local chW2 = LocalPlayer.Character
+        local bpW2 = LocalPlayer:FindFirstChild("Backpack")
+        for _, par in ipairs({ chW2, bpW2 }) do
+            if par then for _, t in ipairs(par:GetChildren()) do
+                if t:IsA("Tool") and tostring(t.Name):find("Egg", 1, true) then hasEggTool = true break end
+            end end
+            if hasEggTool then break end
+        end
+    end)
+    local delivered = gone or hasEggTool
     if delivered then
         rapPickedCount = rapPickedCount + 1
         rapEggsCarried = rapEggsCarried + 1
@@ -4152,23 +4177,40 @@ local function rapPickupTick()
             --    Paksa drop tool telur yg nyangkut di karakter supaya jatuh di edge.
             pcall(function()
                 local ch2 = LocalPlayer.Character
-                if ch2 then
-                    for _, t in ipairs(ch2:GetChildren()) do
-                        if t:IsA("Tool") and tostring(t.Name):find("Egg", 1, true) then
-                            t.Parent = workspace
+                local er2 = rapGetRoot()
+                local dropPos = er2 and er2.Position or nil
+                local hum2 = ch2 and ch2:FindFirstChildOfClass("Humanoid")
+                if hum2 then pcall(function() hum2:UnequipTools() end) end
+                task.wait(0.3)
+                local bp2 = LocalPlayer:FindFirstChild("Backpack")
+                for _, par in ipairs({ ch2, bp2 }) do
+                    if par then
+                        for _, t in ipairs(par:GetChildren()) do
+                            if t:IsA("Tool") and tostring(t.Name):find("Egg", 1, true) then
+                                t.Parent = workspace
+                                pcall(function()
+                                    if dropPos and t:IsA("Tool") then
+                                        local h = t:FindFirstChild("Handle")
+                                        if h and h:IsA("BasePart") then
+                                            h.CFrame = CFrame.new(dropPos + Vector3.new(math.random(-4, 4), 3, math.random(-4, 4)))
+                                            h.CanCollide = false
+                                            h.Anchored = false
+                                        end
+                                    end
+                                end)
+                            end
                         end
                     end
-                    local hum2 = ch2:FindFirstChildOfClass("Humanoid")
-                    if hum2 then pcall(function() hum2:UnequipTools() end) end
                 end
             end)
-            task.wait(0.6)
+            task.wait(1.0)
             -- c. ambil lagi telur yg jatuh di dekat edge (radius 35)
             pcall(function()
                 local er = rapGetRoot()
                 if er then
-                    local bp, bd = nil, 35
-                    for _, d in ipairs(rapTickList()) do
+                    local bp, bd = nil, 40
+                    local fresh = workspace:GetDescendants()
+                    for _, d in ipairs(fresh) do
                         if d:IsA("ProximityPrompt") and tostring(d.ActionText) == "Pick Up" then
                             local pp3 = rapEntityPos(d.Parent) or rapEntityPos(d)
                             if pp3 then
