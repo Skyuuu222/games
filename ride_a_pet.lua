@@ -4437,11 +4437,22 @@ function rapPickupTick()
             rapForceTeleport(pp) task.wait(0.2)
         end
     end
-    -- 4. LANGSUNG instan naik pet (remote, tanpa perlu dekat pet) + fallback ride full bila gagal.
+    -- MANUAL RIDE (10-Okt): auto-ride DIMATIKAN (tebakan remote gagal terus). Kamu naik pet MANUAL.
+    -- Farm teleport ke telur, lalu TUNGGU sampai kamu duduk (Sit/SeatPart) maks 60 dtk, baru ambil.
     do
-        local ok = false
-        pcall(function() ok = rapRideInstant() end)
-        if not ok then pcall(function() rapRideBest() end) end
+        Window:Notify({Title="Ride Manual",Description="Naik pet sendiri, lalu farm lanjut otomatis...",Lifetime=4})
+        local wt0 = os.clock()
+        while os.clock() - wt0 < 60 do
+            local seated = false
+            pcall(function()
+                local ch = LocalPlayer.Character
+                local hum = ch and ch:FindFirstChildOfClass("Humanoid")
+                seated = hum and (hum.Sit or hum.SeatPart ~= nil) or false
+            end)
+            if seated then Window:Notify({Title="Ride",Description="Sudah naik, lanjut ambil!",Lifetime=2}) break end
+            if math.floor(os.clock() - wt0) % 10 == 0 then pcall(function() Window:Notify({Title="Ride Manual",Description="Menunggu kamu naik pet...",Lifetime=2}) end) end
+            task.wait(1)
+        end
     end
     -- SCAN 20:24: SEMUA prompt Pick Up hold=0, maxdist 16-21. Jadi langsung trigger + backup EggPickup.
     do
@@ -6152,6 +6163,45 @@ SecAutoEgg:Toggle({
         else
             rapSet("pickup", false, "Auto Farm Eggs", "", "Auto farm eggs dimatikan.")
         end
+    end,
+})
+
+SecAutoEgg:Button({
+    Name = "Pindai Pemicu Ride (Jalankan Sambil Naik Manual)",
+    Callback = function()
+        -- PEMINDAI: tekan tombol ini, LALU naik pet manual. Hasil = prompt/remote asli (bukan tebakan).
+        Window:Notify({Title="Pindai",Description="Naik pet manual SEKARANG (10 dtk)...",Lifetime=4})
+        task.spawn(function()
+            task.wait(2)
+            local found = {}
+            pcall(function()
+                for _, pr in ipairs(workspace:GetDescendants()) do
+                    if pr:IsA("ProximityPrompt") then
+                        local t = tostring(pr.ActionText or ""):lower() .. " " .. tostring(pr.ObjectText or ""):lower()
+                        if t:find("ride",1,true) or t:find("mount",1,true) or t:find("naik",1,true) then
+                            table.insert(found, pr:GetFullName() .. " [" .. tostring(pr.ActionText) .. "/" .. tostring(pr.ObjectText) .. "]")
+                        end
+                    end
+                end
+            end)
+            pcall(function()
+                local rs = game:GetService("ReplicatedStorage")
+                for _, r in ipairs(rs:GetDescendants()) do
+                    if r:IsA("RemoteEvent") or r:IsA("RemoteFunction") then
+                        local n = tostring(r.Name):lower() .. " " .. tostring(r:GetFullName()):lower()
+                        if n:find("ride",1,true) or n:find("mount",1,true) or n:find("seat",1,true) then
+                            table.insert(found, "REMOTE: " .. r:GetFullName())
+                        end
+                    end
+                end
+            end)
+            local ch = LocalPlayer.Character
+            local hum = ch and ch:FindFirstChildOfClass("Humanoid")
+            local seatInfo = "belum duduk"
+            pcall(function() seatInfo = hum and (hum.SeatPart and hum.SeatPart:GetFullName() or (hum.Sit and "Sit=true" or "belum duduk")) or "no hum" end)
+            local msg = (#found > 0 and table.concat(found, "\n"):sub(1, 400) or "prompt/remote ride tak ketemu") .. "\nDUDUK: " .. tostring(seatInfo)
+            Window:Notify({Title="Hasil Pindai Ride",Description=msg,Lifetime=10})
+        end)
     end,
 })
 
