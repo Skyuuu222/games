@@ -3915,19 +3915,64 @@ local function rapGoPlotEdge(mode)
     local rr2 = rapGetRoot()
     return rr2 and ((rr2.Position - e).Magnitude <= 60) or false
 end
--- jalan kaki ke tengah plot (tanpa teleport) supaya server daftarkan masuk region + selesaikan delivery
+-- jalan paksa langkah kecil ke tengah plot (tanpa teleport jauh) supaya server daftarkan masuk region.
+-- rapMoveTo(Humanoid:MoveTo) sering macet (duduk/mati/walkspeed 0) -> pakai step-CFrame + MoveTo cadangan.
 local function rapWalkPlotCenter()
     local c = rapPlotCenter()
     if not c then return false end
+    local root = rapGetRoot()
+    if not root then return false end
     pcall(function()
         local chW = LocalPlayer.Character
         if chW then for _, v in ipairs(chW:GetDescendants()) do
             if v:IsA("BasePart") then v.CanCollide = false end
         end end
     end)
-    local ok = rapMoveTo(c, 25)
+    -- bangunkan humanoid (duduk/lompat-matikan seismik sering bikin MoveTo diam)
+    pcall(function()
+        local chW2 = LocalPlayer.Character
+        local hum = chW2 and chW2:FindFirstChildOfClass("Humanoid")
+        if hum then
+            hum.Sit = false
+            if hum.WalkSpeed < 8 then hum.WalkSpeed = 16 end
+            pcall(function() hum:ChangeState(Enum.HumanoidStateType.Running) end)
+        end
+        if root then pcall(function() root.Anchored = false end) end
+    end)
+    -- 1) coba MoveTo biasa dulu (8 dtk)
+    local okMove = rapMoveTo(c, 8)
+    do
+        local r2 = rapGetRoot()
+        if r2 and (r2.Position - c).Magnitude <= 14 then task.wait(0.5) return true end
+    end
+    -- 2) langkah kecil paksa (8 stud / 0.12 dtk) sampai <= 10 stud, max 25 dtk
+    local t0 = os.clock()
+    while os.clock() - t0 < 25 do
+        root = rapGetRoot()
+        if not root or not root.Parent then break end
+        local cur = root.Position
+        local d = c - cur
+        d = Vector3.new(d.X, 0, d.Z)
+        local m = d.Magnitude
+        if m <= 10 then break end
+        local step = math.min(8, m)
+        local dir = d / (m + 0.001)
+        local np = cur + dir * step
+        np = Vector3.new(np.X, cur.Y, np.Z)
+        pcall(function()
+            root.CFrame = CFrame.new(np, np + dir)
+        end)
+        -- tendang MoveTo juga biar animasi jalan + server catat gerakan
+        pcall(function()
+            local chW3 = LocalPlayer.Character
+            local hum3 = chW3 and chW3:FindFirstChildOfClass("Humanoid")
+            if hum3 then hum3:MoveTo(Vector3.new(c.X, cur.Y, c.Z)) end
+        end)
+        task.wait(0.12)
+    end
     task.wait(0.5)
-    return ok
+    local rf = rapGetRoot()
+    return rf and ((rf.Position - c).Magnitude <= 16) or false
 end
 local function rapGoPlot(notify)
     local pos = rapPlotPos or rapRanchPos or rapRefreshRanch()
