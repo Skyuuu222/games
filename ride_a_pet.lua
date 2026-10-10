@@ -3940,7 +3940,7 @@ local function rapWalkPlotCenter()
     pcall(function()
 rapSetNoclip(false) do local gg = raycastGround(root) if gg then root.CFrame = CFrame.new(gg + Vector3.new(0, 3.2, 0)) end end
                 hum.Sit = false hum.PlatformStand = false
-        if hum.WalkSpeed < 8 then hum.WalkSpeed = 16 end
+        hum.WalkSpeed = math.max(hum.WalkSpeed, tonumber(rapPlanned and rapPlanned.walkSpeed) or 32)
         if hum.Health <= 0 then return end
         for _, v in ipairs(ch:GetDescendants()) do
             if v:IsA("BasePart") then v.CanCollide = false pcall(function() v.Anchored = false end) end
@@ -5775,6 +5775,24 @@ SecAutoEgg:Slider({
     DisplayMethod = "Round",
     Precision = 0,
     Callback = function(value) rapPlanned.glideSpeed = value end,
+});
+
+SecAutoEgg:Dropdown({
+    Name = "Mode Ambil Telur",
+    Items = { "Instant", "Tween" },
+    Default = "Instant",
+    Callback = function(v) rapPickupMode = v or "Instant" end,
+})
+
+SecAutoEgg:Slider({
+    Name = "Walk Speed (jalan ke tengah)",
+    Default = 32,
+    Minimum = 16,
+    Maximum = 100,
+    DisplayMethod = "Round",
+    Precision = 0,
+    Callback = function(value) rapPlanned.walkSpeed = value end,
+    Callback = function(value) rapPlanned.walkSpeed = value end,
 })
 
 SecAutoEgg:Slider({
@@ -5889,29 +5907,8 @@ SecPlace:Toggle({
     end,
 })
 
--- Engine lama yang dipertahankan
-SecAutoEgg:Dropdown({
-    Name = "Mode Ambil Telur",
-    Items = { "Tween", "Instant" },
-    Default = "Tween",
-    Callback = function(v) rapPickupMode = v or "Tween" end,
-})
-
-SecAutoEgg:Toggle({
-    Name = "Balik ke Plot Setelah Ambil Telur",
-    Default = true,
-    Callback = function(enabled)
-        rapReturnRanch = enabled and true or false
-    end,
-})
-
-SecAutoEgg:Toggle({
-    Name = "Pakai Trigger Remote (Cadangan Gagal Pick Up)",
-    Default = true,
-    Callback = function(enabled)
-        rapUseRemoteFallback = enabled and true or false
-    end,
-})
+-- Collector: mode Instant default (tercepat). Tween hanya kalau user pilih manual.
+do pcall(function() rapPickupMode = "Instant" rapReturnRanch = true rapUseRemoteFallback = false end) end
 
 local SecTele = TabMainRAP:Section({ Name = "Teleport", Side = 1 })
 SecTele:Header({ Name = ZypheraxLib:Gradient("Teleport Cepat", Color3.fromRGB(240, 190, 100), Color3.fromRGB(255, 160, 120)) })
