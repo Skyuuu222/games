@@ -4383,22 +4383,20 @@ function rapPickupTick()
     local mode = rapPickupMode or "Tween"
     local prompt = cand.prompt
     if not prompt or not prompt.Parent then return done(0) end
-    -- SISTEM BARU: naik pet terbaik DULU sebelum ke telur (syarat anti-cheat baru).
-    pcall(function() rapRideBest() end)
-    -- 1. pergi ke telur: JANGAN DIUBAH-UBAH (versi BAGUS 10-Okt). Instant=teleport, Tween=tween mulus.
+    -- ke telur dulu (teleport), ride NANTI pas sudah di telur. Jangan ride sebelum teleport (bug: gagal gerak).
+    -- 1. pergi ke telur: TELEPORT langsung (paksa, bukan jalan). Ride nanti pas sudah sampai.
     do
         local away = Vector3.new(0, 0, 7)
         do local rrS=rapGetRoot() if rrS then local d0=cand.pos-rrS.Position d0=Vector3.new(d0.X,0,d0.Z) if d0.Magnitude>1 then away=(-d0/d0.Magnitude)*7 end end end
         local stop = cand.pos + Vector3.new(away.X, 4, away.Z)
-        if mode == "Instant" then rapSetNoclip(false) rapTeleportTo(stop, "Egg") task.wait(0.25)
-        else rapTweenTo(stop, tonumber(rapPlanned and rapPlanned.glideSpeed) or 1000) end
+        rapForceTeleport(stop) task.wait(0.25)
     end
     -- 2. pastikan dekat (server tolak dari jauh)
     do
         local pp = rapEntityPos(prompt.Parent) or cand.pos
         local rr = rapGetRoot()
         if pp and rr and (pp - rr.Position).Magnitude > 12 then
-            if mode == "Instant" then rapTeleportTo(pp, "Egg") task.wait(0.2) else rapTweenTo(pp, tonumber(rapPlanned and rapPlanned.glideSpeed) or 1000) end
+            rapForceTeleport(pp) task.wait(0.2)
         end
     end
     do
@@ -4414,6 +4412,9 @@ function rapPickupTick()
     end
     rapHandled[prompt] = true
     rapLockName = cand.name rapLockSince = os.clock()
+    -- 3. SUDAH DI TELUR: ride pet terbaik + ambil telur sekalian.
+    pcall(function() rapRideBest() end)
+    task.wait(0.4)
     -- SCAN 20:24: SEMUA prompt Pick Up hold=0, maxdist 16-21. Jadi langsung trigger + backup EggPickup.
     do
         pcall(function() prompt.RequiresLineOfSight = false end)
@@ -4425,9 +4426,7 @@ function rapPickupTick()
         end)
         task.wait(0.3)
     end
-    -- SISTEM BARU: pastikan masih naik pet + DIAM 20 DETIK di tempat telur, baru boleh teleport.
-    -- Tanpa ini anti-cheat baru nolak teleport (delivery error merah).
-    pcall(function() rapRideBest() end)
+    -- 4. DIAM 20 DETIK di tempat telur (syarat anti-cheat baru), baru boleh teleport ke plot.
     do
         local waitS = 20
         Window:Notify({Title="Tunggu",Description="Diam 20 dtk di telur (syarat anti-cheat)...",Lifetime=3})
