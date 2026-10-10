@@ -3858,7 +3858,7 @@ function rapIsMyPlot(inst)
     return rapRanchPos
 end
 
-local rapEdgeMargin = 42
+local rapEdgeMargin = 80
 function rapIsMine(inst)
     if not inst then return false end
     local me = player.Name:lower()
@@ -3957,17 +3957,31 @@ end
 function rapPlotEdge()
     local c = rapPlotCenter()
     if not c then return nil end
-    local off = math.min(rapPlotHalf() + rapEdgeMargin, 110)
+    local off = math.min(rapPlotHalf() + rapEdgeMargin, 160)
     local r0 = rapGetRoot()
     local dir = Vector3.new(1, 0, 1)
     if r0 then local d = r0.Position - c d = Vector3.new(d.X, 0, d.Z) if d.Magnitude > 5 then dir = d / d.Magnitude end end
     return c + dir * off
 end
-function rapGoPlotEdge(mode)
+-- Titik DROP: lebih jauh lagi dari edge (edge + 35 stud keluar), biar server tidak anggap di dalam plot.
+function rapDropSpot()
+    local c = rapPlotCenter()
+    if not c then return nil end
     local e = rapPlotEdge()
+    if not e then return nil end
+    local d = Vector3.new(e.X - c.X, 0, e.Z - c.Z)
+    if d.Magnitude < 5 then d = Vector3.new(1, 0, 1) end
+    d = d / d.Magnitude
+    return e + d * 35
+end
+function rapGoPlotEdge(mode)
+    -- DROP JAUH: ke rapDropSpot (edge + 35 stud keluar), bukan edge lama. Biar delivery tidak error merah.
+    local e = nil
+    pcall(function() e = rapDropSpot() end)
+    if not e then e = rapPlotEdge() end
     if not e then return false end
     for attempt = 1, 3 do
-        if mode == "Instant" then rapSetNoclip(false) rapTeleportTo(e, "Edge") else rapTweenTo(e, tonumber(rapPlanned and rapPlanned.glideSpeed) or 1000) end
+        if mode == "Instant" then rapSetNoclip(false) rapTeleportTo(e, "Drop") else rapTweenTo(e, tonumber(rapPlanned and rapPlanned.glideSpeed) or 1000) end
         task.wait(0.35)
         if rapGetRoot() and (rapGetRoot().Position - e).Magnitude <= 30 then return true end
     end
