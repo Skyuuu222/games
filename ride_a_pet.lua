@@ -4441,17 +4441,17 @@ function rapPickupTick()
                         end
                     end
                     bestPetRef = bestPet
-                    for try = 1, 2 do
+                    for try = 1, 3 do
                         if not bestPet then break end
                         local rp = bestPet:FindFirstChild("RidePrompt", true)
                         local pp = rp and rp.Parent and rapEntityPos(rp.Parent)
-                        if pp then rapForceTeleport(pp) task.wait(0.1) end
+                        if pp then rapForceTeleport(pp) task.wait(0.15) end
                         if rp then
                             pcall(function() rp.RequiresLineOfSight = false end)
                             rapFire({ "Remotes", "Game", "PetRideMode" })
                             rapFire({ "Remotes", "Game", "Mounting" })
                             rapTriggerPrompt(rp)
-                            task.wait(0.15)
+                            task.wait(0.3)
                         end
                         local okS = false
                         pcall(function()
@@ -4463,6 +4463,20 @@ function rapPickupTick()
                     end
                 end
             end)
+        end
+    end
+    -- GERBANG (10-Okt): verifikasi SUDAH duduk. Belum = JANGAN teleport ke telur, skip telur ini.
+    -- Ini perbaikan "kadang tidak naik langsung teleport": ride diakui gagal, telur dilepas ke tick berikut.
+    do
+        local seated = false
+        pcall(function()
+            local ch = LocalPlayer.Character
+            local hum = ch and ch:FindFirstChildOfClass("Humanoid")
+            seated = hum and (hum.Sit or hum.SeatPart ~= nil) or false
+        end)
+        if not seated then
+            rapPickupCD = os.clock() + 1
+            return done(0)
         end
     end
     -- 2. LANGSUNG 1x teleport ke telur (tanpa nudge kedua = tanpa kesan mantul), seat dipertahankan.
