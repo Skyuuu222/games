@@ -4241,7 +4241,7 @@ local function rapPickupTick()
                 local function hasEggIn(par)
                     if not par then return false end
                     for _, t in ipairs(par:GetChildren()) do
-                        if (t:IsA("Tool")) and cand.name ~= nil and tostring(t.Name) == tostring(cand.name) then return true end
+                        if (t:IsA("Tool")) and (tostring(t.Name) == tostring(cand.name) or tostring(t.Name):lower():find("egg")) then return true end
                     end
                     return false
                 end
@@ -4258,12 +4258,12 @@ local function rapPickupTick()
         local bpW2 = LocalPlayer:FindFirstChild("Backpack")
         for _, par in ipairs({ chW2, bpW2 }) do
             if par then for _, t in ipairs(par:GetChildren()) do
-                if t:IsA("Tool") and cand.name ~= nil and tostring(t.Name) == tostring(cand.name) and not rapBagBefore[t] then hasEggTool = true break end
+                if t:IsA("Tool") and cand.name ~= nil and (tostring(t.Name) == tostring(cand.name) or tostring(t.Name):lower():find("egg")) and not rapBagBefore[t] then hasEggTool = true break end
             end end
             if hasEggTool then break end
         end
     end)
-    local gotEgg = hasEggTool
+    if not hasEggTool then pcall(function() local chV = LocalPlayer.Character if chV then for _, d in ipairs(chV:GetDescendants()) do if d:IsA("BasePart") or d:IsA("MeshPart") then local a = d:FindFirstAncestorOfClass("Model") local nm = (a and a.Name or d.Name or ""):lower() if nm:find("egg") then hasEggTool = true break end end end end end) end
     local delivered = gotEgg
     if delivered then
         rapPickedCount = rapPickedCount + 1
