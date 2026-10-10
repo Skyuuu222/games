@@ -3868,10 +3868,12 @@ local function rapFindMyPlot()
         end
     end)
     if found then rapMyPlotModel = found end
+    if foundPos then rapPlotPos = foundPos rapRanchPos = foundPos end
     return found, foundPos
 end
 local function rapPlotHalf()
     local half = 45
+    do local m = rapMyPlotModel if m and m.Parent then local sz = nil pcall(function() if m:IsA("Model") then local ok, es = pcall(function() return m:GetExtentsSize() end) if ok and es then sz = es end elseif m:IsA("BasePart") then sz = m.Size end end) if sz then return math.max(30, math.max(sz.X, sz.Z) / 2) end end end
     pcall(function()
         local fresh2 = workspace:GetDescendants()
         for _, d in ipairs(fresh2) do
