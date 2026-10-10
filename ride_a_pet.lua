@@ -4445,13 +4445,13 @@ function rapPickupTick()
                         if not bestPet then break end
                         local rp = bestPet:FindFirstChild("RidePrompt", true)
                         local pp = rp and rp.Parent and rapEntityPos(rp.Parent)
-                        if pp then rapForceTeleport(pp) task.wait(0.2) end
+                        if pp then rapForceTeleport(pp) task.wait(0.1) end
                         if rp then
                             pcall(function() rp.RequiresLineOfSight = false end)
                             rapFire({ "Remotes", "Game", "PetRideMode" })
                             rapFire({ "Remotes", "Game", "Mounting" })
                             rapTriggerPrompt(rp)
-                            task.wait(0.4)
+                            task.wait(0.15)
                         end
                         local okS = false
                         pcall(function()
@@ -4474,9 +4474,8 @@ function rapPickupTick()
     rapHandled[prompt] = true
     rapLockName = cand.name rapLockSince = os.clock()
     do
-        -- rapat 3 stud (bukan 7): prompt MaxDist 16-21, duduk di pet bikin root meleset.
         local stop = cand.pos + Vector3.new(0, 4, 3)
-        rapForceTeleport(stop) task.wait(0.2)
+        rapForceTeleport(stop) task.wait(0.1)
     end
     -- 3. TURUN SEBENTAR -> ambil 2x -> NAIK LAGI (pet ikut teleport, prompt-nya dekat).
     do
@@ -4488,16 +4487,16 @@ function rapPickupTick()
                 pcall(function() hum:ChangeState(Enum.HumanoidStateType.Jumping) end)
             end
         end)
-        task.wait(0.3)
+        task.wait(0.1)
         for grab = 1, 2 do
             pcall(function() prompt.RequiresLineOfSight = false end)
             rapTriggerPrompt(prompt)
-            task.wait(0.3)
+            task.wait(0.1)
             pcall(function()
                 local m = rapEggModelOf(prompt)
                 rapFire({"Remotes", "Game", "EggPickup"}, m)
             end)
-            task.wait(0.3)
+            task.wait(0.1)
             local hasEgg = false
             pcall(function()
                 local chW = LocalPlayer.Character
@@ -4532,43 +4531,17 @@ function rapPickupTick()
                 if rp then rapTriggerPrompt(rp) end
             end
         end)
-        task.wait(0.3)
+        task.wait(0.1)
     end
-    -- 4. DIAM 20 DETIK di tempat telur (syarat anti-cheat baru), baru boleh teleport ke plot.
+    -- 4. DIAM 20 DETIK (satu-satunya tunggu), lalu LANGSUNG balik plot tanpa diam tambahan.
     do
-        local waitS = 20
-        Window:Notify({Title="Tunggu",Description="Diam 20 dtk di telur (syarat anti-cheat)...",Lifetime=3})
-        local wt0 = os.clock()
-        while os.clock() - wt0 < waitS do
-            local sisa = math.ceil(waitS - (os.clock() - wt0))
-            if sisa % 5 == 0 then pcall(function() Window:Notify({Title="Tunggu",Description="Sabar... "..tostring(sisa).." dtk lagi",Lifetime=2}) end) task.wait(1.1)
-            else task.wait(0.5) end
-        end
+        pcall(function() Window:Notify({Title="Tunggu",Description="Diam 20 dtk...",Lifetime=2}) end)
+        task.wait(20)
     end
     -- DIAM di telur sampai server selesai: prompt hilang ATAU tool telur masuk char/backpack.
+    -- DIPANGKAS (10-Okt): ambil 2x di atas sudah cek, langsung lanjut tanpa loop settle tambahan.
     do
-        local rarW2 = rapRarityOf(cand.name)
-        local rareW2 = (rarW2 == "Epic" or rarW2 == "Legendary" or rarW2 == "Mythic" or rarW2 == "Divine" or rarW2 == "Ethereal")
-        local t0 = os.clock()
-        local lim = rareW2 and 2.5 or 1.2
-        while os.clock() - t0 < lim do
-            if prompt.Parent == nil or (not prompt:IsDescendantOf(workspace)) then break end
-            local hasEgg = false
-            pcall(function()
-                local chW = LocalPlayer.Character
-                local bpW = LocalPlayer:FindFirstChild("Backpack")
-                local function hasEggIn(par)
-                    if not par then return false end
-                    for _, t in ipairs(par:GetChildren()) do
-                        if (t:IsA("Tool")) and (tostring(t.Name) == tostring(cand.name) or tostring(t.Name):lower():find("egg")) then return true end
-                    end
-                    return false
-                end
-                if hasEggIn(chW) or hasEggIn(bpW) then hasEgg = true end
-            end)
-            if hasEgg then break end
-            task.wait(0.25)
-        end
+        task.wait(0.1)
     end
     local gone = (prompt.Parent == nil) or (not prompt:IsDescendantOf(workspace))
     local hasEggTool = false
