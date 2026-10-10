@@ -3761,14 +3761,11 @@ end
 -- Dicoba HANYA setelah prompt gagal, satu-per-satu, tetap hormati filter.
 local rapFailCount = {}
 local rapBlacklist = {}
-local rapUseRemoteFallback = true
+local rapUseRemoteFallback = false
+-- SCAN 20:24: remote asli cuma BasketDrop + EggPickup. Sisanya tebakan (Hatch/ClaimEgg/EggArrivalClaim)
+-- bikin error merah AT-xxxx / egg delivery failed. JANGAN tambah lagi.
 local RAP_PICKUP_REMOTES = {
     {"Remotes", "Game", "EggPickup"},
-    {"Remotes", "Game", "PickupPet"},
-    {"Remotes", "Game", "PetCollect"},
-    {"Remotes", "Game", "ClaimEgg"},
-    {"Remotes", "Game", "EggArrivalClaim"},
-    {"Remotes", "Game", "Hatch"},
 }
 function rapEggModelOf(prompt)
     local cur = prompt and prompt.Parent
@@ -3858,7 +3855,7 @@ function rapIsMyPlot(inst)
     return rapRanchPos
 end
 
-local rapEdgeMargin = 120
+local rapEdgeMargin = 25
 function rapIsMine(inst)
     if not inst then return false end
     local me = player.Name:lower()
@@ -3957,13 +3954,13 @@ end
 function rapPlotEdge()
     local c = rapPlotCenter()
     if not c then return nil end
-    local off = math.min(rapPlotHalf() + rapEdgeMargin, 250)
+    local off = math.min(rapPlotHalf() + rapEdgeMargin, 80)
     local r0 = rapGetRoot()
     local dir = Vector3.new(1, 0, 1)
     if r0 then local d = r0.Position - c d = Vector3.new(d.X, 0, d.Z) if d.Magnitude > 5 then dir = d / d.Magnitude end end
     return c + dir * off
 end
--- Titik DROP: lebih jauh lagi dari edge (edge + 60 stud keluar), biar server tidak anggap di dalam plot.
+-- Titik DROP: edge + 10 stud (DEKAT, kejar timer delivery). Jangan jauh2 = timer habis = error merah.
 function rapDropSpot()
     local c = rapPlotCenter()
     if not c then return nil end
@@ -3972,10 +3969,10 @@ function rapDropSpot()
     local d = Vector3.new(e.X - c.X, 0, e.Z - c.Z)
     if d.Magnitude < 5 then d = Vector3.new(1, 0, 1) end
     d = d / d.Magnitude
-    return e + d * 60
+    return e + d * 10
 end
 function rapGoPlotEdge(mode)
-    -- DROP JAUH: ke rapDropSpot (edge + 60 stud keluar), bukan edge lama. Biar delivery tidak error merah.
+    -- DROP DEKAT pinggir (kejar timer delivery). Timer habis = error merah, jadi JANGAN jauh2.
     local e = nil
     pcall(function() e = rapDropSpot() end)
     if not e then e = rapPlotEdge() end
@@ -4183,9 +4180,8 @@ function rapPlaceEggs()
                     end
                 end
                 if not placed then
-                    rapFire({ "Remotes", "Game", "EggPlaced" })
-                    rapFire({ "Remotes", "Game", "PlacePet" })
-                    task.wait(0.3)
+                    placed = false
+                    task.wait(0.2)
                 end
                 n = n + 1
             end
@@ -4593,11 +4589,66 @@ function rapPickupTick()
             task.wait(0.2)
         end
         end
-        -- c. WALK BENERAN bawa telur dari edge (110 stud) ke tengah plot sendiri.
-        -- Tidak ada remote tebakan yg ditembak di sini (hindari AT-xxxx merah).
-        Window:Notify({ Title = "Delivery", Description = "Jalan ke tengah plot...", Lifetime = 2 })
+        -- c. WALK bawa telur ke SARANG (Nests) plot sendiri, bukan tengah kosong.
+        -- SCAN 20:24: di tengah plot TIDAK ada prompt Place/Deposit (cuma Ride/Name/Feed).
+        -- Delivery asli = taruh telur di Nest. Tanpa ini timer habis = egg delivery failed merah.
+        Window:Notify({ Title = "Delivery", Description = "Ke sarang: " .. tostring(cand.name), Lifetime = 2 })
         local walkOk = rapWalkPlotCenter()
-        Window:Notify({ Title = "Walk", Description = walkOk and "Sampai tengah plot" or "GAGAL jalan ke tengah", Lifetime = 3 })
+        do
+            local placedNest = false
+            pcall(function()
+                local myPlot = rapMyPlotModel
+                local nests = myPlot and myPlot:FindFirstChild("Nests")
+                if nests then
+                    local rr = rapGetRoot()
+                    local best, bestD = nil, nil
+                    for _, pr in ipairs(workspace:GetDescendants()) do
+                        if pr:IsA("ProximityPrompt") then
+                            local act = tostring(pr.ActionText or ""):lower() .. " " .. tostring(pr.ObjectText or ""):lower()
+                            if act:find("place", 1, true) or act:find("hatch", 1, true) or act:find("deposit", 1, true) or act:find("store", 1, true) then
+                                local inside = pr:IsDescendantOf(nests)
+                                if inside then
+                                    local pp = rapEntityPos(pr.Parent) or rapEntityPos(pr)
+                                    if pp then
+                                        local d = rr and (pp - rr.Position).Magnitude or 0
+                                        if not bestD or d < bestD then bestD = d best = pr end
+                                    end
+                                end
+                            end
+                        end
+                    end
+                    if best then
+                        local bp = rapEntityPos(best.Parent) or rapEntityPos(best)
+                        if bp and mode == "Instant" then rapTeleportTo(bp, "Nest") else rapTweenTo(bp, 1000) end
+                        task.wait(0.4)
+                        pcall(function() best.HoldDuration = 0 best.RequiresLineOfSight = false end)
+                        rapTriggerPrompt(best)
+                        task.wait(0.6)
+                        placedNest = true
+                    else
+                        -- sarang penuh / tak ada prompt: equip telur lalu coba tiap slot Nest (tekan prompt apapun di Nests)
+                        for _, slot in ipairs(nests:GetChildren()) do
+                            local pp2 = rapEntityPos(slot)
+                            if pp2 then
+                                if mode == "Instant" then rapTeleportTo(pp2, "Nest") else rapTweenTo(pp2, 800) end
+                                task.wait(0.3)
+                                for _, pr in ipairs(slot:GetDescendants()) do
+                                    if pr:IsA("ProximityPrompt") then
+                                        pcall(function() pr.HoldDuration = 0 pr.RequiresLineOfSight = false end)
+                                        rapTriggerPrompt(pr)
+                                        task.wait(0.4)
+                                    end
+                                end
+                                placedNest = true
+                                break
+                            end
+                        end
+                    end
+                end
+            end)
+            if placedNest then walkOk = true end
+        end
+        Window:Notify({ Title = "Walk", Description = walkOk and "Telur ditaruh di sarang" or "GAGAL ke sarang", Lifetime = 3 })
         if not walkOk then
             rapPickupCD = os.clock() + 1
             return done(0)
