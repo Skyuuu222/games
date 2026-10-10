@@ -3839,32 +3839,39 @@ local function rapIsMine(inst)
     return ok and owned or false
 end
 local rapMyPlotModel = nil
+local rapMyPlotModel = nil
+-- Plot: Workspace.Plots.Plot + Data.Owner (ObjectValue/StringValue menunjuk pemain).
+-- Otomatis tiap server: cocokkan Owner==LocalPlayer, TANPA set manual.
+local function rapPlotOwnerOf(plot)
+    local own = nil
+    pcall(function()
+        local d = plot and plot:FindFirstChild("Data")
+        local o = d and d:FindFirstChild("Owner")
+        if o then
+            if o:IsA("ObjectValue") then own = o.Value
+            elseif o:IsA("StringValue") then own = o.Value
+            else local ok,v = pcall(function() return o.Value end) if ok then own = v end end
+        end
+    end)
+    return own
+end
+local function rapOwnerIsMe(plot)
+    local o = rapPlotOwnerOf(plot)
+    if o == nil then return false end
+    if typeof(o) == "Instance" then return o == player end
+    return tostring(o) == player.Name or tostring(o) == player.DisplayName
+end
 local function rapFindMyPlot()
     local found, foundPos = nil, nil
     pcall(function()
-        local fresh = workspace:GetDescendants()
-        for _, d in ipairs(fresh) do
-            if d:IsA("Model") or d:IsA("BasePart") then
-                local low = tostring(d.Name):lower()
-                local hit = false
-                for _, pat in ipairs(RANCH_PATTERNS) do
-                    if low:find(pat, 1, true) then hit = true break end
-                end
-                if hit then
-                    if rapIsMine(d) or rapIsMine(d.Parent) or rapIsMine(d.Parent and d.Parent.Parent) then
-                        local p = rapEntityPos(d)
-                        if p then found, foundPos = d, p break end
-                    end
-                    if not found then
-                        local p2 = rapEntityPos(d)
-                        if p2 then
-                            local rp0 = rapGetRoot()
-                            if rp0 and (p2 - rp0.Position).Magnitude < 150 and not found then
-                                found, foundPos = d, p2
-                            end
-                        end
-                    end
-                end
+        local plots = workspace:FindFirstChild("Plots")
+        local list = {}
+        if plots then for _, p in ipairs(plots:GetChildren()) do list[#list+1] = p end
+        else for _, d in ipairs(workspace:GetDescendants()) do if tostring(d.Name):lower() == "plot" and (d:IsA("Model")) then list[#list+1] = d end end end
+        for _, p in ipairs(list) do
+            if rapOwnerIsMe(p) then
+                local pp = rapEntityPos(p)
+                if pp then found, foundPos = p, pp break end
             end
         end
     end)
@@ -3873,28 +3880,12 @@ local function rapFindMyPlot()
     return found, foundPos
 end
 local function rapPlotHalf()
-    local half = 45
-    do local m = rapMyPlotModel if m and m.Parent then local sz = nil pcall(function() if m:IsA("Model") then local ok, es = pcall(function() return m:GetExtentsSize() end) if ok and es then sz = es end elseif m:IsA("BasePart") then sz = m.Size end end) if sz then return math.max(30, math.max(sz.X, sz.Z) / 2) end end end
-    pcall(function()
-        local fresh2 = workspace:GetDescendants()
-        for _, d in ipairs(fresh2) do
-            if d:IsA("Model") or d:IsA("BasePart") then
-                local low = tostring(d.Name):lower()
-                for _, pat in ipairs(RANCH_PATTERNS) do
-                    if low:find(pat, 1, true) then
-                        local sz = nil
-                        if d:IsA("Model") then
-                            local ok, es = pcall(function() return d:GetExtentsSize() end)
-                            if ok and es then sz = es end
-                        elseif d:IsA("BasePart") then sz = d.Size end
-                        if sz then half = math.max(half, math.max(sz.X, sz.Z) / 2) end
-                        break
-                    end
-                end
-            end
-        end
-    end)
-    return half
+    local m = rapMyPlotModel
+    if m and m.Parent then
+        local ok, sz = pcall(function() if m:IsA("Model") then return m:GetExtentsSize() else return m.Size end end)
+        if ok and sz then return math.max(25, math.max(sz.X, sz.Z) / 2) end
+    end
+    return 45
 end
 local function rapPlotCenter()
     if rapPlotPos then return rapPlotPos end
