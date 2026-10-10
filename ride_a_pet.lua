@@ -4166,8 +4166,31 @@ local function rapPickupTick()
         local away = Vector3.new(0, 0, 7)
         if rrS then local d0 = cand.pos - rrS.Position d0 = Vector3.new(d0.X, 0, d0.Z) if d0.Magnitude > 1 then away = (-d0 / d0.Magnitude) * 7 end end
         local stop = cand.pos + Vector3.new(away.X, 4, away.Z)
-        if mode == "Instant" then
+        local rarA = rapRarityOf(cand.name)
+        local rareA = (rarA == "Epic" or rarA == "Legendary" or rarA == "Mythic" or rarA == "Divine" or rarA == "Ethereal")
+        if mode == "Instant" and not rareA then
             rapSetNoclip(false) rapTeleportTo(stop, "Egg") task.wait(0.6)
+        elseif rareA then
+            -- LANGKA: jangan teleport/tween jauh (server lindungi telur mahal). Hop 60 stud + jalan.
+            rapSetNoclip(false)
+            local hop = 0
+            while hop < 40 do
+                local rH = rapGetRoot()
+                if not rH then break end
+                local dd = (Vector3.new(stop.X - rH.Position.X, 0, stop.Z - rH.Position.Z)).Magnitude
+                if dd <= 10 then break end
+                if dd < 120 then
+                    pcall(function() local h = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Humanoid") if h then h.Sit = false if h.WalkSpeed < 8 then h.WalkSpeed = 16 end h:MoveTo(Vector3.new(stop.X, rH.Position.Y, stop.Z)) end end)
+                    local w0 = os.clock() while os.clock() - w0 < 10 do local r2 = rapGetRoot() if not r2 then break end if (Vector3.new(stop.X - r2.Position.X, 0, stop.Z - r2.Position.Z)).Magnitude <= 10 then break end task.wait(0.2) end
+                    break
+                else
+                    local dir = (Vector3.new(stop.X - rH.Position.X, 0, stop.Z - rH.Position.Z)) / (dd + 0.001)
+                    local np = rH.Position + dir * 60
+                    rapTweenTo(Vector3.new(np.X, stop.Y, np.Z), 300)
+                    task.wait(0.5)
+                end
+                hop = hop + 1
+            end
         elseif dS < 150 then
             rapSetNoclip(false)
             pcall(function() local h = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Humanoid") if h then h.Sit = false if h.WalkSpeed < 8 then h.WalkSpeed = 16 end h:MoveTo(Vector3.new(stop.X, rrS.Position.Y, stop.Z)) end end)
