@@ -4229,13 +4229,12 @@ local function rapPickupTick()
             rapEggsCarried = rapEggsCarried + 1
             rapPickupCD = os.clock() + 1.2
             pcall(function() rapWHEgg(rapRarityOf(cand.name), cand.name, rapFindMutation(cand.name)) end)
+            Window:Notify({ Title = "Pick Up", Description = tostring(cand.name) .. " ketangkep, bawa ke plot...", Lifetime = 2 })
         else
+            -- JANGAN pulang dulu: telur mungkin sudah virtual di server walau prompt masih ada.
+            -- Lanjut ke edge + walk, verifikasi akhir yg mutuskan done(1)/done(0).
+            Window:Notify({ Title = "Pick Up", Description = tostring(cand.name) .. " prompt blm hilang, tetap bawa ke plot...", Lifetime = 2 })
             rapHandled[prompt] = nil
-            local fc = (rapFailCount[prompt] or 0) + 1
-            rapFailCount[prompt] = fc
-            if fc >= 3 then rapBlacklist[prompt] = os.clock() + 60 rapFailCount[prompt] = 0 end
-            rapPickupCD = os.clock() + 2.5
-            return done(0)
         end
     end
         -- 3. delivery: WAJIB ke plot SENDIRI (ukur ulang tiap telur), edge luar -> WALK tengah.
@@ -4245,7 +4244,14 @@ local function rapPickupTick()
         local rareB = (rarB == "Epic" or rarB == "Legendary" or rarB == "Mythic" or rarB == "Divine" or rarB == "Ethereal")
         -- a. ukur ulang plot sendiri tiap telur (bukan cache lama)
         pcall(function() rapFindMyPlot() end)
+        Window:Notify({ Title = "Delivery", Description = "Ke dekat plot: " .. tostring(cand.name), Lifetime = 2 })
         local edgeOk = rapGoPlotEdge(mode)
+        do
+            local rrE = rapGetRoot()
+            local ee = rapPlotEdge()
+            local dd = (rrE and ee) and math.floor((rrE.Position - ee).Magnitude) or -1
+            Window:Notify({ Title = "Edge", Description = (edgeOk and "Sampai luar plot" or "GAGAL ke luar plot") .. " (sisa " .. tostring(dd) .. " stud)", Lifetime = 3 })
+        end
         if not edgeOk then
             Window:Notify({ Title = "Plot", Description = "Gagal ke dekat plot, telur ditahan (tidak ambil yg lain).", Lifetime = 3 })
             rapPickupCD = os.clock() + 3
@@ -4322,7 +4328,13 @@ local function rapPickupTick()
             end
         end
         -- c. WALK (tanpa teleport) dari edge ke tengah plot sendiri
-        rapWalkPlotCenter()
+        Window:Notify({ Title = "Delivery", Description = "Jalan ke tengah plot...", Lifetime = 2 })
+        local walkOk = rapWalkPlotCenter()
+        Window:Notify({ Title = "Walk", Description = walkOk and "Sampai tengah plot" or "GAGAL jalan ke tengah", Lifetime = 3 })
+        if not walkOk then
+            rapPickupCD = os.clock() + 3
+            return done(0)
+        end
         task.wait(rareB and 1.5 or 1.0)
         -- d. verifikasi AKHIR: telur harus hilang. Belum hilang = BELUM berhasil -> done(0).
         do
