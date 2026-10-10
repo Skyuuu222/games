@@ -4117,10 +4117,13 @@ local function rapMoveTo(pos, maxWait)
 end
 
 local rapBusy = false
+local rapLockName = nil
+local rapLockSince = 0
+
 local function rapPickupTick()
     if rapBusy then return 0 end
     rapBusy = true
-    local function done(n) rapBusy = false return n end
+    local function done(n) rapBusy = false if n == 1 then rapLockName = nil end return n end
     -- SATU telur per tick: ambil sampai berhasil baru lanjut ke telur lain.
     -- Tidak pernah place telur (itu tugas rapFlag.placedEgg / rapPlaceEggs).
     local cand = nil
@@ -4144,6 +4147,20 @@ local function rapPickupTick()
         end
     end)
     if not cand then return done(0) end
+    -- KUNCI TARGET: kalau telur sebelumnya belum selesai, JANGAN pindah ke telur lain.
+    if rapLockName and os.clock() - rapLockSince < 90 and cand.name ~= rapLockName then
+        rapPickupCD = os.clock() + 1
+        return done(0)
+    end
+    -- SNAPSHOT tas SEBELUM ambil: drop nanti HANYA telur baru (bukan stok lama di tas).
+    local rapBagBefore = {}
+    pcall(function()
+        for _, par in ipairs({LocalPlayer.Character, LocalPlayer:FindFirstChild("Backpack")}) do
+            if par then for _, t in ipairs(par:GetChildren()) do
+                if t and t:IsA("Tool") then rapBagBefore[t] = true end
+            end end
+        end
+    end)
     if os.clock() < rapPickupCD then return done(0) end
     local mode = rapPickupMode or "Tween"
     local prompt = cand.prompt
@@ -4175,6 +4192,7 @@ local function rapPickupTick()
         if bl and os.clock() < bl then return done(0) end
     end
     rapHandled[prompt] = true
+    rapLockName = cand.name rapLockSince = os.clock()
     -- tiru manual: JANGAN anchor; telur langka pakai hold asli (HoldDuration tidak dinolkan)
     do
         local rar2 = rapRarityOf(cand.name)
@@ -4240,7 +4258,7 @@ local function rapPickupTick()
         local bpW2 = LocalPlayer:FindFirstChild("Backpack")
         for _, par in ipairs({ chW2, bpW2 }) do
             if par then for _, t in ipairs(par:GetChildren()) do
-                if t:IsA("Tool") and cand.name ~= nil and tostring(t.Name) == tostring(cand.name) then hasEggTool = true break end
+                if t:IsA("Tool") and cand.name ~= nil and tostring(t.Name) == tostring(cand.name) and not rapBagBefore[t] then hasEggTool = true break end
             end end
             if hasEggTool then break end
         end
@@ -4321,9 +4339,9 @@ local function rapPickupTick()
                 local ch0 = LocalPlayer.Character
                 local hum0 = ch0 and ch0:FindFirstChildOfClass("Humanoid")
                 local bp0 = LocalPlayer:FindFirstChild("Backpack")
-                if hum0 and bp0 and cand.name then
+                if hum0 and bp0 and cand.name then -- HANYA yg baru diambil, stok lama rapBagBefore dilewati
                     for _, t in ipairs(bp0:GetChildren()) do
-                        if t and t:IsA("Tool") and tostring(t.Name) == tostring(cand.name) then
+                        if t and t:IsA("Tool") and tostring(t.Name) == tostring(cand.name) and not rapBagBefore[t] then
                             hum0:EquipTool(t)
                             task.wait(0.8)
                             break
