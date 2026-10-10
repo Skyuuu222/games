@@ -4426,14 +4426,24 @@ function rapPickupTick()
             return wt, sp, (wt or 0) * 1000000000 + (sp or 0)
         end
     end
-    do
-        local seated0 = false
+        -- SELALU bandingkan (10-Okt): kalau sudah duduk di pet JELEK, turun + pindah ke best. Tanpa ini best tak pernah dipakai.
+        local rapNeedRide = true
         pcall(function()
             local ch = LocalPlayer.Character
             local hum = ch and ch:FindFirstChildOfClass("Humanoid")
-            seated0 = hum and (hum.Sit or hum.SeatPart ~= nil) or false
+            local seat = hum and hum.SeatPart or nil
+            if hum and (hum.Sit or seat ~= nil) then
+                local curScore = -1
+                pcall(function()
+                    local mdl = seat and seat:FindFirstAncestorOfClass("Model") or nil
+                    if mdl then local _, _, sc = rapPetScore(mdl) curScore = sc end
+                end)
+                -- simpan skor tunggangan sekarang; penentuan pindah ada habis best dihitung (lihat bawah).
+                rapNeedRide = true
+                rapCurRideScore = curScore
+            end
         end)
-        if not seated0 then
+        if true then
             -- PROMPT SAJA (10-Okt): remote RideBestPet DICABUT (bikin pickup macet). Naik via prompt pet terbesar.
             pcall(function()
                 local myPlot = rapMyPlotModel
@@ -4491,9 +4501,38 @@ function rapPickupTick()
                             end
                         end)
                     end
-                    if bestLoc ~= "tas" then
+                    -- BANDINGKAN (10-Okt): sudah naik best (toleransi 1%) = diam. Naik pet jelek = turun, lanjut naik best.
+                    local rapStay = false
+                    do
+                        local cur = tonumber(rapCurRideScore) or -1
+                        rapCurRideScore = nil
+                        if bestPet and cur >= 0 and bestScore > 0 and cur >= bestScore * 0.99 then
+                            rapStay = true
+                        elseif cur >= 0 then
+                            pcall(function()
+                                local ch = LocalPlayer.Character
+                                local hum = ch and ch:FindFirstChildOfClass("Humanoid")
+                                if hum and (hum.Sit or hum.SeatPart ~= nil) then
+                                    hum.Sit = false
+                                    pcall(function() hum:ChangeState(Enum.HumanoidStateType.Jumping) end)
+                                end
+                            end)
+                            task.wait(0.4)
+                        end
+                    end
+                    if rapStay then
+                        bestPetRef = bestPet -- ref buat naik-lagi habis ambil, tapi tak perlu ride ulang sekarang
+                    end
+                    if bestLoc ~= "tas" and not rapStay then
                     do
                     -- (plot) lanjut ride via prompt di bawah.
+                    pcall(function()
+                        if bestPet then
+                            local bw, bs = 0, 0
+                            pcall(function() local a,b = rapPetScore(bestPet) bw, bs = a, b end)
+                            Window:Notify({Title="Best Pet",Description=tostring(bestPet.Name),Lifetime=3})
+                        end
+                    end)
                     bestPetRef = bestPet
                     for try = 1, 2 do
                         if not bestPet then break end
@@ -4520,7 +4559,6 @@ function rapPickupTick()
                     end -- tutup if pets
             end)
         end
-    end
     -- GERBANG LUNAK (10-Okt): cek duduk 2x (jeda 0.4 dtk, seat butuh waktu weld). Gagal tetap LANJUT
     -- ke telur (ambil jalan kaki pun bisa, karena habis ini turun buat ambil). Tanpa skip telur.
     local rapRode = false
