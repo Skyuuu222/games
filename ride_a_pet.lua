@@ -5222,47 +5222,40 @@ end
 -- remote: ReplicatedStorage.Remotes.Game.PetRideMode + Mounting (+Ride/Mount).
 -- Bisa ditembak dari jauh (fireprompt), jadi urutan teleport-dulu TETAP bisa naik otomatis.
 function rapRideReal()
-    pcall(function() Window:Notify({Title="Ride",Description="Naik pet (pemicu asli)...",Lifetime=2}) end)
-    for attempt = 1, 2 do
-        rapFire({ "Remotes", "Game", "PetRideMode" })
-        rapFire({ "Remotes", "Game", "Mounting" })
-        rapFire({ "Remotes", "Game", "Ride" })
-        rapFire({ "Remotes", "Game", "Mount" })
-        rapFire({ "Remotes", "Game", "Pet", "RideMode" })
-        pcall(function() rapPassBatch(function(a) return a == "Ride" or a == "Mount" end, 1) end)
-        pcall(function()
-            local myPlot = rapMyPlotModel
-            if not myPlot then pcall(function() rapFindMyPlot() end) myPlot = rapMyPlotModel end
-            local pets = myPlot and myPlot:FindFirstChild("Pets")
-            if pets then
-                for _, pet in ipairs(pets:GetChildren()) do
-                    local holder = pet:FindFirstChild("RootPart", true) or pet
-                    local rp = holder and holder:FindFirstChild("RidePrompt")
-                    if not rp then rp = pet:FindFirstChild("RidePrompt", true) end
-                    if rp and rp:IsA("ProximityPrompt") then
-                        pcall(function() rp.RequiresLineOfSight = false end)
-                        rapTriggerPrompt(rp)
-                        task.wait(0.5)
-                        local seated = false
-                        pcall(function()
-                            local ch = LocalPlayer.Character
-                            local hum = ch and ch:FindFirstChildOfClass("Humanoid")
-                            seated = hum and (hum.Sit or hum.SeatPart ~= nil) or false
-                        end)
-                        if seated then break end
-                    end
+    pcall(function() Window:Notify({Title="Ride",Description="Jemput pet dulu...",Lifetime=2}) end)
+    -- SIMPAN posisi telur (balik ke sini habis naik). Ride dari jauh MUSTAHIL: prompt butuh dekat.
+    local eggPos = nil
+    pcall(function() local rr = rapGetRoot() if rr then eggPos = rr.Position end end)
+    -- 1. teleport ke pet di plot sendiri
+    local rode = false
+    pcall(function()
+        local myPlot = rapMyPlotModel
+        if not myPlot then pcall(function() rapFindMyPlot() end) myPlot = rapMyPlotModel end
+        local pets = myPlot and myPlot:FindFirstChild("Pets")
+        if pets then
+            for _, pet in ipairs(pets:GetChildren()) do
+                local rp = pet:FindFirstChild("RidePrompt", true)
+                if rp and rp:IsA("ProximityPrompt") and rp.Parent then
+                    local pp = rapEntityPos(rp.Parent)
+                    if pp then rapForceTeleport(pp) task.wait(0.4) end
+                    pcall(function() rp.RequiresLineOfSight = false end)
+                    rapFire({ "Remotes", "Game", "PetRideMode" })
+                    rapFire({ "Remotes", "Game", "Mounting" })
+                    rapTriggerPrompt(rp)
+                    task.wait(0.6)
+                    pcall(function()
+                        local ch = LocalPlayer.Character
+                        local hum = ch and ch:FindFirstChildOfClass("Humanoid")
+                        rode = hum and (hum.Sit or hum.SeatPart ~= nil) or false
+                    end)
+                    if rode then break end
                 end
             end
-        end)
-        task.wait(0.6)
-        local seated = false
-        pcall(function()
-            local ch = LocalPlayer.Character
-            local hum = ch and ch:FindFirstChildOfClass("Humanoid")
-            seated = hum and (hum.Sit or hum.SeatPart ~= nil) or false
-        end)
-        if seated then pcall(function() Window:Notify({Title="Ride",Description="Sudah naik pet!",Lifetime=2}) end) return true end
-    end
+        end
+    end)
+    -- 2. balik ke telur bawa pet (seat dipertahankan)
+    if eggPos then rapForceTeleport(eggPos) task.wait(0.3) end
+    if rode then pcall(function() Window:Notify({Title="Ride",Description="Sudah naik pet!",Lifetime=2}) end) return true end
     return false
 end
 -- Teleport PAKSA (CFrame langsung) untuk leg telur->plot setelah 20 dtk + ride.
@@ -6219,44 +6212,7 @@ SecAutoEgg:Toggle({
     end,
 })
 
-SecAutoEgg:Button({
-    Name = "Pindai Pemicu Ride (Jalankan Sambil Naik Manual)",
-    Callback = function()
-        -- PEMINDAI: tekan tombol ini, LALU naik pet manual. Hasil = prompt/remote asli (bukan tebakan).
-        Window:Notify({Title="Pindai",Description="Naik pet manual SEKARANG (10 dtk)...",Lifetime=4})
-        task.spawn(function()
-            task.wait(2)
-            local found = {}
-            pcall(function()
-                for _, pr in ipairs(workspace:GetDescendants()) do
-                    if pr:IsA("ProximityPrompt") then
-                        local t = tostring(pr.ActionText or ""):lower() .. " " .. tostring(pr.ObjectText or ""):lower()
-                        if t:find("ride",1,true) or t:find("mount",1,true) or t:find("naik",1,true) then
-                            table.insert(found, pr:GetFullName() .. " [" .. tostring(pr.ActionText) .. "/" .. tostring(pr.ObjectText) .. "]")
-                        end
-                    end
-                end
-            end)
-            pcall(function()
-                local rs = game:GetService("ReplicatedStorage")
-                for _, r in ipairs(rs:GetDescendants()) do
-                    if r:IsA("RemoteEvent") or r:IsA("RemoteFunction") then
-                        local n = tostring(r.Name):lower() .. " " .. tostring(r:GetFullName()):lower()
-                        if n:find("ride",1,true) or n:find("mount",1,true) or n:find("seat",1,true) then
-                            table.insert(found, "REMOTE: " .. r:GetFullName())
-                        end
-                    end
-                end
-            end)
-            local ch = LocalPlayer.Character
-            local hum = ch and ch:FindFirstChildOfClass("Humanoid")
-            local seatInfo = "belum duduk"
-            pcall(function() seatInfo = hum and (hum.SeatPart and hum.SeatPart:GetFullName() or (hum.Sit and "Sit=true" or "belum duduk")) or "no hum" end)
-            local msg = (#found > 0 and table.concat(found, "\n"):sub(1, 400) or "prompt/remote ride tak ketemu") .. "\nDUDUK: " .. tostring(seatInfo)
-            Window:Notify({Title="Hasil Pindai Ride",Description=msg,Lifetime=10})
-        end)
-    end,
-})
+-- Tombol Pindai DIHAPUS (10-Okt): pemicu asli sudah ketemu, tak perlu lagi.
 
 -- Mode Aman UI DIHAPUS (10-Okt): sistem baru butuh teleport langsung. Paksa bebas.
 
