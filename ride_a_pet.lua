@@ -4561,48 +4561,84 @@ local function mount(pet)
     fire("RideAlong", pet)
 end
 local function ensureRide(g)
-    if isSeated() then
+    -- 1. Cek apakah pet sudah dipegang di tangan (Character)
+    local c = char()
+    if c then
+        for _, t in ipairs(c:GetChildren()) do
+            if t:IsA("Tool") and not t.Name:lower():find("egg", 1, true) and not t.Name:lower():find("basket", 1, true) then
+                ridePet = t
+                return true
+            end
+        end
+    end
+
+    -- 2. Ambil best pet dari backpack jika ada dan equip langsung
+    local bp = LP:FindFirstChild("Backpack")
+    local bestTool, bestSp = nil, -1
+    if bp then
+        for _, t in ipairs(bp:GetChildren()) do
+            if t:IsA("Tool") and not t.Name:lower():find("egg", 1, true) and not t.Name:lower():find("basket", 1, true) then
+                local sp = speedOf(t)
+                if sp > bestSp or not bestTool then
+                    bestTool = t
+                    bestSp = sp
+                end
+            end
+        end
+    end
+    if bestTool then
+        local h = humanoid()
+        if h then h:EquipTool(bestTool) end
+        task.wait(0.15)
+        ridePet = bestTool
         return true
     end
-    local best = bestOf(nil)
-    if not best then
-        return true -- tetap izinkan lanjut jika tak ada pet
-    end
-    local pet = best.inst
-    if best.kind == "bag" then
-        pet = placeFromBag(best.inst, g)
-        if not pet then
-            local alt = bestOf("plot")
-            pet = alt and alt.inst or nil
+
+    -- 3. Jika pet masih di plot, dekati pet dan trigger Prompt Ride agar masuk ke tangan
+    local plot = myPlot()
+    local pets = plot and plot:FindFirstChild("Pets")
+    if pets then
+        local targetPet = nil
+        for _, p in ipairs(pets:GetChildren()) do
+            local sp = speedOf(p)
+            if not targetPet or sp > speedOf(targetPet) then
+                targetPet = p
+            end
+        end
+        if targetPet then
+            local rp = nil
+            for _, d in ipairs(targetPet:GetDescendants()) do
+                if d:IsA("ProximityPrompt") and tostring(d.ActionText):lower():find("ride") then
+                    rp = d
+                    break
+                end
+            end
+            if rp then
+                local pPos = posOf(rp.Parent) or posOf(targetPet)
+                if pPos then
+                    teleport(pPos + Vector3.new(0, 3, 0))
+                    task.wait(0.15)
+                end
+                trigger(rp)
+                task.wait(0.3)
+
+                -- Cek kembali apakah masuk ke tas / tangan
+                local newBp = LP:FindFirstChild("Backpack")
+                if newBp then
+                    for _, t in ipairs(newBp:GetChildren()) do
+                        if t:IsA("Tool") and not t.Name:lower():find("egg", 1, true) then
+                            local h = humanoid()
+                            if h then h:EquipTool(t) end
+                            task.wait(0.1)
+                            ridePet = t
+                            return true
+                        end
+                    end
+                end
+            end
         end
     end
-    if not pet then return true end
 
-    -- Dekatkan karakter ke pet agar prompt dan seat bisa terjangkau
-    local petPos = posOf(pet)
-    if petPos then
-        local r = root()
-        if r and (r.Position - petPos).Magnitude > 15 then
-            teleport(petPos + Vector3.new(0, 3, 0))
-            task.wait(0.1)
-        end
-    end
-
-    for _ = 1, 2 do
-        if not alive(g) then return false end
-        mount(pet)
-        task.wait(0.15)
-        if isSeated() then ridePet = pet return true end
-
-        local rp = pet:FindFirstChild("RidePrompt", true)
-        if rp and rp:IsA("ProximityPrompt") then
-            trigger(rp)
-            task.wait(0.2)
-            if isSeated() then ridePet = pet return true end
-        end
-    end
-
-    ridePet = pet
     return true
 end
 local blacklist = setmetatable({}, { __mode = "k" })
@@ -4806,16 +4842,12 @@ local function cycle(g)
     if not ensureRide(g) then notify("Ride", "Gagal naik pet, ulangi...") return end
     if not alive(g) then return end
     local before = eggTools()
-    unequip()
     teleport(egg.pos)
     local got = pickup(g, egg, before)
-    if not got and alive(g) and isSeated() then
-        local h = humanoid()
-        if h then h.Sit = false end
+    if not got and alive(g) then
         task.wait(0.15)
         teleport(egg.pos)
         got = pickup(g, egg, before)
-        if ridePet and ridePet.Parent then mount(ridePet) end
     end
     if not got then
         blacklist[egg.prompt] = os.clock() + 60
