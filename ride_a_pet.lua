@@ -4735,6 +4735,14 @@ function rapPickupTick()
                     end)
                 end
             end
+            -- LEWATI SCAN LAMA (11-Okt sore): jalur cepat di atas sudah dapat best (tas/plot) / sudah duduk. Scan lama = yg bikin lama milih pet.
+            local rapSkipLegacy = (bestPetRef ~= nil)
+            pcall(function()
+                local ch = LocalPlayer.Character
+                local hum = ch and ch:FindFirstChildOfClass("Humanoid")
+                if hum and (hum.Sit or hum.SeatPart ~= nil) then rapSkipLegacy = true end
+            end)
+            if not rapSkipLegacy then
             pcall(function()
                 local myPlot = rapMyPlotModel
                 if not myPlot then pcall(function() rapFindMyPlot() end) myPlot = rapMyPlotModel end
@@ -5067,7 +5075,8 @@ function rapPickupTick()
                     else
                         pcall(function() Window:Notify({ Title = "Naik", Description = "Plot/Pets tak ketemu, jalan kaki.", Lifetime = 2 }) end)
                     end -- tutup if pets
-            end)
+            end) -- tutup pcall legacy
+            end -- tutup if not rapSkipLegacy
         end
     -- GERBANG LUNAK (10-Okt): 1x cek cepat. Gagal tetap LANJUT ke telur.
     if not rapFlag.pickup then return done(0) end
