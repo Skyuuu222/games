@@ -4340,10 +4340,9 @@ end
 local RS = ReplicatedStorage
 local AutoFarm = { picked = 0 }
 local cfg = {
-    hold = 20,
     loopDelay = 0.5,
     moveMode = "Tween",
-    tweenSpeed = 1000,
+    tweenWait = 20,
     rebirthOnly = false,
     rarity = {}, eggs = {}, mutation = {},
     notify = function(title, text) end,
@@ -4804,8 +4803,8 @@ local function pickup(g, egg, before)
                 task.wait(0.3)
                 if done() then return true end
             end
-            -- Tunggu TETAP 20 dtk (tween butuh waktu), poll tiap 0.5 dtk, early-exit kalau dapat
-            local deadline = os.clock() + 20
+            -- TWEEN: tunggu tetap (default 20 dtk), poll tiap 0.5 dtk, early-exit kalau dapat
+            local deadline = os.clock() + (tonumber(cfg.tweenWait) or 20)
             while os.clock() < deadline do
                 if not alive(g) then return false end
                 if done() then return true end
@@ -6552,14 +6551,24 @@ SecAutoEgg:Toggle({
     end,
 })
 
+SecAutoEgg:Dropdown({
+    Name = "Mode Gerak",
+    Items = { "Tween", "Instant" },
+    Default = "Tween",
+    Callback = function(v)
+        AutoFarm.cfg.moveMode = v or "Tween"
+        Window:Notify({ Title = "Mode Gerak", Description = "Mode: " .. tostring(AutoFarm.cfg.moveMode) .. (AutoFarm.cfg.moveMode == "Tween" and " (teleport + tunggu 20 dtk)" or " (langsung, tanpa tunggu)"), Lifetime = 3 })
+    end,
+})
+
 SecAutoEgg:Slider({
-    Name = "Hold di Telur (dtk)",
+    Name = "Tunggu Telur Tween (dtk)",
     Default = 20,
     Minimum = 5,
-    Maximum = 40,
+    Maximum = 60,
     DisplayMethod = "Round",
     Precision = 0,
-    Callback = function(value) AutoFarm.cfg.hold = tonumber(value) or 20 end,
+    Callback = function(value) AutoFarm.cfg.tweenWait = tonumber(value) or 20 end,
 })
 
 -- Drop Pinggir UI DIHAPUS (10-Okt): delivery langsung ke sarang, tanpa drop.
@@ -6583,25 +6592,7 @@ local rapFarmRarityF = rapNewFilter(SecAutoEgg, "Rarity", RARITY_LIST, {}, funct
 local rapFarmEggF = rapNewFilter(SecAutoEgg, "Egg", rapEggSorted, {}, function(list) AutoFarm.SetFilter("eggs", list) end)
 local rapFarmMutF = rapNewFilter(SecAutoEgg, "Mutation", RAP_MUTATIONS, {}, function(list) AutoFarm.SetFilter("mutation", list) end)
 
-SecAutoEgg:Slider({
-    Name = "Tween Speed (st/s)",
-    Default = 1000,
-    Minimum = 100,
-    Maximum = 5000,
-    DisplayMethod = "Round",
-    Precision = 0,
-    Callback = function(value) rapPlanned.glideSpeed = value end,
-});
-
-SecAutoEgg:Slider({
-    Name = "Walk Speed (jalan ke tengah)",
-    Default = 32,
-    Minimum = 16,
-    Maximum = 100,
-    DisplayMethod = "Round",
-    Precision = 0,
-    Callback = function(value) rapPlanned.walkSpeed = value end,
-})
+-- Slider Tween Speed & Walk Speed DIHAPUS: semua mode pakai teleport.
 
 SecAutoEgg:Slider({
     Name = "Claim Delay (0.1s)",
