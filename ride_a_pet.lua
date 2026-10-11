@@ -4803,14 +4803,19 @@ local function pickup(g, egg, before)
     local id = eggId(egg.model)
     if id then
         if cfg.moveMode == "Tween" then
-            for _ = 1, 2 do
+            local deadline = os.clock() + 20
+            local lastPush = 0
+            while os.clock() < deadline do
                 if not alive(g) then return false end
-                fire("EggPickup", id)
-                task.wait(0.3)
                 if done() then return true end
+                fire("EggPickup", id)
+                if os.clock() - lastPush > 3 then
+                    lastPush = os.clock()
+                    fire("PetCollect", id)
+                    fire("RequestPlotEggs", false)
+                end
+                task.wait(0.35)
             end
-            -- TWEEN: tunggu tetap (default 20 dtk), poll tiap 0.5 dtk, early-exit kalau dapat
-            local deadline = os.clock() + (tonumber(cfg.tweenWait) or 20)
             while os.clock() < deadline do
                 if not alive(g) then return false end
                 if done() then return true end
