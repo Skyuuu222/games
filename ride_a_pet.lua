@@ -4476,7 +4476,12 @@ local function candidates()
     if pets then
         for _, p in ipairs(pets:GetChildren()) do
             local sp = speedOf(p)
-            if p:GetAttribute("PetKey") ~= nil or sp > 0 then
+            local pName = tostring(p.Name):lower()
+            local isPet = p:GetAttribute("PetKey") ~= nil or sp > 0 or p:FindFirstChild("RidePrompt", true) ~= nil or p:FindFirstChildWhichIsA("VehicleSeat", true) ~= nil or p:FindFirstChildWhichIsA("Seat", true) ~= nil
+            if not isPet and not pName:find("egg", 1, true) and not pName:find("nest", 1, true) then
+                isPet = true
+            end
+            if isPet then
                 out[#out + 1] = { kind = "plot", inst = p, speed = sp }
             end
         end
@@ -4484,8 +4489,11 @@ local function candidates()
     for _, parent in ipairs({ LP:FindFirstChild("Backpack"), char() }) do
         if parent then
             for _, t in ipairs(parent:GetChildren()) do
-                if t:IsA("Tool") and t:GetAttribute("PetKey") ~= nil then
-                    out[#out + 1] = { kind = "bag", inst = t, speed = speedOf(t) }
+                if t:IsA("Tool") then
+                    local tName = tostring(t.Name):lower()
+                    if not tName:find("egg", 1, true) and not tName:find("basket", 1, true) then
+                        out[#out + 1] = { kind = "bag", inst = t, speed = speedOf(t) }
+                    end
                 end
             end
         end
@@ -4553,17 +4561,12 @@ local function mount(pet)
     fire("RideAlong", pet)
 end
 local function ensureRide(g)
-    local best = bestOf(nil)
-    if not best then notify("Ride", "Tidak ada pet di plot / tas.") return false end
     if isSeated() then
-        local cur = seatedPetModel()
-        if cur and (cur == best.inst or speedOf(cur) >= best.speed * 0.95) then
-            ridePet = cur
-            return true
-        end
-        local h = humanoid()
-        if h then h.Sit = false end
-        if not pause(0.2, g) then return false end
+        return true
+    end
+    local best = bestOf(nil)
+    if not best then
+        return true -- tetap izinkan lanjut jika tak ada pet
     end
     local pet = best.inst
     if best.kind == "bag" then
@@ -4572,25 +4575,35 @@ local function ensureRide(g)
             local alt = bestOf("plot")
             pet = alt and alt.inst or nil
         end
-        if not pet then return false end
     end
-    for _ = 1, 3 do
+    if not pet then return true end
+
+    -- Dekatkan karakter ke pet agar prompt dan seat bisa terjangkau
+    local petPos = posOf(pet)
+    if petPos then
+        local r = root()
+        if r and (r.Position - petPos).Magnitude > 15 then
+            teleport(petPos + Vector3.new(0, 3, 0))
+            task.wait(0.1)
+        end
+    end
+
+    for _ = 1, 2 do
         if not alive(g) then return false end
         mount(pet)
-        for _ = 1, 4 do
-            if not pause(0.1, g) then return false end
-            if isSeated() then ridePet = pet return true end
-        end
+        task.wait(0.15)
+        if isSeated() then ridePet = pet return true end
+
         local rp = pet:FindFirstChild("RidePrompt", true)
         if rp and rp:IsA("ProximityPrompt") then
-            local pp = posOf(rp.Parent)
-            if pp then teleport(pp) end
             trigger(rp)
-            if not pause(0.25, g) then return false end
+            task.wait(0.2)
             if isSeated() then ridePet = pet return true end
         end
     end
-    return false
+
+    ridePet = pet
+    return true
 end
 local blacklist = setmetatable({}, { __mode = "k" })
 local function inSet(set, v)
@@ -4749,15 +4762,14 @@ end
 local function deliver(g, before)
     local plot = myPlot()
     local nests = plot and plot:FindFirstChild("Nests")
-    if not nests then notify("Sarang", "Folder Nests tidak ketemu.") return false end
-    local slots = nests:GetChildren()
+    local slots = nests and nests:GetChildren() or {}
     table.sort(slots, function(a, b) return a.Name < b.Name end)
     local canDetect = carrying(before)
     local tool = newEggTool(before)
     if tool then
         local h = humanoid()
         if h then h:EquipTool(tool) end
-        task.wait(0.2)
+        task.wait(0.15)
     end
     for _, slot in ipairs(slots) do
         if not alive(g) then return false end
@@ -4766,11 +4778,17 @@ local function deliver(g, before)
             local pos = posOf(anchor) or posOf(slot)
             if pos then teleport(pos) task.wait(0.2) end
             trigger(pr)
-            task.wait(0.4)
+            task.wait(0.3)
             if not canDetect or not carrying(before) then return true end
         end
     end
-    return false
+
+    -- Jika nest prompt tidak respon / penuh, tetap teleport balik ke tengah plot
+    local pPos = posOf(plot)
+    if pPos then
+        teleport(pPos + Vector3.new(0, 3, 0))
+    end
+    return true
 end
 local function hold(g, seconds)
     notify("Tunggu", "Diam " .. tostring(seconds) .. " dtk di pet...")
