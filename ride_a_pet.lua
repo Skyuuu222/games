@@ -4894,34 +4894,45 @@ local function cycle(g)
     if not ensureRide(g) then return end
     if not alive(g) then return end
 
-    -- 2. Ambil semua egg yang tersedia dalam satu putaran
+    -- 2. Ambil egg
     local before = eggTools()
     local collected = 0
-    local MAX_PER_CYCLE = 10
-    while alive(g) and collected < MAX_PER_CYCLE do
+    if cfg.moveMode == "Tween" then
+        -- TWEEN: 1 telur per putaran -> tunggu 20 dtk di pickup -> balik plot -> antar
         local egg = nextEgg()
-        if not egg then break end
-
-        -- Gerak ke posisi egg (Tween / Instant sesuai cfg.moveMode)
-        goTo(egg.pos)
-        task.wait(0.2)
-
-        -- Pickup via EggPickup remote (UUID)
-        local got = pickup(g, egg, before)
-        if got then
-            collected = collected + 1
-            AutoFarm.picked = AutoFarm.picked + 1
-            blacklist[egg.prompt] = os.clock() + 5 -- jangan ambil lagi dalam 5 dtk
-        else
-            blacklist[egg.prompt] = os.clock() + 60
-            notify("Pick Up", egg.name .. " gagal, dilewati 60 dtk.")
+        if egg then
+            goTo(egg.pos)
+            task.wait(0.2)
+            local got = pickup(g, egg, before)
+            if got then
+                collected = collected + 1
+                AutoFarm.picked = AutoFarm.picked + 1
+                blacklist[egg.prompt] = os.clock() + 5
+            else
+                blacklist[egg.prompt] = os.clock() + 60
+                notify("Pick Up", egg.name .. " gagal, dilewati 60 dtk.")
+            end
+            fire("TeleportToPlot")
+            task.wait(0.5)
         end
-
-        if cfg.moveMode ~= "Tween" then
+    else
+        local MAX_PER_CYCLE = 10
+        while alive(g) and collected < MAX_PER_CYCLE do
+            local egg = nextEgg()
+            if not egg then break end
+            goTo(egg.pos)
+            task.wait(0.2)
+            local got = pickup(g, egg, before)
+            if got then
+                collected = collected + 1
+                AutoFarm.picked = AutoFarm.picked + 1
+                blacklist[egg.prompt] = os.clock() + 5
+            else
+                blacklist[egg.prompt] = os.clock() + 60
+                notify("Pick Up", egg.name .. " gagal, dilewati 60 dtk.")
+            end
             fire("TeleportToPlot")
             task.wait(0.2)
-        else
-            task.wait(0.3)
         end
     end
 
