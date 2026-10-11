@@ -4606,12 +4606,17 @@ local function baseSpeed()
     return 16
 end
 
+local function isRiding()
+    return baseSpeed() > 50
+end
+
 local function doMount(tool)
     local h = humanoid()
     local c = char()
     if tool and tool:IsA("Tool") then
         if tool.Parent ~= c and h then h:EquipTool(tool); task.wait(0.15) end
     end
+    if isRiding() then ridePet = tool; return end
     local b0 = baseSpeed()
     for _ = 1, 6 do
         fire("Mounting")
@@ -4638,6 +4643,7 @@ local function validPet(t)
 end
 
 local function ensureRide(g)
+    if cfg.moveMode == "Tween" and isRiding() then return true end
     -- MODE SCRIPT ORANG: selalu pilih pet tercepat yang ada saat ini
     local existing = findBestPetInBp()
     if existing then
@@ -4906,9 +4912,12 @@ local function cycle(g)
             notify("Pick Up", egg.name .. " gagal, dilewati 60 dtk.")
         end
 
-        -- Kembali ke plot via remote TeleportToPlot
-        fire("TeleportToPlot")
-        task.wait(0.2)
+        if cfg.moveMode ~= "Tween" then
+            fire("TeleportToPlot")
+            task.wait(0.2)
+        else
+            task.wait(0.3)
+        end
     end
 
     -- 3. Deliver semua egg yang ada di tangan/tas ke nest
