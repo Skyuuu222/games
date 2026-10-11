@@ -3838,6 +3838,30 @@ function rapEggModelOf(prompt)
     end
     return prompt and prompt.Parent or nil
 end
+-- ID TELUR (11-Okt, dari spy rival): EggPickup minta STRING UUID, bukan model. Cari attr/StringValue berbentuk UUID (ada "-"), max 2 tingkat.
+function rapEggIdOf(prompt)
+    local m = rapEggModelOf(prompt)
+    if not m then return nil end
+    local id = nil
+    pcall(function()
+        for _, kn in ipairs({ "EggId", "Id", "UUID", "EggUUID", "EggInventoryId" }) do
+            local v = m:GetAttribute(kn)
+            if v and tostring(v):find("-", 1, true) then id = tostring(v) break end
+        end
+        if id == nil then
+            for k, v in pairs(m:GetAttributes()) do
+                if type(v) == "string" and tostring(v):find("-", 1, true) and #tostring(v) > 20 then id = tostring(v) break end
+            end
+        end
+        if id == nil then
+            for _, d in ipairs(m:GetDescendants()) do
+                if d.ClassName == "StringValue" and tostring(d.Value):find("-", 1, true) and #tostring(d.Value) > 20 then id = tostring(d.Value) break end
+                if id then break end
+            end
+        end
+    end)
+    return id
+end
 function rapRemotePickup(cand, prompt)
     local model = rapEggModelOf(prompt)
     local eggName = cand and cand.name or ""
@@ -4980,13 +5004,36 @@ function rapPickupTick()
             if hum and (hum.Sit or hum.SeatPart ~= nil) then hum.Sit = false end
         end)
         task.wait(0.1)
-        -- TANGAN KOSONG (11-Okt): tool di tangan menghalangi pickup. Lepas semua dulu.
+        -- TANGAN PEGANG BEST (11-Okt, dari spy rival): dia MEGANG pet di tangan (bukan naik), lalu spam EggPickup. Equip best tas.
         pcall(function()
-            local chE = LocalPlayer.Character
-            local humE = chE and chE:FindFirstChildOfClass("Humanoid")
-            if humE then humE:UnequipTools() end
+            local bb = nil
+            pcall(function() bb = rapBestBag() end)
+            if bb and bb.Parent then
+                local chE = LocalPlayer.Character
+                local humE = chE and chE:FindFirstChildOfClass("Humanoid")
+                if humE then humE:EquipTool(bb) end
+                pcall(function() rapFire({ "Remotes", "Game", "Mounting" }) end)
+            else
+                local chE = LocalPlayer.Character
+                local humE = chE and chE:FindFirstChildOfClass("Humanoid")
+                if humE then humE:UnequipTools() end
+            end
         end)
-        for grab = 1, 3 do
+        -- SPAM ID (11-Okt, dari spy rival): EggPickup(string UUID) belasan kali, tanpa prompt. ID dari model telur.
+        do
+            local eid = nil
+            pcall(function() eid = rapEggIdOf(prompt) end)
+            if eid then
+                for spam = 1, 12 do
+                    if not rapFlag.pickup then break end
+                    pcall(function() rapFire({ "Remotes", "Game", "EggPickup" }, eid) end)
+                    task.wait(0.08)
+                    local gone = (not prompt) or (prompt.Parent == nil) or (not prompt:IsDescendantOf(workspace))
+                    if gone then break end
+                end
+            end
+        end
+        for grab = 1, 2 do
             if not rapFlag.pickup then break end
             if not prompt or not prompt.Parent then break end
             pcall(function() prompt.RequiresLineOfSight = false end)
