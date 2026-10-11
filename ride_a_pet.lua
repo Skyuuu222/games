@@ -4342,6 +4342,8 @@ local AutoFarm = { picked = 0 }
 local cfg = {
     hold = 20,
     loopDelay = 0.5,
+    moveMode = "Tween",
+    tweenSpeed = 1000,
     rebirthOnly = false,
     rarity = {}, eggs = {}, mutation = {},
     notify = function(title, text) end,
@@ -4412,6 +4414,11 @@ local function teleport(pos)
     end
     return false
 end
+local function goTo(pos)
+    -- SEMUA mode pakai teleport (mode Tween = teleport + tunggu 20 dtk di pickup)
+    return teleport(pos)
+end
+
 local function trigger(p)
     if not p or not p.Parent then return false end
     local ok = pcall(function()
@@ -4593,15 +4600,32 @@ local function findBestPetInBp()
     return best
 end
 
+local function baseSpeed()
+    local ch = char()
+    local h = ch and ch:FindFirstChildOfClass("Humanoid")
+    if h then return h.WalkSpeed end
+    return 16
+end
+
 local function doMount(tool)
     local h = humanoid()
+    local c = char()
     if tool and tool:IsA("Tool") then
-        if h then h:EquipTool(tool) end
-        task.wait(0.1)
+        if tool.Parent ~= c and h then h:EquipTool(tool); task.wait(0.15) end
     end
-    fire("Mounting")
-    task.wait(0.2)
-    fire("Mounting")
+    local b0 = baseSpeed()
+    for _ = 1, 6 do
+        fire("Mounting")
+        task.wait(0.8)
+        if baseSpeed() > b0 + 1 then break end
+        if tool and tool:IsA("Tool") then
+            local cc = char()
+            if tool.Parent ~= cc then
+                local hh = humanoid()
+                if hh then hh:EquipTool(tool); task.wait(0.15) end
+            end
+        end
+    end
     ridePet = tool
 end
 
@@ -4615,16 +4639,7 @@ local function validPet(t)
 end
 
 local function ensureRide(g)
-    -- KUNCI: kalau pet yang dikunci masih ada di tas/tangan, pakai itu terus
-    if validPet(ridePet) then
-        local h = humanoid()
-        local c = char()
-        if ridePet.Parent ~= c and h then h:EquipTool(ridePet); task.wait(0.1) end
-        fire("Mounting")
-        return true
-    end
-    -- Pet terkunci hilang (dihapus server?) -> cari baru
-    ridePet = nil
+    -- MODE SCRIPT ORANG: selalu pilih pet tercepat yang ada saat ini
     local existing = findBestPetInBp()
     if existing then
         doMount(existing)
@@ -4782,6 +4797,22 @@ local function pickup(g, egg, before)
     local function done() return gone(egg.prompt) or newEggTool(before) ~= nil end
     local id = eggId(egg.model)
     if id then
+        if cfg.moveMode == "Tween" then
+            for _ = 1, 2 do
+                if not alive(g) then return false end
+                fire("EggPickup", id)
+                task.wait(0.3)
+                if done() then return true end
+            end
+            -- Tunggu TETAP 20 dtk (tween butuh waktu), poll tiap 0.5 dtk, early-exit kalau dapat
+            local deadline = os.clock() + 20
+            while os.clock() < deadline do
+                if not alive(g) then return false end
+                if done() then return true end
+                task.wait(0.5)
+            end
+            return done()
+        end
         for _ = 1, 12 do
             if not alive(g) then return false end
             fire("EggPickup", id)
@@ -4861,9 +4892,9 @@ local function cycle(g)
         local egg = nextEgg()
         if not egg then break end
 
-        -- Teleport ke posisi egg
-        teleport(egg.pos)
-        task.wait(0.1)
+        -- Gerak ke posisi egg (Tween / Instant sesuai cfg.moveMode)
+        goTo(egg.pos)
+        task.wait(0.2)
 
         -- Pickup via EggPickup remote (UUID)
         local got = pickup(g, egg, before)
