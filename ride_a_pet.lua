@@ -6561,15 +6561,7 @@ SecAutoEgg:Dropdown({
     end,
 })
 
-SecAutoEgg:Slider({
-    Name = "Tunggu Telur Tween (dtk)",
-    Default = 20,
-    Minimum = 5,
-    Maximum = 60,
-    DisplayMethod = "Round",
-    Precision = 0,
-    Callback = function(value) AutoFarm.cfg.tweenWait = tonumber(value) or 20 end,
-})
+-- Slider Tunggu DIHAPUS: Tween selalu tunggu 20 dtk (default bawaan).
 
 -- Drop Pinggir UI DIHAPUS (10-Okt): delivery langsung ke sarang, tanpa drop.
 
