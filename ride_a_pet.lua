@@ -4803,19 +4803,41 @@ local function pickup(g, egg, before)
     local id = eggId(egg.model)
     if id then
         if cfg.moveMode == "Tween" then
-            local deadline = os.clock() + 20
-            local lastPush = 0
+            -- POLA SCRIPT ORANG (log FULL): EggPickup 2x selang 0.3 dtk, teleport sudah dilakukan
+            -- sebelum/sesudahnya, lalu DIAM ~31 dtk (cuma Ping), lalu EggArrivalClaim.
+            -- Jangan spam EggPickup tiap 0.35 dtk - itu bikin server tolak.
+            for _ = 1, 2 do
+                if not alive(g) then return false end
+                fire("EggPickup", id)
+                task.wait(0.3)
+                if done() then return true end
+            end
+            local deadline = os.clock() + 35
+            local lastReq = 0
             while os.clock() < deadline do
                 if not alive(g) then return false end
                 if done() then return true end
-                fire("EggPickup", id)
-                if os.clock() - lastPush > 3 then
-                    lastPush = os.clock()
-                    fire("PetCollect", id)
+                -- keepalive ringan seperti script orang (tiap ~15 dtk)
+                if os.clock() - lastReq > 15 then
+                    lastReq = os.clock()
                     fire("RequestPlotEggs", false)
                 end
-                task.wait(0.35)
+                task.wait(0.5)
             end
+            -- Telur datang via EggArrivalClaim (timestamp, posisi, data). Coba klaim
+            -- agar TAS+ muncul seperti log #199-203.
+            pcall(function()
+                local ts = os.clock() + 1791720000 -- basis waktu server ala log (desimal)
+                fire("EggArrivalClaim", ts, egg.pos, { id })
+            end)
+            task.wait(1)
+            if done() then return true end
+            -- fallback: varian argumen lain (posisi saja)
+            pcall(function()
+                fire("EggArrivalClaim", os.clock(), egg.pos)
+            end)
+            task.wait(1)
+            return done()
             while os.clock() < deadline do
                 if not alive(g) then return false end
                 if done() then return true end
