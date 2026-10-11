@@ -4413,7 +4413,7 @@ function rapPickupTick()
     -- SKOR SPEED-KERAS (10-Okt): pindai SEMUA attr + ValueBase yg namanya mengandung speed/spd/vel/walk.
     -- Biang lama: cuma attr persis "Speed" + ValueBase persis "speed" -> semua 0 -> menang yg duluan (pet jelek).
     rapScoreCache = rapScoreCache or {}
-    -- deep=true: pindai GetDescendants (buat Tool tas yg datanya di dalam, jumlah dikit). Plot pakai cepat.
+    -- CEPAT (11-Okt): filter via ClassName (tanpa pcall per node). deep=seluruh turunan (tas, kecil) tanpa limit 40.
     function rapPetScore(pet, deep)
         local ck = deep and "d" or "f"
         if pet then
@@ -4434,49 +4434,52 @@ function rapPickupTick()
                 end
             end
         end)
-        -- ValueBase anak LANGSUNG saja (10-Okt): GetDescendants tiap pet = lambat. Yg penting biasanya attr.
+        local function rapEatValue(d)
+            local cn = d.ClassName
+            if cn == "NumberValue" or cn == "IntValue" or cn == "DoubleConstrainedValue" or cn == "IntConstrainedValue" then
+                local ln = tostring(d.Name or ""):lower()
+                local n = tonumber(d.Value)
+                if n then
+                    if ln:find("speed", 1, true) or ln == "spd" or ln:find("vel", 1, true) or ln:find("walk", 1, true) then
+                        if n > sp then sp = n end
+                    elseif ln:find("weight", 1, true) or ln == "wt" then
+                        if n > wt then wt = n end
+                    end
+                end
+            end
+        end
+        if deep and pet then
+            pcall(function()
+                for _, d in ipairs(pet:GetDescendants()) do rapEatValue(d) end
+            end)
+        elseif pet then
+            pcall(function()
+                for _, d in ipairs(pet:GetChildren()) do rapEatValue(d) end
+            end)
+        end
+        local sc = (sp or 0) * 1000000 + (wt or 0)
+        if pet then rapScoreCache[pet] = { wt = wt, sp = sp, sc = sc, t = os.clock(), k = ck } end
+        return wt, sp, sc
+    end
+    -- prompt Ride ada/tidak, TANPA rekursif dalam (11-Okt): cek anak langsung + 1 tingkat. Jauh lebih cepat.
+    function rapHasRide(pet)
+        if not pet then return nil end
+        local f = nil
         pcall(function()
-            for _, d in ipairs(pet:GetChildren()) do
-                local okV, val = pcall(function() return d.Value end)
-                if okV then
-                    local ln = tostring(d.Name or ""):lower()
-                    local n = tonumber(val)
-                    if n then
-                        if ln:find("speed", 1, true) or ln == "spd" or ln:find("vel", 1, true) then
-                            if n > sp then sp = n end
-                        elseif ln:find("weight", 1, true) then
-                            if n > wt then wt = n end
-                        end
+            local d = pet:FindFirstChild("RidePrompt")
+            if d and d:IsA("ProximityPrompt") then f = d end
+            if f == nil then
+                for _, c in ipairs(pet:GetChildren()) do
+                    if f then break end
+                    if c:IsA("ProximityPrompt") and c.Name == "RidePrompt" then f = c break end
+                    if c:IsA("Model") or c:IsA("Folder") then
+                        local d2 = c:FindFirstChild("RidePrompt")
+                        if d2 and d2:IsA("ProximityPrompt") then f = d2 break end
                     end
                 end
             end
         end)
-        local sc = (sp or 0) * 1000000 + (wt or 0)
-        -- deep (tas): selami GetDescendants, max 40 node biar tetap cepat.
-        if deep and sc <= 0 and pet then
-            pcall(function()
-                local n0 = 0
-                for _, d in ipairs(pet:GetDescendants()) do
-                    n0 = n0 + 1
-                    if n0 > 40 then break end
-                    local okV, val = pcall(function() return d.Value end)
-                    if okV then
-                        local ln = tostring(d.Name or ""):lower()
-                        local n = tonumber(val)
-                        if n then
-                            if ln:find("speed", 1, true) or ln == "spd" or ln:find("vel", 1, true) or ln:find("walk", 1, true) then
-                                if n > sp then sp = n end
-                            elseif ln:find("weight", 1, true) or ln == "wt" then
-                                if n > wt then wt = n end
-                            end
-                        end
-                    end
-                end
-            end)
-            sc = (sp or 0) * 1000000 + (wt or 0)
-        end
-        if pet then rapScoreCache[pet] = { wt = wt, sp = sp, sc = sc, t = os.clock(), k = ck } end
-        return wt, sp, sc
+        return f
     end
     rapBestLockKey = nil -- kunci lama dibuang: dulu dikunci saat skor masih 0 semua (pet jelek).
         -- SELALU bandingkan (10-Okt): kalau sudah duduk di pet JELEK, turun + pindah ke best. Tanpa ini best tak pernah dipakai.
@@ -4526,7 +4529,7 @@ function rapPickupTick()
                             rapRideScanT = os.clock()
                         pcall(function()
                             for _, pet in ipairs(pets:GetChildren()) do
-                                local rp = pet:FindFirstChild("RidePrompt", true)
+                                local rp = rapHasRide(pet)
                                 if rp and rp:IsA("ProximityPrompt") and rp.Parent then
                                     local _, _, sc = rapPetScore(pet)
                                     if sc > bestScore * 1.05 + 1 then bestScore = sc bestPet = pet bestLoc = "plot" bestTool = nil end
@@ -4543,41 +4546,65 @@ function rapPickupTick()
                         end)
                         end
                     elseif rapRideName ~= nil then
-                        -- cari nama kunci di plot (tanpa peduli skor).
-                        for _, pet in ipairs(pets:GetChildren()) do
-                            if tostring(pet.Name) == tostring(rapRideName) then
-                                local rp = pet:FindFirstChild("RidePrompt", true)
-                                if rp and rp:IsA("ProximityPrompt") and rp.Parent then
-                                    bestPet = pet bestLoc = "plot"
-                                    pcall(function() local _, _, sc = rapPetScore(pet) bestScore = sc end)
+                        -- KUNCI + VALIDASI (11-Okt): nama kunci dipakai HANYA kalau masih tercepat. Kalau ada yg lebih cepat = pindah, kunci ikut.
+                        do
+                            local lockPet, lockScore = nil, -1
+                            for _, pet in ipairs(pets:GetChildren()) do
+                                if tostring(pet.Name) == tostring(rapRideName) then
+                                    local rp = rapHasRide(pet)
+                                    if rp and rp:IsA("ProximityPrompt") and rp.Parent then
+                                        local _, _, sc = rapPetScore(pet)
+                                        if sc > lockScore then lockScore = sc lockPet = pet end
+                                    end
                                     break
                                 end
                             end
-                        end
-                        -- tak di plot: cari di TAS + CHARACTER (Tool nama sama, bukan telur).
-                        if bestPet == nil then
-                            pcall(function()
-                                local chI = LocalPlayer.Character
-                                local bpI = LocalPlayer:FindFirstChild("Backpack")
-                                for _, par in ipairs({ chI, bpI }) do
-                                    if bestTool == nil and par then
-                                        for _, t in ipairs(par:GetChildren()) do
+                            local topPet, topScore, topLoc, topTool = lockPet, lockScore, nil, nil
+                            if lockPet then topLoc = "plot" end
+                            if lockPet == nil then
+                                pcall(function()
+                                    local chI = LocalPlayer.Character
+                                    local bpI = LocalPlayer:FindFirstChild("Backpack")
+                                    for _, par in ipairs({ chI, bpI }) do
+                                        if par then for _, t in ipairs(par:GetChildren()) do
                                             if t and t:IsA("Tool") and tostring(t.Name) == tostring(rapRideName) and not tostring(t.Name):lower():find("egg", 1, true) then
-                                                bestTool = t bestLoc = "tas" bestToolKey = tostring(t.Name)
-                                                pcall(function() local _, _, sc = rapPetScore(t, true) bestScore = sc end)
+                                                local _, _, sc = rapPetScore(t, true)
+                                                topTool = t topScore = sc topLoc = "tas"
                                                 break
                                             end
+                                        end end
+                                    end
+                                end)
+                            end
+                            -- adu cepat: ada yg skornya jelas lebih tinggi (+5%) = kunci PINDAH, bukan dikunci mati di pet jelek.
+                            pcall(function()
+                                for _, pet in ipairs(pets:GetChildren()) do
+                                    if tostring(pet.Name) ~= tostring(rapRideName) then
+                                        local rp = rapHasRide(pet)
+                                        if rp and rp:IsA("ProximityPrompt") and rp.Parent then
+                                            local _, _, sc = rapPetScore(pet)
+                                            if sc > topScore * 1.05 + 1 then topScore = sc topPet = pet topLoc = "plot" topTool = nil end
                                         end
                                     end
                                 end
+                                for _, par in ipairs({ LocalPlayer.Character, LocalPlayer:FindFirstChild("Backpack") }) do
+                                    if par then for _, t in ipairs(par:GetChildren()) do
+                                        if t and t:IsA("Tool") and tostring(t.Name) ~= tostring(rapRideName) and not tostring(t.Name):lower():find("egg", 1, true) then
+                                            local _, _, sc = rapPetScore(t, true)
+                                            if sc > topScore * 1.05 + 1 then topScore = sc topTool = t topLoc = "tas" topPet = nil end
+                                        end
+                                    end end
+                                end
                             end)
+                            if topPet then bestPet = topPet bestLoc = "plot" bestScore = topScore rapRideName = tostring(topPet.Name)
+                            elseif topLoc == "tas" and topTool then bestTool = topTool bestLoc = "tas" bestScore = topScore bestToolKey = tostring(topTool.Name) rapRideName = tostring(topTool.Name)
+                            else rapRideName = nil end -- kunci hilang/lemah total, scan fresh di bawah
                         end
-                        if bestPet == nil and bestTool == nil then rapRideName = nil end -- kunci hilang total, scan fresh di bawah
                     end
                     if bestPet == nil and bestTool == nil then
                     -- BEST = speed tertinggi PLOT vs TAS (11-Okt): Tool tas di-skor deep langsung, pemenang SAJA yg di-place di bawah. Tanpa place semua (lambat).
                     for _, pet in ipairs(pets:GetChildren()) do
-                        local rp = pet:FindFirstChild("RidePrompt", true)
+                        local rp = rapHasRide(pet)
                         if rp and rp:IsA("ProximityPrompt") and rp.Parent then
                             local _, _, sc = rapPetScore(pet)
                             if sc > bestScore or (sc == bestScore and curSeat0 ~= nil and pet == curSeat0) then bestScore = sc bestPet = pet bestLoc = "plot" end
@@ -4629,7 +4656,7 @@ function rapPickupTick()
                             if ps then
                                 local b2, s2 = nil, -1
                                 for _, pet in ipairs(ps:GetChildren()) do
-                                    local rp = pet:FindFirstChild("RidePrompt", true)
+                                    local rp = rapHasRide(pet)
                                     if rp and rp:IsA("ProximityPrompt") and rp.Parent then
                                         local _, _, sc = rapPetScore(pet)
                                         if sc > s2 then s2 = sc b2 = pet end
@@ -4695,7 +4722,7 @@ function rapPickupTick()
                             if ps then
                                 local eb, es = nil, -1
                                 for _, pet in ipairs(ps:GetChildren()) do
-                                    local rp = pet:FindFirstChild("RidePrompt", true)
+                                    local rp = rapHasRide(pet)
                                     if rp and rp:IsA("ProximityPrompt") and rp.Parent then
                                         local _, _, sc = rapPetScore(pet)
                                         if sc > es then es = sc eb = pet end
@@ -4704,7 +4731,7 @@ function rapPickupTick()
                                 -- semua skor 0 (data tak terbaca) = ambil yg pertama, tetap lebih baik dari diam.
                                 if eb == nil then
                                     for _, pet in ipairs(ps:GetChildren()) do
-                                        local rp = pet:FindFirstChild("RidePrompt", true)
+                                        local rp = rapHasRide(pet)
                                         if rp and rp:IsA("ProximityPrompt") and rp.Parent then eb = pet break end
                                     end
                                 end
@@ -4731,14 +4758,14 @@ function rapPickupTick()
                                 local ps2 = mp2 and mp2:FindFirstChild("Pets")
                                 if ps2 then
                                     for _, pet in ipairs(ps2:GetChildren()) do
-                                        local rp = pet:FindFirstChild("RidePrompt", true)
+                                        local rp = rapHasRide(pet)
                                         if rp and rp:IsA("ProximityPrompt") and rp.Parent then
                                             if rapRideName == nil or tostring(pet.Name) == tostring(rapRideName) then bestPet = pet bestLoc = "plot" break end
                                         end
                                     end
                                     if bestPet == nil then
                                         for _, pet in ipairs(ps2:GetChildren()) do
-                                            local rp = pet:FindFirstChild("RidePrompt", true)
+                                            local rp = rapHasRide(pet)
                                             if rp and rp:IsA("ProximityPrompt") and rp.Parent then bestPet = pet bestLoc = "plot" break end
                                         end
                                     end
@@ -4765,9 +4792,9 @@ function rapPickupTick()
                             Window:Notify({ Title = "Naik", Description = ("Pet tas: %s"):format(tostring(bestTool.Name)), Lifetime = 2 })
                         end
                     end)
-                    -- RIDE (11-Okt): WAJIB duduk dulu baru ke telur. 3x remote, lalu 3x teleport+prompt. Tak duduk = tetap lanjut tapi bawa bestPetRef.
+                    -- RIDE (11-Okt sore): 2x remote kilat, lalu 2x teleport+prompt. Total max ~1 dtk, bukan 6x lambat.
                     local rapSeated = false
-                    for try = 1, 6 do
+                    for try = 1, 4 do
                         if not bestPet then break end
                         pcall(function()
                             local ch = LocalPlayer.Character
@@ -4775,15 +4802,12 @@ function rapPickupTick()
                             rapSeated = hum and (hum.Sit or hum.SeatPart ~= nil) or false
                         end)
                         if rapSeated then break end
-                        if try <= 3 then
-                            rapFire({ "Remotes", "Game", "PetRideMode" })
-                            rapFire({ "Remotes", "Game", "Mounting" })
-                            rapFire({ "Remotes", "Game", "Mount" })
+                        if try <= 2 then
                             rapFire({ "Remotes", "Game", "RidePet" }, bestPet)
                             rapFire({ "Remotes", "Game", "RidePet" })
-                            task.wait(0.25)
+                            task.wait(0.2)
                         else
-                            local rp = bestPet:FindFirstChild("RidePrompt", true)
+                            local rp = rapHasRide(bestPet)
                             if not (rp and rp:IsA("ProximityPrompt")) then
                                 pcall(function()
                                     for _, d in ipairs(bestPet:GetDescendants()) do
@@ -4792,15 +4816,14 @@ function rapPickupTick()
                                 end)
                             end
                             local pp = rp and rp.Parent and rapEntityPos(rp.Parent)
-                            if pp then rapForceTeleport(pp) task.wait(0.2) end
+                            if pp then rapForceTeleport(pp) task.wait(0.15) end
                             if rp then
                                 pcall(function() rp.RequiresLineOfSight = false end)
                                 pcall(function() if rp.MaxActivationDistance < 25 then rp.MaxActivationDistance = 25 end end)
-                                rapFire({ "Remotes", "Game", "PetRideMode" })
-                                rapFire({ "Remotes", "Game", "Mounting" })
+                                rapFire({ "Remotes", "Game", "RidePet" }, bestPet)
                                 rapTriggerPrompt(rp)
                             end
-                            task.wait(0.3)
+                            task.wait(0.2)
                         end
                     end
                     end -- tutup do ride plot
@@ -5639,7 +5662,7 @@ function rapRideReal()
         local pets = myPlot and myPlot:FindFirstChild("Pets")
         if pets then
             for _, pet in ipairs(pets:GetChildren()) do
-                local rp = pet:FindFirstChild("RidePrompt", true)
+                local rp = rapHasRide(pet)
                 if rp and rp:IsA("ProximityPrompt") and rp.Parent then
                     local pp = rapEntityPos(rp.Parent)
                     if pp then rapForceTeleport(pp) task.wait(0.4) end
