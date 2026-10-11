@@ -4564,85 +4564,80 @@ local function mount(pet)
     end
     fire("Mounting")
 end
-local function ensureRide(g)
-    -- 1. Cek apakah pet sudah dipegang di tangan (Character)
+local function isPetTool(t)
+    if not t:IsA("Tool") then return false end
+    local n = t.Name:lower()
+    return not n:find("egg", 1, true) and not n:find("basket", 1, true)
+end
+
+local function findBestPetInBp()
+    local bp = LP:FindFirstChild("Backpack")
+    local best, bestSp = nil, -1
+    if bp then
+        for _, t in ipairs(bp:GetChildren()) do
+            if isPetTool(t) then
+                local sp = speedOf(t)
+                if sp > bestSp or not best then best = t; bestSp = sp end
+            end
+        end
+    end
     local c = char()
     if c then
         for _, t in ipairs(c:GetChildren()) do
-            if t:IsA("Tool") and not t.Name:lower():find("egg", 1, true) and not t.Name:lower():find("basket", 1, true) then
-                ridePet = t
-                return true
-            end
-        end
-    end
-
-    -- 2. Ambil best pet dari backpack jika ada dan equip langsung
-    local bp = LP:FindFirstChild("Backpack")
-    local bestTool, bestSp = nil, -1
-    if bp then
-        for _, t in ipairs(bp:GetChildren()) do
-            if t:IsA("Tool") and not t.Name:lower():find("egg", 1, true) and not t.Name:lower():find("basket", 1, true) then
+            if isPetTool(t) then
                 local sp = speedOf(t)
-                if sp > bestSp or not bestTool then
-                    bestTool = t
-                    bestSp = sp
-                end
+                if sp > bestSp or not best then best = t; bestSp = sp end
             end
         end
     end
-    if bestTool then
-        local h = humanoid()
-        if h then h:EquipTool(bestTool) end
-        task.wait(0.15)
-        ridePet = bestTool
+    return best
+end
+
+local function doMount(tool)
+    local h = humanoid()
+    if tool and tool:IsA("Tool") then
+        if h then h:EquipTool(tool) end
+        task.wait(0.1)
+    end
+    fire("Mounting")
+    task.wait(0.2)
+    fire("Mounting")
+    ridePet = tool
+end
+
+local function ensureRide(g)
+    local existing = findBestPetInBp()
+    if existing then
+        doMount(existing)
         return true
     end
-
-    -- 3. Jika pet masih di plot, dekati pet dan trigger Prompt Ride agar masuk ke tangan
     local plot = myPlot()
     local pets = plot and plot:FindFirstChild("Pets")
-    if pets then
-        local targetPet = nil
-        for _, p in ipairs(pets:GetChildren()) do
-            local sp = speedOf(p)
-            if not targetPet or sp > speedOf(targetPet) then
-                targetPet = p
-            end
-        end
-        if targetPet then
-            local rp = nil
-            for _, d in ipairs(targetPet:GetDescendants()) do
-                if d:IsA("ProximityPrompt") and tostring(d.ActionText):lower():find("ride") then
-                    rp = d
-                    break
-                end
-            end
-            if rp then
-                local pPos = posOf(rp.Parent) or posOf(targetPet)
-                if pPos then
-                    teleport(pPos + Vector3.new(0, 3, 0))
-                    task.wait(0.15)
-                end
-                trigger(rp)
-                task.wait(0.3)
-
-                -- Cek kembali apakah masuk ke tas / tangan
-                local newBp = LP:FindFirstChild("Backpack")
-                if newBp then
-                    for _, t in ipairs(newBp:GetChildren()) do
-                        if t:IsA("Tool") and not t.Name:lower():find("egg", 1, true) then
-                            local h = humanoid()
-                            if h then h:EquipTool(t) end
-                            task.wait(0.1)
-                            ridePet = t
-                            return true
-                        end
-                    end
-                end
-            end
-        end
+    if not pets then return true end
+    local targetPet = nil
+    for _, p in ipairs(pets:GetChildren()) do
+        if not targetPet or speedOf(p) > speedOf(targetPet) then targetPet = p end
     end
-
+    if not targetPet then return true end
+    local rp = nil
+    for _, d in ipairs(targetPet:GetDescendants()) do
+        if d:IsA("ProximityPrompt") and d.ActionText:lower():find("ride") then rp = d; break end
+    end
+    if not rp then return true end
+    local pPos = posOf(targetPet)
+    if pPos then teleport(pPos + Vector3.new(0, 3, 0)); task.wait(0.15) end
+    trigger(rp)
+    local deadline = os.clock() + 3
+    local petTool = nil
+    while os.clock() < deadline do
+        petTool = findBestPetInBp()
+        if petTool then break end
+        task.wait(0.15)
+    end
+    if petTool then
+        doMount(petTool)
+        return true
+    end
     return true
 end
 local blacklist = setmetatable({}, { __mode = "k" })
