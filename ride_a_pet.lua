@@ -4608,9 +4608,32 @@ function rapPickupTick()
                 end)
                 if not seatedFast then
                     -- TAS DULU (11-Okt sore, yg kemarin BAGUS): best tas via PetKey+Speed (TRex 160). Place lalu RideAlong.
+                    -- KUNCI KILAT: rapRideName terkunci = best sudah ketemu telur lalu. Tanpa scan ulang, RideAlong langsung.
                     local seatedNow = false
                     do
                         local bb, bs = nil, -1
+                        if rapRideName ~= nil then
+                            pcall(function()
+                                local mp = rapMyPlotModel
+                                if not mp then pcall(function() rapFindMyPlot() end) mp = rapMyPlotModel end
+                                local ps = mp and mp:FindFirstChild("Pets")
+                                if ps then
+                                    for _, pet in ipairs(ps:GetChildren()) do
+                                        if tostring(pet.Name) == tostring(rapRideName) then
+                                            bestPetRef = pet
+                                            pcall(function()
+                                                rapFire({ "Remotes", "Game", "RideAlong" }, pet)
+                                            end)
+                                            break
+                                        end
+                                    end
+                                end
+                                local ch = LocalPlayer.Character
+                                local hum = ch and ch:FindFirstChildOfClass("Humanoid")
+                                seatedNow = hum and (hum.Sit or hum.SeatPart ~= nil) or false
+                            end)
+                        end
+                        if not seatedNow and bestPetRef == nil then
                         pcall(function() bb, bs = rapBestBag() end)
                         if bb and bb.Parent then
                             rapRideName = tostring(bb.Name)
@@ -4674,6 +4697,7 @@ function rapPickupTick()
                                 end)
                             end
                         end
+                        end -- tutup if pilih ulang (lewati kalau kunci kilat dapat)
                     end
                     -- PLOT CADANGAN (11-Okt sore): cuma kalau tas kosong/belum duduk. Best plot = Speed terbesar, RideAlong langsung.
                     if not seatedNow then
@@ -4735,14 +4759,6 @@ function rapPickupTick()
                     end)
                 end
             end
-            -- LEWATI SCAN LAMA (11-Okt sore): jalur cepat di atas sudah dapat best (tas/plot) / sudah duduk. Scan lama = yg bikin lama milih pet.
-            local rapSkipLegacy = (bestPetRef ~= nil)
-            pcall(function()
-                local ch = LocalPlayer.Character
-                local hum = ch and ch:FindFirstChildOfClass("Humanoid")
-                if hum and (hum.Sit or hum.SeatPart ~= nil) then rapSkipLegacy = true end
-            end)
-            if not rapSkipLegacy then
             pcall(function()
                 local myPlot = rapMyPlotModel
                 if not myPlot then pcall(function() rapFindMyPlot() end) myPlot = rapMyPlotModel end
@@ -5075,8 +5091,7 @@ function rapPickupTick()
                     else
                         pcall(function() Window:Notify({ Title = "Naik", Description = "Plot/Pets tak ketemu, jalan kaki.", Lifetime = 2 }) end)
                     end -- tutup if pets
-            end) -- tutup pcall legacy
-            end -- tutup if not rapSkipLegacy
+            end)
         end
     -- GERBANG LUNAK (10-Okt): 1x cek cepat. Gagal tetap LANJUT ke telur.
     if not rapFlag.pickup then return done(0) end
