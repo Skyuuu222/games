@@ -4461,7 +4461,37 @@ function rapPickupTick()
         if pet then rapScoreCache[pet] = { wt = wt, sp = sp, sc = sc, t = os.clock(), k = ck } end
         return wt, sp, sc
     end
-    -- prompt Ride ada/tidak, TANPA rekursif dalam (11-Okt): cek anak langsung + 1 tingkat. Jauh lebih cepat.
+    -- TRIGGER CEPAT (11-Okt, dari probe): pet = Tool ber-attr PetKey. Speed = NumberValue "Speed" dalam. Telur = EggInventoryId, dilewat.
+    -- Best = Speed terbesar tas. Balik: tool + speed. Tanpa scan plot (punyamu kosong).
+    function rapBestBag()
+        local best, bestSp = nil, -1
+        pcall(function()
+            local bp = LocalPlayer:FindFirstChild("Backpack")
+            local ch = LocalPlayer.Character
+            for _, par in ipairs({ bp, ch }) do
+                if par then for _, t in ipairs(par:GetChildren()) do
+                    if t and t:IsA("Tool") then
+                        local isPet = false
+                        pcall(function() if t:GetAttribute("PetKey") ~= nil then isPet = true end end)
+                        if isPet then
+                            local sp = 0
+                            pcall(function()
+                                for _, d in ipairs(t:GetDescendants()) do
+                                    if d.ClassName == "NumberValue" and tostring(d.Name):lower() == "speed" then
+                                        local n = tonumber(d.Value)
+                                        if n and n > sp then sp = n end
+                                    end
+                                end
+                            end)
+                            if sp > bestSp then bestSp = sp best = t end
+                        end
+                    end
+                end end
+            end
+        end)
+        return best, bestSp
+    end
+    -- prompt Ride ada/tidak, TANPA rekursif dalam (11-Okt): cek anak langsung + 1 tingkat.
     function rapHasRide(pet)
         if not pet then return nil end
         local f = nil
@@ -4500,7 +4530,84 @@ function rapPickupTick()
             end
         end)
         if true then
-            -- PROMPT SAJA (10-Okt): remote RideBestPet DICABUT (bikin pickup macet). Naik via prompt pet terbesar.
+            -- JALUR CEPAT (11-Okt): plot Pets punyamu KOSONG. Langsung best tas via PetKey+Speed (TRex 160), tanpa scan plot lambat.
+            do
+                local seatedFast = false
+                pcall(function()
+                    local ch = LocalPlayer.Character
+                    local hum = ch and ch:FindFirstChildOfClass("Humanoid")
+                    seatedFast = hum and (hum.Sit or hum.SeatPart ~= nil) or false
+                end)
+                if not seatedFast then
+                    local bb, bs = nil, -1
+                    pcall(function() bb, bs = rapBestBag() end)
+                    if bb and bb.Parent then
+                        rapRideName = tostring(bb.Name)
+                        pcall(function()
+                            local ch = LocalPlayer.Character
+                            local hum = ch and ch:FindFirstChildOfClass("Humanoid")
+                            if hum then hum:EquipTool(bb) end
+                        end)
+                        task.wait(0.3)
+                        pcall(function()
+                            rapFire({ "Remotes", "Game", "PlacePet" }, bb)
+                            rapFire({ "Remotes", "Game", "PlacePet" })
+                        end)
+                        task.wait(0.4)
+                        pcall(function()
+                            local ch = LocalPlayer.Character
+                            local hum = ch and ch:FindFirstChildOfClass("Humanoid")
+                            if hum then hum:UnequipTools() end
+                        end)
+                        -- cari modelnya di plot lalu RideAlong
+                        local tp = nil
+                        pcall(function()
+                            local mp = rapMyPlotModel
+                            local ps = mp and mp:FindFirstChild("Pets")
+                            if ps then
+                                for _, pet in ipairs(ps:GetChildren()) do
+                                    if tostring(pet.Name) == tostring(bb.Name) then tp = pet break end
+                                end
+                                if tp == nil then local ks = ps:GetChildren() if #ks > 0 then tp = ks[1] end end
+                            end
+                        end)
+                        if tp then
+                            bestPetRef = tp
+                            pcall(function()
+                                rapFire({ "Remotes", "Game", "PetRideMode" })
+                                rapFire({ "Remotes", "Game", "Mounting" })
+                                rapFire({ "Remotes", "Game", "RideAlong" }, tp)
+                            end)
+                            task.wait(0.3)
+                            local okF = false
+                            pcall(function()
+                                local ch = LocalPlayer.Character
+                                local hum = ch and ch:FindFirstChildOfClass("Humanoid")
+                                okF = hum and (hum.Sit or hum.SeatPart ~= nil) or false
+                            end)
+                            if not okF then
+                                local rp = rapHasRide(tp)
+                                local pp = rp and rp.Parent and rapEntityPos(rp.Parent)
+                                if pp then rapForceTeleport(pp) task.wait(0.15) end
+                                if rp then
+                                    pcall(function() rp.RequiresLineOfSight = false end)
+                                    rapFire({ "Remotes", "Game", "RideAlong" }, tp)
+                                    rapTriggerPrompt(rp)
+                                end
+                                task.wait(0.25)
+                            end
+                        end
+                    end
+                else
+                    pcall(function()
+                        local ch = LocalPlayer.Character
+                        local hum = ch and ch:FindFirstChildOfClass("Humanoid")
+                        local seat = hum and hum.SeatPart or nil
+                        local mdl = seat and seat:FindFirstAncestorOfClass("Model") or nil
+                        if mdl then bestPetRef = mdl end
+                    end)
+                end
+            end
             pcall(function()
                 local myPlot = rapMyPlotModel
                 if not myPlot then pcall(function() rapFindMyPlot() end) myPlot = rapMyPlotModel end
@@ -4803,8 +4910,10 @@ function rapPickupTick()
                         end)
                         if rapSeated then break end
                         if try <= 2 then
-                            rapFire({ "Remotes", "Game", "RidePet" }, bestPet)
-                            rapFire({ "Remotes", "Game", "RidePet" })
+                            -- RIDE ASLI (11-Okt): RideAlong(model) — RidePet tak ada di game. PetRideMode+Mounting dulu.
+                            rapFire({ "Remotes", "Game", "PetRideMode" })
+                            rapFire({ "Remotes", "Game", "Mounting" })
+                            rapFire({ "Remotes", "Game", "RideAlong" }, bestPet)
                             task.wait(0.2)
                         else
                             local rp = rapHasRide(bestPet)
@@ -4818,9 +4927,9 @@ function rapPickupTick()
                             local pp = rp and rp.Parent and rapEntityPos(rp.Parent)
                             if pp then rapForceTeleport(pp) task.wait(0.15) end
                             if rp then
-                                pcall(function() rp.RequiresLineOfSight = false end)
-                                pcall(function() if rp.MaxActivationDistance < 25 then rp.MaxActivationDistance = 25 end end)
-                                rapFire({ "Remotes", "Game", "RidePet" }, bestPet)
+                                rapFire({ "Remotes", "Game", "PetRideMode" })
+                                rapFire({ "Remotes", "Game", "Mounting" })
+                                rapFire({ "Remotes", "Game", "RideAlong" }, bestPet)
                                 rapTriggerPrompt(rp)
                             end
                             task.wait(0.2)
@@ -4912,9 +5021,7 @@ function rapPickupTick()
         pcall(function()
             rapFire({ "Remotes", "Game", "PetRideMode" })
             rapFire({ "Remotes", "Game", "Mounting" })
-            rapFire({ "Remotes", "Game", "Mount" })
-            rapFire({ "Remotes", "Game", "RidePet" }, bestPetRef)
-            rapFire({ "Remotes", "Game", "RidePet" })
+            rapFire({ "Remotes", "Game", "RideAlong" }, bestPetRef)
         end)
         task.wait(0.15)
     end
