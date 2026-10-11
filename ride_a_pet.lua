@@ -4556,9 +4556,13 @@ local function placeFromBag(tool, g)
 end
 local ridePet = nil
 local function mount(pet)
-    fire("PetRideMode")
+    -- Equip tool pet dulu ke tangan, lalu tembak Mounting
+    local h = humanoid()
+    if pet and pet:IsA("Tool") then
+        if h then h:EquipTool(pet) end
+        task.wait(0.1)
+    end
     fire("Mounting")
-    fire("RideAlong", pet)
 end
 local function ensureRide(g)
     -- 1. Cek apakah pet sudah dipegang di tangan (Character)
@@ -4826,40 +4830,51 @@ local function deliver(g, before)
     end
     return true
 end
+-- hold tidak diperlukan: game tidak mensyaratkan hold di pet
 local function hold(g, seconds)
-    notify("Tunggu", "Diam " .. tostring(seconds) .. " dtk di pet...")
-    local t0 = os.clock()
-    while os.clock() - t0 < seconds do
-        if not alive(g) then return false end
-        if not isSeated() and ridePet and ridePet.Parent then mount(ridePet) end
-        task.wait(0.5)
-    end
     return true
 end
 local function cycle(g)
-    local egg = nextEgg()
-    if not egg then task.wait(1) return end
-    if not ensureRide(g) then notify("Ride", "Gagal naik pet, ulangi...") return end
+    -- 1. Pastikan pet di-equip dan Mounting sudah dikirim
+    if not ensureRide(g) then return end
     if not alive(g) then return end
+
+    -- 2. Ambil semua egg yang tersedia dalam satu putaran
     local before = eggTools()
-    teleport(egg.pos)
-    local got = pickup(g, egg, before)
-    if not got and alive(g) then
-        task.wait(0.15)
+    local collected = 0
+    local MAX_PER_CYCLE = 10
+    while alive(g) and collected < MAX_PER_CYCLE do
+        local egg = nextEgg()
+        if not egg then break end
+
+        -- Teleport ke posisi egg
         teleport(egg.pos)
-        got = pickup(g, egg, before)
+        task.wait(0.1)
+
+        -- Pickup via EggPickup remote (UUID)
+        local got = pickup(g, egg, before)
+        if got then
+            collected = collected + 1
+            AutoFarm.picked = AutoFarm.picked + 1
+            blacklist[egg.prompt] = os.clock() + 5 -- jangan ambil lagi dalam 5 dtk
+        else
+            blacklist[egg.prompt] = os.clock() + 60
+            notify("Pick Up", egg.name .. " gagal, dilewati 60 dtk.")
+        end
+
+        -- Kembali ke plot via remote TeleportToPlot
+        fire("TeleportToPlot")
+        task.wait(0.2)
     end
-    if not got then
-        blacklist[egg.prompt] = os.clock() + 60
-        notify("Pick Up", egg.name .. " gagal, dilewati 60 dtk.")
-        return
-    end
-    if not hold(g, cfg.hold) then return end
-    if deliver(g, before) then
-        AutoFarm.picked = AutoFarm.picked + 1
-        notify("Telur", egg.name .. " ditaruh (total " .. AutoFarm.picked .. ")")
+
+    -- 3. Deliver semua egg yang ada di tangan/tas ke nest
+    if collected > 0 then
+        local delivered = deliver(g, before)
+        if delivered then
+            notify("Telur", "Ditaruh " .. collected .. " telur ke sarang (total " .. AutoFarm.picked .. ")")
+        end
     else
-        notify("Sarang", "Gagal menaruh " .. egg.name)
+        task.wait(0.5)
     end
 end
 function AutoFarm.Start()
