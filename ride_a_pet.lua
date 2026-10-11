@@ -4563,6 +4563,64 @@ function rapPickupTick()
                     seatedFast = hum and (hum.Sit or hum.SeatPart ~= nil) or false
                 end)
                 if not seatedFast then
+                    -- PLOT DULU (11-Okt sore, dari spy3 fase B): pet di plot tetap jalan. Best plot = cucu Speed terbesar, RideAlong langsung.
+                    do
+                        local tp, ts = nil, -1
+                        pcall(function()
+                            local mp = rapMyPlotModel
+                            if not mp then pcall(function() rapFindMyPlot() end) mp = rapMyPlotModel end
+                            local ps = mp and mp:FindFirstChild("Pets")
+                            if ps then
+                                for _, pet in ipairs(ps:GetChildren()) do
+                                    local sp = 0
+                                    for _, d in ipairs(pet:GetDescendants()) do
+                                        if d.ClassName == "NumberValue" and tostring(d.Name):lower() == "speed" then
+                                            local n = tonumber(d.Value)
+                                            if n and n > sp then sp = n end
+                                        end
+                                    end
+                                    if pet:GetAttribute("PetKey") ~= nil or sp > 0 then
+                                        if sp > ts then ts = sp tp = pet end
+                                    end
+                                end
+                            end
+                        end)
+                        if tp then
+                            bestPetRef = tp
+                            rapRideName = tostring(tp.Name)
+                            pcall(function()
+                                rapFire({ "Remotes", "Game", "PetRideMode" })
+                                rapFire({ "Remotes", "Game", "Mounting" })
+                                rapFire({ "Remotes", "Game", "RideAlong" }, tp)
+                            end)
+                            task.wait(0.3)
+                            local okP = false
+                            pcall(function()
+                                local ch = LocalPlayer.Character
+                                local hum = ch and ch:FindFirstChildOfClass("Humanoid")
+                                okP = hum and (hum.Sit or hum.SeatPart ~= nil) or false
+                            end)
+                            if not okP then
+                                local rp = rapHasRide(tp)
+                                local pp = rp and rp.Parent and rapEntityPos(rp.Parent)
+                                if pp then rapForceTeleport(pp) task.wait(0.15) end
+                                if rp then
+                                    pcall(function() rp.RequiresLineOfSight = false end)
+                                    rapFire({ "Remotes", "Game", "RideAlong" }, tp)
+                                    rapTriggerPrompt(rp)
+                                end
+                                task.wait(0.25)
+                            end
+                        end
+                    end
+                    local seatedNow = false
+                    pcall(function()
+                        local ch = LocalPlayer.Character
+                        local hum = ch and ch:FindFirstChildOfClass("Humanoid")
+                        seatedNow = hum and (hum.Sit or hum.SeatPart ~= nil) or false
+                    end)
+                    -- TAS (11-Okt): cuma kalau plot kosong/gagal. Best tas via PetKey+Speed.
+                    if not seatedNow then
                     local bb, bs = nil, -1
                     pcall(function() bb, bs = rapBestBag() end)
                     if bb and bb.Parent then
@@ -4622,6 +4680,7 @@ function rapPickupTick()
                             end
                         end
                     end
+                    end -- tutup if not seatedNow (tas cuma kalau plot gagal)
                 else
                     pcall(function()
                         local ch = LocalPlayer.Character
@@ -5004,19 +5063,27 @@ function rapPickupTick()
             if hum and (hum.Sit or hum.SeatPart ~= nil) then hum.Sit = false end
         end)
         task.wait(0.1)
-        -- TANGAN PEGANG BEST (11-Okt, dari spy rival): dia MEGANG pet di tangan (bukan naik), lalu spam EggPickup. Equip best tas.
+        -- TANGAN (11-Okt sore): FASE B plot=5 = tangan KOSONG (equip dari tas kosong = megang telur tetangga). Pegang best HANYA kalau plot kosong.
         pcall(function()
-            local bb = nil
-            pcall(function() bb = rapBestBag() end)
-            if bb and bb.Parent then
-                local chE = LocalPlayer.Character
-                local humE = chE and chE:FindFirstChildOfClass("Humanoid")
-                if humE then humE:EquipTool(bb) end
-                pcall(function() rapFire({ "Remotes", "Game", "Mounting" }) end)
-            else
-                local chE = LocalPlayer.Character
-                local humE = chE and chE:FindFirstChildOfClass("Humanoid")
+            local plotN = 0
+            pcall(function()
+                local mp = rapMyPlotModel
+                local ps = mp and mp:FindFirstChild("Pets")
+                if ps then plotN = #ps:GetChildren() end
+            end)
+            local chE = LocalPlayer.Character
+            local humE = chE and chE:FindFirstChildOfClass("Humanoid")
+            if plotN > 0 then
                 if humE then humE:UnequipTools() end
+            else
+                local bb = nil
+                pcall(function() bb = rapBestBag() end)
+                if bb and bb.Parent then
+                    if humE then humE:EquipTool(bb) end
+                    pcall(function() rapFire({ "Remotes", "Game", "Mounting" }) end)
+                else
+                    if humE then humE:UnequipTools() end
+                end
             end
         end)
         -- SPAM ID (11-Okt, dari spy rival): EggPickup(string UUID) belasan kali, tanpa prompt. ID dari model telur.
