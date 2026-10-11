@@ -4826,23 +4826,13 @@ local function pickup(g, egg, before)
             end
             -- Telur datang via EggArrivalClaim (timestamp, posisi, data). Coba klaim
             -- agar TAS+ muncul seperti log #199-203.
-            pcall(function()
-                local ts = os.clock() + 1791720000 -- basis waktu server ala log (desimal)
-                fire("EggArrivalClaim", ts, egg.pos, { id })
-            end)
+            local ts = os.clock() + 1791720000
+            local okFire = pcall(fire, "EggArrivalClaim", ts, egg.pos, { id })
+            if not okFire then pcall(fire, "EggArrivalClaim", ts, egg.pos) end
             task.wait(1)
             if done() then return true end
-            -- fallback: varian argumen lain (posisi saja)
-            pcall(function()
-                fire("EggArrivalClaim", os.clock(), egg.pos)
-            end)
+            pcall(fire, "EggArrivalClaim", os.clock(), egg.pos)
             task.wait(1)
-            return done()
-            while os.clock() < deadline do
-                if not alive(g) then return false end
-                if done() then return true end
-                task.wait(0.5)
-            end
             return done()
         end
         for _ = 1, 12 do
