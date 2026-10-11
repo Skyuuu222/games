@@ -4605,7 +4605,26 @@ local function doMount(tool)
     ridePet = tool
 end
 
+local function validPet(t)
+    if not t then return false end
+    local ok, par = pcall(function() return t.Parent end)
+    if not ok or not par then return false end
+    local bp = LP:FindFirstChild("Backpack")
+    local c = char()
+    return par == bp or par == c
+end
+
 local function ensureRide(g)
+    -- KUNCI: kalau pet yang dikunci masih ada di tas/tangan, pakai itu terus
+    if validPet(ridePet) then
+        local h = humanoid()
+        local c = char()
+        if ridePet.Parent ~= c and h then h:EquipTool(ridePet); task.wait(0.1) end
+        fire("Mounting")
+        return true
+    end
+    -- Pet terkunci hilang (dihapus server?) -> cari baru
+    ridePet = nil
     local existing = findBestPetInBp()
     if existing then
         doMount(existing)
