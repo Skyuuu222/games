@@ -4431,6 +4431,50 @@ function rapPickupTick()
     local mode = rapPickupMode or "Tween"
     local prompt = cand.prompt
     if not prompt or not prompt.Parent then return done(0) end
+    -- MODE RIVAL (11-Okt sore, pola script orang): tanpa naik/plot/diam. Equip best tas -> teleport telur -> spam EggPickup UUID -> telur berikut.
+    if mode == "Rival" then
+        if not rapFlag.pickup then return done(0) end
+        do
+            local bb = nil
+            pcall(function() bb = rapBestBag() end)
+            if bb and bb.Parent then
+                pcall(function()
+                    local ch = LocalPlayer.Character
+                    local hum = ch and ch:FindFirstChildOfClass("Humanoid")
+                    if hum then hum:EquipTool(bb) end
+                end)
+                pcall(function() rapFire({ "Remotes", "Game", "Mounting" }) end)
+            else
+                pcall(function()
+                    local ch = LocalPlayer.Character
+                    local hum = ch and ch:FindFirstChildOfClass("Humanoid")
+                    if hum then hum:UnequipTools() end
+                end)
+            end
+        end
+        do
+            local stop = cand.pos + Vector3.new(0, 4, 3)
+            rapForceTeleport(stop) task.wait(0.15)
+        end
+        do
+            local eid = nil
+            pcall(function() eid = rapEggIdOf(prompt) end)
+            if eid then
+                for spam = 1, 14 do
+                    if not rapFlag.pickup then break end
+                    pcall(function() rapFire({ "Remotes", "Game", "EggPickup" }, eid) end)
+                    task.wait(0.08)
+                    if (not prompt) or (prompt.Parent == nil) or (not prompt:IsDescendantOf(workspace)) then break end
+                end
+            else
+                pcall(function() prompt.RequiresLineOfSight = false end)
+                rapTriggerPrompt(prompt)
+                task.wait(0.15)
+            end
+        end
+        rapPickupCD = os.clock() + 0.5
+        return done(1)
+    end
     -- 1. NAIK BEST (tas + plot). Skor: SPEED dulu, Weight seri.
     if not rapFlag.pickup then return done(0) end
     local bestPetRef = nil
@@ -6880,7 +6924,7 @@ SecAutoEgg:Toggle({
 
 SecAutoEgg:Dropdown({
     Name = "Mode Farm",
-    Items = { "Instant", "Tween" },
+    Items = { "Instant", "Tween", "Rival" },
     Default = "Instant",
     Callback = function(v) rapPickupMode = v or "Instant" end,
 })
