@@ -3762,7 +3762,9 @@ function rapWalkTo(pos, radius, timeout)
 end
 -- ANTI-CHEAT BARU (10-Okt malam): server nolak CFrame teleport + noclip/tween fly.
 -- Mode AMAN = SEMUA gerak pakai jalan kaki legit (Humanoid:MoveTo). CFrame cuma bila Mode Aman MATI.
+local _origRapTp = nil
 function rapTeleportTo(pos, label)
+    pcall(function() if ZYPHERAX_TPLOG and cfg and cfg.moveMode == "Tween" then print("[TPDBG] rapTeleportTo " .. tostring(label) .. " mode=Tween") end end)
     if rapSafeTrigger then
         return rapWalkTo(pos, 8, 30)
     end
@@ -4382,14 +4384,44 @@ local function humanoid() local c = char() return c and c:FindFirstChildOfClass(
 local function root() local c = char() return c and c:FindFirstChild("HumanoidRootPart") end
 local function isSeated() local h = humanoid() return h ~= nil and (h.Sit or h.SeatPart ~= nil) end
 local function unequip() local h = humanoid() if h then h:UnequipTools() end end
-local function fire(name, ...)
-    local r = RS
-    for _, n in ipairs({ "Remotes", "Game", name }) do
-        r = r and r:FindFirstChild(n)
+local _remoteCache = {}
+local function findRemote(name)
+    if _remoteCache[name] then return _remoteCache[name] end
+    if not RS then return nil end
+    -- Cek langsung path umum dulu
+    local direct = RS:FindFirstChild("Remotes")
+    if direct then
+        local g = direct:FindFirstChild("Game")
+        if g and g:FindFirstChild(name) then
+            _remoteCache[name] = g[name]
+            return g[name]
+        end
+        if direct:FindFirstChild(name) then
+            _remoteCache[name] = direct[name]
+            return direct[name]
+        end
     end
+    -- Fallback: cari rekursif di seluruh ReplicatedStorage
+    for _, desc in ipairs(RS:GetDescendants()) do
+        if desc.Name == name and (desc:IsA("RemoteEvent") or desc:IsA("RemoteFunction")) then
+            _remoteCache[name] = desc
+            return desc
+        end
+    end
+    return nil
+end
+
+local function fire(name, ...)
+    local r = findRemote(name)
     if not r then return false end
     local args = { ... }
-    return pcall(function() r:FireServer(unpack(args)) end)
+    return pcall(function()
+        if r:IsA("RemoteEvent") then
+            r:FireServer(unpack(args))
+        elseif r:IsA("RemoteFunction") then
+            r:InvokeServer(unpack(args))
+        end
+    end)
 end
 local function posOf(i)
     if not i then return nil end
@@ -4403,6 +4435,14 @@ local function posOf(i)
     return p and p.Position or nil
 end
 local function teleport(pos)
+    -- TWEEN: 1x set saja (secepat kilat seperti yang sudah bagus)
+    if cfg.moveMode == "Tween" then
+        local r = root()
+        if not r then return false end
+        r.CFrame = CFrame.new(pos + Vector3.new(0, 4, 0))
+        task.wait(0.05)
+        return true
+    end
     for _ = 1, 3 do
         local r = root()
         if not r then return false end
@@ -4413,54 +4453,90 @@ local function teleport(pos)
     end
     return false
 end
+
+ZYPHERAX_TPLOG = false
+local function tpDbg(tag, pos)
+    if not ZYPHERAX_TPLOG then return end
+    local tb = debug.traceback("", 2) or ""
+    local fn = "?"
+    for line in tb:gmatch("[^\n]+") do
+        if line:find("in function") and not line:find("tpDbg") and not line:find("pcall") then fn = line:match("in function .(.-).") or line; break end
+    end
+    local p = pos and string.format("(%.0f,%.0f,%.0f)", pos.X, pos.Y, pos.Z) or "(?)"
+    print(string.format("[TPDBG] %s %s via %s mode=%s", tag, p, tostring(fn), tostring(cfg and cfg.moveMode)))
+end
+
+local lastTpT, lastTpPos = 0, nil
 local function goTo(pos)
-    -- SEMUA mode pakai teleport (mode Tween = teleport + tunggu 20 dtk di pickup)
-    return teleport(pos)
+    if cfg.moveMode == "Tween" then
+        local r = root()
+        if r then
+            local d = (r.Position - pos).Magnitude
+            if d <= 60 then return true end
+            if os.clock() - lastTpT < 4 and d <= 300 then return true end
+        end
+    end
+    tpDbg("goTo", pos)
+    local ok = teleport(pos)
+    if ok then lastTpT = os.clock() lastTpPos = pos end
+    return ok
 end
 
 local function trigger(p)
     if not p or not p.Parent then return false end
+    if fireproximityprompt then
+        pcall(fireproximityprompt, p)
+        return true
+    end
     local ok = pcall(function()
         p.RequiresLineOfSight = false
         p:InputHoldBegin()
-        task.wait((tonumber(p.HoldDuration) or 0) + 0.15)
+        task.wait((tonumber(p.HoldDuration) or 0) + 0.05)
         p:InputHoldEnd()
     end)
-    if ok then return true end
-    if fireproximityprompt then pcall(fireproximityprompt, p) return true end
+    return ok
+end
+
+local function baseSpeed()
+    local ch = char()
+    local h = ch and ch:FindFirstChildOfClass("Humanoid")
+    if h then return h.WalkSpeed end
+    return 16
+end
+
+local ridePet = nil
+local function isRiding()
+    local h = humanoid()
+    if not h then return false end
+    -- Player resmi riding jika WalkSpeed melonjak tinggi (>25, default player 16) atau duduk di seat pet
+    if h.WalkSpeed > 25 then return true end
+    if h.Sit or h.SeatPart ~= nil then return true end
     return false
 end
-local plotCache, plotT, plotExact = nil, 0, false
+
 local function myPlot()
-    local ttl = plotExact and 60 or 10
-    if plotCache and plotCache.Parent and os.clock() - plotT < ttl then return plotCache end
-    local plots = workspace:FindFirstChild("Plots")
-    if not plots then return nil end
-    local near, nearD
-    local r = root()
-    for _, p in ipairs(plots:GetChildren()) do
-        local data = p:FindFirstChild("Data")
-        local o = data and data:FindFirstChild("Owner")
-        local owner = nil
-        if o then
-            local ok, v = pcall(function() return o.Value end)
-            if ok then owner = v end
-        end
-        if owner == LP or (type(owner) == "string" and (owner == LP.Name or owner == LP.DisplayName)) then
-            plotCache, plotT, plotExact = p, os.clock(), true
-            return p
-        end
-        local pp = posOf(p)
-        if r and pp then
-            local d = (pp - r.Position).Magnitude
-            if not nearD or d < nearD then nearD, near = d, p end
-        end
+    if rapMyPlotModel and rapMyPlotModel.Parent then return rapMyPlotModel end
+    if rapFindMyPlot then
+        local m = rapFindMyPlot()
+        if m then return m end
     end
-    plotCache, plotT, plotExact = near, os.clock(), false
-    return near
+    local plots = workspace:FindFirstChild("Plots")
+    if plots then
+        for _, p in ipairs(plots:GetChildren()) do
+            if p:FindFirstChild("Pets") or p:FindFirstChild("Nests") then
+                rapMyPlotModel = p
+                return p
+            end
+        end
+        local first = plots:GetChildren()[1]
+        if first then rapMyPlotModel = first return first end
+    end
+    return nil
 end
+
 local scoreCache = setmetatable({}, { __mode = "k" })
 local function speedOf(inst)
+    if not inst then return 0 end
     local c = scoreCache[inst]
     if c and os.clock() - c.t < 30 then return c.v end
     local best = 0
@@ -4475,103 +4551,9 @@ local function speedOf(inst)
     scoreCache[inst] = { v = best, t = os.clock() }
     return best
 end
-local function candidates()
-    local out = {}
-    local plot = myPlot()
-    local pets = plot and plot:FindFirstChild("Pets")
-    if pets then
-        for _, p in ipairs(pets:GetChildren()) do
-            local sp = speedOf(p)
-            local pName = tostring(p.Name):lower()
-            local isPet = p:GetAttribute("PetKey") ~= nil or sp > 0 or p:FindFirstChild("RidePrompt", true) ~= nil or p:FindFirstChildWhichIsA("VehicleSeat", true) ~= nil or p:FindFirstChildWhichIsA("Seat", true) ~= nil
-            if not isPet and not pName:find("egg", 1, true) and not pName:find("nest", 1, true) then
-                isPet = true
-            end
-            if isPet then
-                out[#out + 1] = { kind = "plot", inst = p, speed = sp }
-            end
-        end
-    end
-    for _, parent in ipairs({ LP:FindFirstChild("Backpack"), char() }) do
-        if parent then
-            for _, t in ipairs(parent:GetChildren()) do
-                if t:IsA("Tool") then
-                    local tName = tostring(t.Name):lower()
-                    if not tName:find("egg", 1, true) and not tName:find("basket", 1, true) then
-                        out[#out + 1] = { kind = "bag", inst = t, speed = speedOf(t) }
-                    end
-                end
-            end
-        end
-    end
-    return out
-end
-local function bestOf(kind)
-    local best
-    for _, c in ipairs(candidates()) do
-        if not kind or c.kind == kind then
-            if not best or c.speed > best.speed
-                or (c.speed == best.speed and c.kind == "plot" and best.kind == "bag") then
-                best = c
-            end
-        end
-    end
-    return best
-end
-local function seatedPetModel()
-    local h = humanoid()
-    local seat = h and h.SeatPart
-    return seat and seat:FindFirstAncestorOfClass("Model") or nil
-end
-local function waitNewPet(before, secs, g)
-    local plot = myPlot()
-    local pets = plot and plot:FindFirstChild("Pets")
-    local t0 = os.clock()
-    while os.clock() - t0 < secs do
-        pets = pets or (plot and plot:FindFirstChild("Pets"))
-        if pets then
-            for _, p in ipairs(pets:GetChildren()) do
-                if not before[p] then return p end
-            end
-        end
-        if not pause(0.1, g) then return nil end
-    end
-    return nil
-end
-local function placeFromBag(tool, g)
-    local plot = myPlot()
-    local pets = plot and plot:FindFirstChild("Pets")
-    local before = {}
-    if pets then for _, p in ipairs(pets:GetChildren()) do before[p] = true end end
-    local h = humanoid()
-    if h then h:EquipTool(tool) end
-    if not pause(0.15, g) then return nil end
-    fire("PlacePet", tool)
-    local found = waitNewPet(before, 0.7, g)
-    if not found and alive(g) then
-        fire("PlacePet")
-        found = waitNewPet(before, 0.7, g)
-    end
-    unequip()
-    if not found and pets then
-        for _, p in ipairs(pets:GetChildren()) do
-            if p.Name == tool.Name then found = p break end
-        end
-    end
-    return found
-end
-local ridePet = nil
-local function mount(pet)
-    -- Equip tool pet dulu ke tangan, lalu tembak Mounting
-    local h = humanoid()
-    if pet and pet:IsA("Tool") then
-        if h then h:EquipTool(pet) end
-        task.wait(0.1)
-    end
-    fire("Mounting")
-end
+
 local function isPetTool(t)
-    if not t:IsA("Tool") then return false end
+    if not t or not t:IsA("Tool") then return false end
     local n = t.Name:lower()
     return not n:find("egg", 1, true) and not n:find("basket", 1, true)
 end
@@ -4599,97 +4581,116 @@ local function findBestPetInBp()
     return best
 end
 
-local function baseSpeed()
-    local ch = char()
-    local h = ch and ch:FindFirstChildOfClass("Humanoid")
-    if h then return h.WalkSpeed end
-    return 16
-end
-
-local function isRiding()
-    return baseSpeed() > 50
-end
-
 local function doMount(tool)
     local h = humanoid()
     local c = char()
-    if tool and tool:IsA("Tool") then
-        if tool.Parent ~= c and h then h:EquipTool(tool); task.wait(0.15) end
+    if not tool or not tool:IsA("Tool") or not h then return end
+    if tool.Parent ~= c then
+        h:EquipTool(tool)
+        task.wait(0.1)
     end
-    if isRiding() then ridePet = tool; return end
-    local b0 = baseSpeed()
-    for _ = 1, 6 do
-        fire("Mounting")
-        task.wait(0.8)
-        if baseSpeed() > b0 + 1 then break end
-        if tool and tool:IsA("Tool") then
-            local cc = char()
-            if tool.Parent ~= cc then
-                local hh = humanoid()
-                if hh then hh:EquipTool(tool); task.wait(0.15) end
-            end
-        end
+    fire("Mounting")
+    fire("PetRideMode")
+    -- Tunggu hingga server resmi menaikkan pemain ke pet (WalkSpeed naik) sebelum lepas tool
+    local t0 = os.clock()
+    while os.clock() - t0 < 0.6 do
+        if isRiding() then break end
+        task.wait(0.05)
     end
+    -- Lepas tool dari tangan agar tangan kosong untuk angkat telur (persis seperti log rival)
+    h:UnequipTools()
+    task.wait(0.05)
     ridePet = tool
 end
 
-local function validPet(t)
-    if not t then return false end
-    local ok, par = pcall(function() return t.Parent end)
-    if not ok or not par then return false end
-    local bp = LP:FindFirstChild("Backpack")
-    local c = char()
-    return par == bp or par == c
-end
-
 local function ensureRide(g)
-    if cfg.moveMode == "Tween" and isRiding() then return true end
-    -- MODE SCRIPT ORANG: selalu pilih pet tercepat yang ada saat ini
+    if isRiding() then return true end
+
+    -- 1. Cek pet di Backpack / Tangan (TETAP SAMA, SUDAH BAGUS)
     local existing = findBestPetInBp()
     if existing then
         doMount(existing)
+        task.wait(0.15)
         return true
     end
+
+    -- 2. Pet di Plot: dekati pet di plot, naiki via RidePrompt & remote
     local plot = myPlot()
     local pets = plot and plot:FindFirstChild("Pets")
-    if not pets then return true end
-    local targetPet = nil
-    for _, p in ipairs(pets:GetChildren()) do
-        if not targetPet or speedOf(p) > speedOf(targetPet) then targetPet = p end
+    if pets then
+        local targetPet = nil
+        for _, p in ipairs(pets:GetChildren()) do
+            if not targetPet or speedOf(p) > speedOf(targetPet) then targetPet = p end
+        end
+
+        if targetPet then
+            local pPos = posOf(targetPet)
+            if pPos then
+                local r = root()
+                if r then r.CFrame = CFrame.new(pPos + Vector3.new(0, 3, 0)) end
+                task.wait(0.1)
+            end
+
+            -- Cari RidePrompt resmi di pet plot
+            local rp = targetPet:FindFirstChild("RidePrompt", true)
+            if not rp then
+                for _, d in ipairs(targetPet:GetDescendants()) do
+                    if d:IsA("ProximityPrompt") then rp = d break end
+                end
+            end
+
+            -- Remotes resmi game untuk ride pet di plot
+            fire("PetRideMode")
+            fire("RideAlong")
+            fire("Mounting")
+
+            if rp then
+                pcall(function() rp.RequiresLineOfSight = false end)
+                if fireproximityprompt then
+                    pcall(fireproximityprompt, rp)
+                else
+                    trigger(rp)
+                end
+            end
+
+            -- Tunggu sampai karakter duduk di pet (Sit / SeatPart) atau pet masuk tas
+            local t0 = os.clock()
+            while os.clock() - t0 < 1.5 do
+                local h = humanoid()
+                if h and (h.Sit or h.SeatPart ~= nil or h.WalkSpeed > 20) then
+                    return true
+                end
+                local petTool = findBestPetInBp()
+                if petTool then
+                    doMount(petTool)
+                    return true
+                end
+                task.wait(0.1)
+            end
+
+            local h = humanoid()
+            if h and (h.Sit or h.SeatPart ~= nil or h.WalkSpeed > 20) then
+                return true
+            end
+        end
     end
-    if not targetPet then return true end
-    local rp = nil
-    for _, d in ipairs(targetPet:GetDescendants()) do
-        if d:IsA("ProximityPrompt") and d.ActionText:lower():find("ride") then rp = d; break end
-    end
-    if not rp then return true end
-    local pPos = posOf(targetPet)
-    if pPos then teleport(pPos + Vector3.new(0, 3, 0)); task.wait(0.15) end
-    trigger(rp)
-    local deadline = os.clock() + 3
-    local petTool = nil
-    while os.clock() < deadline do
-        petTool = findBestPetInBp()
-        if petTool then break end
-        task.wait(0.15)
-    end
-    if petTool then
-        doMount(petTool)
-        return true
-    end
-    return true
+
+    return isRiding()
 end
+
 local blacklist = setmetatable({}, { __mode = "k" })
 local function inSet(set, v)
     if next(set) == nil then return true end
     return set[v] == true
 end
+
 function AutoFarm.SetFilter(kind, list)
     if kind ~= "rarity" and kind ~= "eggs" and kind ~= "mutation" then return end
     local s = {}
     for _, v in ipairs(list or {}) do s[v] = true end
     cfg[kind] = s
 end
+
 local function mutationOf(inst)
     local cur = inst
     for _ = 1, 6 do
@@ -4704,6 +4705,7 @@ local function mutationOf(inst)
     end
     return "normal"
 end
+
 local function eggModelOf(prompt)
     local folder = workspace:FindFirstChild("RenderedEggs")
     local cur = prompt.Parent
@@ -4713,6 +4715,7 @@ local function eggModelOf(prompt)
     end
     return prompt.Parent
 end
+
 local function eggNameOf(prompt, model)
     local t = ""
     pcall(function() t = tostring(prompt.ObjectText or "") end)
@@ -4720,6 +4723,7 @@ local function eggNameOf(prompt, model)
     if t:lower():find("blackhole", 1, true) then return "Blackhole Egg" end
     return t
 end
+
 local function matches(name, model)
     if cfg.rebirthOnly then return name:lower():find("rebirth", 1, true) ~= nil end
     if not inSet(cfg.eggs, name) then return false end
@@ -4727,6 +4731,7 @@ local function matches(name, model)
     if next(cfg.mutation) ~= nil and not inSet(cfg.mutation, mutationOf(model)) then return false end
     return true
 end
+
 local function nextEgg()
     local folder = workspace:FindFirstChild("RenderedEggs")
     if not folder then return nil end
@@ -4754,20 +4759,50 @@ local function nextEgg()
     end
     return best
 end
-local function eggId(model)
-    local function isUuid(v) return type(v) == "string" and #v > 20 and v:find("-", 1, true) ~= nil end
-    for _, k in ipairs({ "EggId", "Id", "UUID", "EggUUID", "EggInventoryId" }) do
-        local v = model:GetAttribute(k)
-        if isUuid(v) then return v end
+
+local function eggId(model, prompt)
+    local function isUuid(v)
+        local s = tostring(v)
+        return type(s) == "string" and #s == 36 and s:sub(9,9) == "-" and s:sub(14,14) == "-" and s:sub(19,19) == "-" and s:sub(24,24) == "-"
     end
-    for _, v in pairs(model:GetAttributes()) do
-        if isUuid(v) then return v end
+    -- 1. Ambil dari upvalues ProximityPrompt.Triggered
+    if prompt and getconnections and debug and debug.getupvalues then
+        local conns = getconnections(prompt.Triggered)
+        if conns then
+            for _, conn in ipairs(conns) do
+                local fn = conn.Function
+                if fn then
+                    local ups = debug.getupvalues(fn)
+                    if ups then
+                        for _, uv in pairs(ups) do
+                            if isUuid(uv) then return tostring(uv), fn end
+                            if type(uv) == "table" then
+                                for _, tv in pairs(uv) do
+                                    if isUuid(tv) then return tostring(tv), fn end
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+        end
     end
-    for _, d in ipairs(model:GetDescendants()) do
-        if d.ClassName == "StringValue" and isUuid(d.Value) then return d.Value end
+    -- 2. Fallback: dari Model attribute / descendant
+    if model then
+        for _, k in ipairs({ "EggId", "Id", "UUID", "EggUUID", "EggInventoryId" }) do
+            local v = model:GetAttribute(k)
+            if isUuid(v) then return tostring(v), nil end
+        end
+        for _, v in pairs(model:GetAttributes()) do
+            if isUuid(v) then return tostring(v), nil end
+        end
+        for _, d in ipairs(model:GetDescendants()) do
+            if d.ClassName == "StringValue" and isUuid(d.Value) then return tostring(d.Value), nil end
+        end
     end
-    return nil
+    return nil, nil
 end
+
 local function eggTools()
     local out = {}
     for _, parent in ipairs({ LP:FindFirstChild("Backpack"), char() }) do
@@ -4779,15 +4814,18 @@ local function eggTools()
     end
     return out
 end
+
 local function newEggTool(before)
     for t in pairs(eggTools()) do
         if not before[t] then return t end
     end
     return nil
 end
+
 local function gone(prompt)
     return prompt.Parent == nil or not prompt:IsDescendantOf(workspace)
 end
+
 local function carrying(before)
     if newEggTool(before) then return true end
     local c = char()
@@ -4798,43 +4836,35 @@ local function carrying(before)
     end
     return false
 end
+
 local function pickup(g, egg, before)
     local function done() return gone(egg.prompt) or newEggTool(before) ~= nil end
-    local id = eggId(egg.model)
-    if id then
-        if cfg.moveMode == "Tween" then
-            -- POLA SCRIPT ORANG (log FULL): EggPickup 2x selang 0.3 dtk, teleport sudah dilakukan
-            -- sebelum/sesudahnya, lalu DIAM ~31 dtk (cuma Ping), lalu EggArrivalClaim.
-            -- Jangan spam EggPickup tiap 0.35 dtk - itu bikin server tolak.
-            for _ = 1, 2 do
-                if not alive(g) then return false end
-                fire("EggPickup", id)
-                task.wait(0.3)
-                if done() then return true end
-            end
-            local deadline = os.clock() + 35
-            local lastReq = 0
-            while os.clock() < deadline do
-                if not alive(g) then return false end
-                if done() then return true end
-                -- keepalive ringan seperti script orang (tiap ~15 dtk)
-                if os.clock() - lastReq > 15 then
-                    lastReq = os.clock()
-                    fire("RequestPlotEggs", false)
-                end
-                task.wait(0.5)
-            end
-            -- Telur datang via EggArrivalClaim (timestamp, posisi, data). Coba klaim
-            -- agar TAS+ muncul seperti log #199-203.
-            local ts = os.clock() + 1791720000
-            local okFire = pcall(fire, "EggArrivalClaim", ts, egg.pos, { id })
-            if not okFire then pcall(fire, "EggArrivalClaim", ts, egg.pos) end
-            task.wait(1)
-            if done() then return true end
-            pcall(fire, "EggArrivalClaim", os.clock(), egg.pos)
-            task.wait(1)
-            return done()
+    local id = nil
+    pcall(function() id = eggId(egg.model, egg.prompt) end)
+
+    if cfg.moveMode == "Tween" then
+        if id then
+            fire("EggPickup", id)
+        else
+            trigger(egg.prompt)
+            fire("EggPickup", egg.model)
         end
+
+        -- TWEEN: DIAM & TUNGGU 20 DETIK PENUH di telur (sesuai permintaan user!)
+        local deadline = os.clock() + 20
+        local lastReq = 0
+        while os.clock() < deadline do
+            if not alive(g) then return false end
+            if os.clock() - lastReq > 15 then
+                lastReq = os.clock()
+                fire("RequestPlotEggs", false)
+            end
+            task.wait(0.5)
+        end
+        return true
+    end
+
+    if id then
         for _ = 1, 12 do
             if not alive(g) then return false end
             fire("EggPickup", id)
@@ -4852,6 +4882,7 @@ local function pickup(g, egg, before)
     end
     return done()
 end
+
 local function placePromptOf(slot)
     local anchor = slot:FindFirstChild("PlacePromptAnchor", true) or slot
     local list = anchor:GetDescendants()
@@ -4866,6 +4897,7 @@ local function placePromptOf(slot)
     end
     return nil, anchor
 end
+
 local function deliver(g, before)
     local plot = myPlot()
     local nests = plot and plot:FindFirstChild("Nests")
@@ -4878,29 +4910,46 @@ local function deliver(g, before)
         if h then h:EquipTool(tool) end
         task.wait(0.15)
     end
+    local maxSlots = (cfg.moveMode == "Tween") and 1 or #slots
+    local tried = 0
     for _, slot in ipairs(slots) do
         if not alive(g) then return false end
+        if tried >= maxSlots then break end
         local pr, anchor = placePromptOf(slot)
         if pr then
+            tried = tried + 1
             local pos = posOf(anchor) or posOf(slot)
-            if pos then teleport(pos) task.wait(0.2) end
+            if pos then
+                if cfg.moveMode == "Tween" then
+                    local r = root()
+                    if not r or (r.Position - pos).Magnitude > 60 then goTo(pos) end
+                else
+                    goTo(pos)
+                end
+                task.wait(0.2)
+            end
             trigger(pr)
             task.wait(0.3)
             if not canDetect or not carrying(before) then return true end
         end
     end
 
-    -- Jika nest prompt tidak respon / penuh, tetap teleport balik ke tengah plot
-    local pPos = posOf(plot)
-    if pPos then
-        teleport(pPos + Vector3.new(0, 3, 0))
+    if cfg.moveMode ~= "Tween" then
+        local pPos = posOf(plot)
+        if pPos then
+            teleport(pPos + Vector3.new(0, 3, 0))
+        end
     end
+    -- Bersihkan tangan setelah antar telur agar siap untuk telur berikutnya
+    local h = humanoid()
+    if h then h:UnequipTools() end
     return true
 end
--- hold tidak diperlukan: game tidak mensyaratkan hold di pet
+
 local function hold(g, seconds)
     return true
 end
+
 local function cycle(g)
     -- 1. Pastikan pet di-equip dan Mounting sudah dikirim
     if not ensureRide(g) then return end
@@ -4913,56 +4962,110 @@ local function cycle(g)
         -- TWEEN: 1 telur per putaran -> tunggu 20 dtk di pickup -> balik plot -> antar
         local egg = nextEgg()
         if egg then
+            -- Teleport langsung ke telur (tetap secepat kilat seperti yang sudah bagus)
             goTo(egg.pos)
-            task.wait(0.2)
+            task.wait(0.15) -- Jeda mikro agar karakter mendarat dan area telur fully loaded
+
+            -- Kosongkan tangan agar bisa mengangkat telur
+            local h = humanoid()
+            if h then h:UnequipTools() end
+
+            -- Ekstrak UUID & trigger function DI LOKASI TELUR agar telur ke-2, ke-3 dst selalu valid
+            local eggUuid, triggerFn = eggId(egg.model, egg.prompt)
+
+            -- Angkat telur dengan multi-layer trigger:
+            if eggUuid then
+                fire("EggPickup", eggUuid)
+            end
+            if triggerFn then
+                pcall(triggerFn)
+            end
+            if fireproximityprompt and egg.prompt then
+                pcall(fireproximityprompt, egg.prompt)
+            else
+                trigger(egg.prompt)
+            end
+
             local got = pickup(g, egg, before)
+
             if got then
                 collected = collected + 1
                 AutoFarm.picked = AutoFarm.picked + 1
                 blacklist[egg.prompt] = os.clock() + 5
             else
-                blacklist[egg.prompt] = os.clock() + 60
-                notify("Pick Up", egg.name .. " gagal, dilewati 60 dtk.")
+                -- Jangan blacklist lama-lama (cukup 5 detik) agar tidak macet
+                blacklist[egg.prompt] = os.clock() + 5
+                notify("Pick Up", egg.name .. " mencoba lagi.")
             end
+
             fire("TeleportToPlot")
+            task.wait(0.3)
+            pcall(function()
+                local pl = myPlot()
+                local pp = pl and posOf(pl)
+                local r = root()
+                if pp and r and (r.Position - pp).Magnitude > 150 then
+                    r.CFrame = CFrame.new(pp + Vector3.new(0, 4, 0))
+                    task.wait(0.1)
+                end
+            end)
+        end
+    else
+        -- MODE INSTAN SAKTI (PERSIS LOG RIVAL 100%):
+        -- Teleport ke telur -> Diam 0.4s -> Tembak TeleportToPlot + EggPickup BERSAMAAN -> Langsung mendarat di plot bawa telur!
+        local egg = nextEgg()
+        if egg then
+            goTo(egg.pos)
+            task.wait(0.4) -- Jeda 0.4s persis seperti log rival (+17.97s -> +18.37s)
+
+            local eggUuid, triggerFn = eggId(egg.model, egg.prompt)
+
+            -- Tembak TeleportToPlot dan EggPickup bersamaan:
+            fire("TeleportToPlot")
+            if eggUuid then
+                fire("EggPickup", eggUuid)
+            end
+            if triggerFn then
+                pcall(triggerFn)
+            end
+            if fireproximityprompt and egg.prompt then
+                pcall(fireproximityprompt, egg.prompt)
+            end
+
+            task.wait(0.2)
+            pcall(function()
+                local pl = myPlot()
+                local pp = pl and posOf(pl)
+                local r = root()
+                if pp and r and (r.Position - pp).Magnitude > 150 then
+                    r.CFrame = CFrame.new(pp + Vector3.new(0, 4, 0))
+                    task.wait(0.1)
+                end
+            end)
+
+            collected = collected + 1
+            AutoFarm.picked = AutoFarm.picked + 1
+            blacklist[egg.prompt] = os.clock() + 5
+
+            deliver(g, before)
+            task.wait(0.6)
+        else
             task.wait(0.5)
         end
-    else
-        local MAX_PER_CYCLE = 10
-        while alive(g) and collected < MAX_PER_CYCLE do
-            local egg = nextEgg()
-            if not egg then break end
-            goTo(egg.pos)
-            task.wait(0.2)
-            local got = pickup(g, egg, before)
-            if got then
-                collected = collected + 1
-                AutoFarm.picked = AutoFarm.picked + 1
-                blacklist[egg.prompt] = os.clock() + 5
-            else
-                blacklist[egg.prompt] = os.clock() + 60
-                notify("Pick Up", egg.name .. " gagal, dilewati 60 dtk.")
-            end
-            fire("TeleportToPlot")
-            task.wait(0.2)
-        end
+        return
     end
 
-    -- 3. Deliver semua egg yang ada di tangan/tas ke nest
-    if collected > 0 then
-        local delivered = deliver(g, before)
-        if delivered then
-            notify("Telur", "Ditaruh " .. collected .. " telur ke sarang (total " .. AutoFarm.picked .. ")")
-        end
-    else
-        task.wait(0.5)
-    end
+    -- 3. Deliver semua egg yang ada di tangan/tas ke nest (untuk mode Tween)
+    deliver(g, before)
 end
+
 function AutoFarm.Start()
     if running then return end
     running = true
     gen = gen + 1
     local g = gen
+    -- Bersihkan blacklist saat baru di-on-kan agar langsung scan telur tanpa nunggu
+    pcall(function() table.clear(blacklist) end)
     task.spawn(function()
         while alive(g) do
             local ok, err = pcall(cycle, g)
@@ -4977,6 +5080,7 @@ end
 function AutoFarm.Stop()
     running = false
     gen = gen + 1
+    ridePet = nil
 end
 
 -- ============================== AUTO SELL (RARITY + WEIGHT) ==============================
@@ -5624,6 +5728,7 @@ end
 -- Teleport PAKSA (CFrame langsung) untuk leg telur->plot setelah 20 dtk + ride.
 -- Anti-cheat baru lolos bila sudah naik pet + tunggu. Jangan pakai untuk gerak lain.
 function rapForceTeleport(pos)
+    pcall(function() if ZYPHERAX_TPLOG and cfg and cfg.moveMode == "Tween" then print("[TPDBG] rapForceTeleport mode=Tween") end end)
     if not pos then return false end
     local okAll = false
     for attempt = 1, 3 do
@@ -5715,16 +5820,13 @@ function rapStep()
     if rapFlag.grow then rapPassBatch(function(a) return a:find("Skip", 1, true) ~= nil end, 3) end
     if rapFlag.feed then rapPassBatch(function(a) return a == "Feed" end, 3) rapFire({ "Remotes", "Game", "FeedPet" }) rapFeedFilteredTick() end
     if rapFlag.skill then rapSpellTick() end
-    if rapFlag.ride then rapFire({ "Remotes", "Game", "Mounting" }) rapFire({ "Remotes", "Game", "PetRideMode" }) rapFire({ "Remotes", "Game", "Mount" }) end
-    if rapFlag.join then rapPassBatch(function(a) return a:find("Join", 1, true) ~= nil end, 1) end
-    if rapFlag.claim then rapPassBatch(function(a) return a == "Claim" or a:find("Unlock", 1, true) ~= nil end, 2) end
-    if rapFlag.remoteClaim then
-        rapFire({ "Remotes", "Game", "ClaimEventReward" })
-        rapFire({ "Remotes", "Game", "ClaimIndexReward" })
-        rapFire({ "Remotes", "Game", "EggArrivalClaim" })
-        rapFire({ "Remotes", "Game", "OfflineEarnings" })
-        rapFire({ "Remotes", "Reusable", "ClaimGroupReward" })
+    -- Auto Ride: RideAlong + Mounting + PetRideMode (Mount tidak ada di game ini)
+    if rapFlag.ride then
+        rapFire({ "Remotes", "Game", "RideAlong" })
+        rapFire({ "Remotes", "Game", "Mounting" })
+        rapFire({ "Remotes", "Game", "PetRideMode" })
     end
+    -- rapFlag.join / rapFlag.claim / rapFlag.remoteClaim: DIHAPUS (event & reward dihapus per user)
     if rapFlag.placedEgg then rapPlaceEggs() end
     if rapPlanned and rapPlanned.volcanoDip then rapVolcanoTick() end
     if rapPlanned and rapPlanned.placeBest then rapPlaceBestTick() end
@@ -5732,10 +5834,32 @@ function rapStep()
     if rapPlanned and rapPlanned.feedBest then rapFeedBestTick() end
     if rapPlanned and rapPlanned.placePets then rapPlacePetsTick() end
     if rapFlag.fuse then rapFire({ "Remotes", "Game", "FusionAction" }) rapFire({ "Remotes", "Game", "FusionPetPlace" }) rapFuseFilteredTick() end
-    if rapFlag.rebirth or rapPlanned.autoRebirth then rapFire({ "Remotes", "Game", "Rebirth" }) end
+    if rapFlag.rebirth or (rapPlanned and rapPlanned.autoRebirth) then rapFire({ "Remotes", "Game", "Rebirth" }) end
     if rapFlag.shop then rapFire({ "Remotes", "Game", "Autobuy" }) end
     if rapFlag.autoSell then rapSellTick(false) end
     if rapBuyFood or rapBuyGear then rapBuyTick() end
+    -- rapPlanned toggles dari rapProgToggle
+    if rapPlanned and rapPlanned.buyLuck then
+        -- Path: ReplicatedStorage.Remotes.Game.Plot.Upgrades (konfirmasi find_remote_path)
+        rapFire({ "Remotes", "Game", "Plot", "Upgrades" })
+    end
+    if rapPlanned and rapPlanned.buyMax then
+        -- Path: ReplicatedStorage.Remotes.Game.Plot.Upgrades dengan arg "Max"
+        rapFire({ "Remotes", "Game", "Plot", "Upgrades" }, "Max")
+    end
+    if rapPlanned and rapPlanned.unlockNests then
+        -- Path: ReplicatedStorage.Remotes.Game.Plot.Nests (konfirmasi find_remote_path v3)
+        rapFire({ "Remotes", "Game", "Plot", "Nests" })
+    end
+    if rapPlanned and rapPlanned.rideBest then rapRideBest() end
+    if rapPlanned and rapPlanned.claimIndex then
+        -- Path: ReplicatedStorage.Remotes.Game.ClaimIndexReward (konfirmasi find_remote_path)
+        rapFire({ "Remotes", "Game", "ClaimIndexReward" })
+    end
+    if rapPlanned and rapPlanned.claimOffline then
+        -- Path: ReplicatedStorage.Remotes.Game.OfflineEarnings (konfirmasi find_remote_path)
+        rapFire({ "Remotes", "Game", "OfflineEarnings" })
+    end
     if rapFlag.autoTp then
         for _, d in ipairs(rapTickList()) do
             if (d:IsA("Model") or d:IsA("BasePart")) and d.Name == rapGoal then
@@ -5749,6 +5873,7 @@ function rapStep()
 end
 
 local rapLoopGen = 0
+local RAP_PLANNED_KEYS = { "buyLuck", "buyMax", "unlockNests", "autoRebirth", "rideBest", "claimIndex", "claimOffline" }
 function rapLoopStart()
     rapLoopGen = (rapLoopGen or 0) + 1
     local myGen = rapLoopGen
@@ -5760,6 +5885,11 @@ function rapLoopStart()
                 if v then any = true; break end
             end
             if rapBuyFood or rapBuyGear then any = true end
+            if not any and rapPlanned then
+                for _, k in ipairs(RAP_PLANNED_KEYS) do
+                    if rapPlanned[k] then any = true; break end
+                end
+            end
             if not any then break end
             local okL, errL = pcall(rapStep)
             if not okL then task.wait(1) end
@@ -6420,6 +6550,7 @@ rapPlanned = rapPlanned or {}
 function rapProgToggle(name, key, onMsg, offMsg)
     SecProg:Toggle({ Name = name, Default = false, Callback = function(enabled)
         rapPlanned[key] = enabled and true or false
+        if enabled then rapLoopStart() end
         Window:Notify({ Title = "Main", Description = enabled and onMsg or offMsg, Lifetime = 3 })
     end })
 end
@@ -6802,48 +6933,6 @@ SecRanch:Button({
     end,
 })
 
-local SecEvent = TabMainRAP:Section({ Name = "Event & Klaim", Side = 1 })
-SecEvent:Header({ Name = ZypheraxLib:Gradient("Event & Reward", Color3.fromRGB(99, 130, 255), Color3.fromRGB(168, 120, 255)) })
-
-SecEvent:Toggle({
-    Name = "Auto Claim Event & Group (Remote)",
-    Default = false,
-    Callback = function(enabled)
-        rapSet("remoteClaim", enabled, "Auto Claim", "Klaim reward event & group otomatis.", "Auto claim dimatikan.")
-    end,
-})
-
-SecEvent:Toggle({
-    Name = "Auto Klaim Prompt (Claim / Unlock)",
-    Default = false,
-    Callback = function(enabled)
-        rapSet("claim", enabled, "Auto Klaim", "Menekan prompt Claim / Unlock Nest otomatis.", "Auto klaim dimatikan.")
-    end,
-})
-
-SecEvent:Toggle({
-    Name = "Auto Join Event",
-    Default = false,
-    Callback = function(enabled)
-        rapSet("join", enabled, "Auto Join", "Masuk event otomatis jika tersedia.", "Auto join dimatikan.")
-    end,
-})
-
-SecEvent:Toggle({
-    Name = "Auto Ride Hewan (Snail, Cheetah, dll)",
-    Default = false,
-    Callback = function(enabled)
-        rapSet("ride", enabled, "Auto Ride", "Menaiki hewan (Ride) otomatis.", "Auto ride dimatikan.")
-    end,
-})
-
-SecEvent:Toggle({
-    Name = "Auto Pakai Skill / Spell / Feed",
-    Default = false,
-    Callback = function(enabled)
-        rapSet("skill", enabled, "Auto Skill", "Menekan skill/spell/ability/feed otomatis.", "Auto skill dimatikan.")
-    end,
-})
 
 -- ==============================================================================================
 -- Grup tambahan (engine sudah jalan)
